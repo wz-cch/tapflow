@@ -222,9 +222,9 @@ class CanvasView(context: Context) : View(context) {
             blockedAreas.forEach { painter.drawBlockedArea(canvas, it, hatchColor) }
         }
 
-        if (density != MarkerDensity.HIDDEN || markers.isNotEmpty()) {
-            painter.draw(canvas, markers.forDensity(density), highlightNumber, scale = 1f)
-        }
+        // HIDDEN still shows the newest marker, it just stops showing the trail of older ones —
+        // forDensity handles that, so there is nothing to branch on here.
+        painter.draw(canvas, markers.forDensity(density), highlightNumber, scale = 1f)
 
         drawInProgressStrokes(canvas)
 
