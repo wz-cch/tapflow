@@ -168,6 +168,8 @@
     <string name="settings_replay_each">Replay each gesture</string>
     <string name="settings_replay_each_body">Sends every recorded gesture straight back to the app underneath so the screen moves on. Turn it off for blind recording, where the screen never changes but fast swipes stay accurate.</string>
     <string name="settings_replay_delay">Wait after replaying</string>
+    <string name="settings_avoid_obscuring">Move the overlay aside to replay</string>
+    <string name="settings_avoid_obscuring_body">For apps that ignore taps while recording. Some apps discard any touch arriving under an overlay, which makes the replayed gesture do nothing; this parks the overlay off screen for each one. Leave it off unless you need it — moving the window on every gesture is intrusive and has been seen to shift the markers on some devices.</string>
     <string name="settings_section_appearance">Appearance</string>
     <string name="settings_ui_scale">Toolbar size</string>
     <string name="settings_ui_opacity">Toolbar opacity</string>

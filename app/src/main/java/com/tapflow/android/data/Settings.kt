@@ -67,6 +67,20 @@ data class Settings(
     /** How long to wait after a replayed gesture for the target app to finish animating. */
     val replayDelayMs: Long = 80,
 
+    /**
+     * Move the canvas off screen while a captured gesture is replayed, not merely make it untouchable.
+     *
+     * For apps whose views set filterTouchesWhenObscured. FLAG_NOT_TOUCHABLE stops the window taking
+     * the touch but still leaves it covering the point the replay aims at, which sets
+     * FLAG_WINDOW_IS_OBSCURED, and those views discard exactly that — so recording in such an app
+     * does nothing at all.
+     *
+     * Off by default. Shuffling the window on every gesture is intrusive and has been seen to
+     * disturb the coordinate space on a real device, and that regression would hit everyone whereas
+     * the problem it solves hits some apps. Turn it on only where it is needed.
+     */
+    val avoidObscuringOnReplay: Boolean = false,
+
     // --- Appearance ---
     val uiScale: Float = 1f,
     val uiOpacity: Float = 1f,

@@ -133,6 +133,13 @@ fun SettingsScreen(onBack: () -> Unit) {
                     Repo.updateSettings { it.copy(replayDelayMs = ms) }
                 }
             }
+            item {
+                SwitchRow(
+                    label = stringResource(R.string.settings_avoid_obscuring),
+                    body = stringResource(R.string.settings_avoid_obscuring_body),
+                    checked = settings.avoidObscuringOnReplay,
+                ) { Repo.updateSettings { s -> s.copy(avoidObscuringOnReplay = it) } }
+            }
 
             item { Section(R.string.settings_section_appearance) }
             item {

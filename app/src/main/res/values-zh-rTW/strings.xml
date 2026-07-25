@@ -165,6 +165,8 @@
     <string name="settings_replay_each">逐手勢補發</string>
     <string name="settings_replay_each_body">錄到的每個手勢會立刻送回下層 app,畫面才會前進。關掉就是純盲錄:畫面完全不動,但快速滑動比較準。</string>
     <string name="settings_replay_delay">補發後等待</string>
+    <string name="settings_avoid_obscuring">補發時把遮罩移開</string>
+    <string name="settings_avoid_obscuring_body">給「錄製時點了沒反應」的 app 用。有些 app 會丟棄任何從遮罩底下進來的觸控,補發的手勢因此無效;開啟後每次補發會把遮罩移到畫面外。除非需要請保持關閉 —— 每個手勢都搬動 window 很干擾,而且在某些裝置上曾造成標記位置偏移。</string>
     <string name="settings_section_appearance">外觀</string>
     <string name="settings_ui_scale">工具列大小</string>
     <string name="settings_ui_opacity">工具列不透明度</string>

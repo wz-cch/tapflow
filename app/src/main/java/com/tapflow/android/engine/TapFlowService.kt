@@ -602,16 +602,12 @@ class TapFlowService : AccessibilityService() {
     }
 
     /**
-     * True while a captured gesture is being pushed back down and the canvas has to be out of the way.
+     * True while a captured gesture is being replayed and the canvas is parked off screen.
      *
-     * "Out of the way" means more than untouchable. FLAG_NOT_TOUCHABLE stops the window taking the
-     * touch, but the window still covers the point the gesture is aimed at, and that is what sets
-     * FLAG_WINDOW_IS_OBSCURED on the event. A view with filterTouchesWhenObscured discards exactly
-     * those, so the replay never lands and recording in such an app does nothing.
-     *
-     * The window is therefore shrunk to a single pixel for the duration. Only FLAG_WINDOW_IS_OBSCURED
-     * is filtered, not FLAG_WINDOW_IS_PARTIALLY_OBSCURED, so a one-pixel window in the corner is
-     * enough — and updateViewLayout is far cheaper than detaching and re-attaching the window.
+     * Only when [Settings.avoidObscuringOnReplay] is on. It is moved rather than resized: shrinking
+     * the window to a pixel also worked in principle, but on a real device it visibly shifted the
+     * screen and every marker sideways, presumably because the view's coordinate space follows the
+     * window size. Moving keeps the size, so the coordinate space is untouched.
      */
     private var canvasOutOfTheWay = false
 
@@ -632,18 +628,21 @@ class TapFlowService : AccessibilityService() {
             flags = flags or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
         }
 
-        val extent = if (canvasOutOfTheWay) 1 else WindowManager.LayoutParams.MATCH_PARENT
+        // Parked a whole screen below the display. The size stays MATCH_PARENT so the view's
+        // coordinate space never changes, and touch samples add getLocationOnScreen anyway, so even a
+        // stale frame cannot mis-record.
+        val offsetY = if (canvasOutOfTheWay) host.displaySize().y else 0
 
-        if (canvasParams.flags == flags && canvasParams.width == extent) return
+        if (canvasParams.flags == flags && canvasParams.y == offsetY) return
         canvasParams.flags = flags
-        canvasParams.width = extent
-        canvasParams.height = extent
+        canvasParams.y = offsetY
         host.update(canvas, canvasParams)
     }
 
     private fun setCanvasTouchable(touchable: Boolean) {
-        canvasOutOfTheWay = !touchable && canvas.mode == CanvasMode.RECORDING
-        canvas.replaying = canvasOutOfTheWay
+        val replaying = !touchable && canvas.mode == CanvasMode.RECORDING
+        canvas.replaying = replaying
+        canvasOutOfTheWay = replaying && settings.avoidObscuringOnReplay
         updateCanvasFlags()
     }
 
@@ -872,6 +871,9 @@ class TapFlowService : AccessibilityService() {
 
         override fun onToggleReplayEachGesture() =
             Repo.updateSettings { it.copy(replayEachGesture = !it.replayEachGesture) }
+
+        override fun onToggleAvoidObscuring() =
+            Repo.updateSettings { it.copy(avoidObscuringOnReplay = !it.avoidObscuringOnReplay) }
 
         override fun onToggleKeepScreenOn() =
             Repo.updateSettings { it.copy(keepScreenOn = !it.keepScreenOn) }
