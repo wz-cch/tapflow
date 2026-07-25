@@ -53,7 +53,7 @@ class QuickSettingsView(context: Context, private val actions: Actions) : Scroll
     private val timerToggle = togglePill()
 
     private val rows = LinearLayout(context).apply {
-        orientation = VERTICAL
+        orientation = LinearLayout.VERTICAL
         setPadding(dp(14f), dp(12f), dp(14f), dp(12f))
     }
 
@@ -108,7 +108,7 @@ class QuickSettingsView(context: Context, private val actions: Actions) : Scroll
     }
 
     private fun header() = LinearLayout(context).apply {
-        orientation = HORIZONTAL
+        orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         addView(
             TextView(context).apply {
@@ -128,7 +128,7 @@ class QuickSettingsView(context: Context, private val actions: Actions) : Scroll
         onMinus: () -> Unit,
         onPlus: () -> Unit,
     ) = LinearLayout(context).apply {
-        orientation = HORIZONTAL
+        orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         addView(label(labelRes), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         addView(value)
@@ -138,7 +138,7 @@ class QuickSettingsView(context: Context, private val actions: Actions) : Scroll
 
     private fun toggleRow(labelRes: Int, pill: TextView, onToggle: () -> Unit) =
         LinearLayout(context).apply {
-            orientation = HORIZONTAL
+            orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             addView(label(labelRes), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
             addView(pill)
