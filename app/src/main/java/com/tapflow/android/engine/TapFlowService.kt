@@ -130,7 +130,11 @@ class TapFlowService : AccessibilityService() {
      */
     override fun onServiceConnected() {
         super.onServiceConnected()
-        runCatching { connect() }.onFailure { Log.e(TAG, "onServiceConnected failed", it) }
+        EngineState.serviceError.value = null
+        runCatching { connect() }.onFailure { failure ->
+            Log.e(TAG, "onServiceConnected failed", failure)
+            EngineState.serviceError.value = summarise(failure)
+        }
     }
 
     private fun connect() {
@@ -140,20 +144,52 @@ class TapFlowService : AccessibilityService() {
         scope = createScope()
 
         Repo.init(this)
-        Workspace.restore()
+
+        // Each step is isolated so one bad piece of saved state cannot stop the service coming up.
+        // Whatever fails is reported in the app rather than only in logcat.
+        step("restore workspace") { Workspace.restore() }
 
         // Needed for the volume-key fallback. Declared in the config XML too, but setting it here
         // as well keeps it working if the XML is ever trimmed.
-        serviceInfo = (serviceInfo ?: AccessibilityServiceInfo()).apply {
-            flags = flags or AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
+        step("apply service info") {
+            serviceInfo = (serviceInfo ?: AccessibilityServiceInfo()).apply {
+                flags = flags or AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
+            }
         }
 
         buildOverlay()
+
         EngineState.serviceRunning.value = true
 
         // The collector fires with the current value straight away, so a toolbar that was on last
         // session comes back without a second explicit attach call.
         observe()
+    }
+
+    /**
+     * Runs a startup step, recording rather than propagating a failure.
+     *
+     * Used for the parts that are not worth aborting for. Restoring a draft that will not parse, for
+     * instance, should cost the draft and not the whole service.
+     */
+    private inline fun step(what: String, block: () -> Unit) {
+        runCatching(block).onFailure {
+            Log.e(TAG, "Startup step failed: $what", it)
+            EngineState.serviceError.value = "$what — ${summarise(it)}"
+        }
+    }
+
+    /** Exception class, message and the first frame in our own code. Enough to act on. */
+    private fun summarise(failure: Throwable): String {
+        val frame = failure.stackTrace.firstOrNull { it.className.startsWith("com.tapflow") }
+        return buildString {
+            append(failure.javaClass.simpleName)
+            failure.message?.let { append(": ").append(it) }
+            if (frame != null) {
+                append(" @ ").append(frame.className.substringAfterLast('.'))
+                append('.').append(frame.methodName).append(':').append(frame.lineNumber)
+            }
+        }
     }
 
     override fun onUnbind(intent: Intent?): Boolean {

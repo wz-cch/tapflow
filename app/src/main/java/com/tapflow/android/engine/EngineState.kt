@@ -59,6 +59,15 @@ object EngineState {
     /** Whether the accessibility service is connected. Drives the onboarding card. */
     val serviceRunning = MutableStateFlow(false)
 
+    /**
+     * Set when the service threw while starting up.
+     *
+     * Shown in the app, because a service that fails here presents as "the toolbar cannot be turned
+     * on" with the cause only in logcat — which is no help to anyone holding a phone. Distinguishing
+     * "it crashed on startup" from "Android never bound it" is the whole point.
+     */
+    val serviceError = MutableStateFlow<String?>(null)
+
     /** Set when the toolbar had to fall back to SYSTEM_ALERT_WINDOW, so the UI can explain why. */
     val needsOverlayPermission = MutableStateFlow(false)
 

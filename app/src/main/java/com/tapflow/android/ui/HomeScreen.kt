@@ -44,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -58,7 +59,8 @@ import java.util.concurrent.TimeUnit
 @Composable
 fun HomeScreen(onOpenSettings: () -> Unit) {
     val context = LocalContext.current
-    val status = rememberServiceStatus()
+    val service = rememberServiceState()
+    val status = service.status
     val overlayEnabled by Repo.overlayEnabled.collectAsStateWithLifecycle()
     val needsOverlayPermission by EngineState.needsOverlayPermission.collectAsStateWithLifecycle()
     val clips by Repo.clips.collectAsStateWithLifecycle()
@@ -85,7 +87,7 @@ fun HomeScreen(onOpenSettings: () -> Unit) {
             item { Spacer(Modifier.height(4.dp)) }
 
             item {
-                AccessibilityCard(status) { context.openAccessibilitySettings() }
+                AccessibilityCard(service) { context.openAccessibilitySettings() }
             }
 
             // Only worth mentioning once the accessibility overlay has actually been refused, which
@@ -136,10 +138,13 @@ fun HomeScreen(onOpenSettings: () -> Unit) {
 }
 
 @Composable
-private fun AccessibilityCard(status: ServiceStatus, onOpen: () -> Unit) {
-    val stalled = status == ServiceStatus.ENABLED_NOT_RUNNING
+private fun AccessibilityCard(service: ServiceState, onOpen: () -> Unit) {
+    val status = service.status
+    val crashed = status != ServiceStatus.RUNNING && service.error != null
+    val problem = status == ServiceStatus.ENABLED_NOT_RUNNING
+
     Card(
-        colors = if (stalled) {
+        colors = if (problem) {
             CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
         } else {
             CardDefaults.cardColors()
@@ -148,10 +153,11 @@ private fun AccessibilityCard(status: ServiceStatus, onOpen: () -> Unit) {
         Column(Modifier.padding(16.dp)) {
             Text(
                 stringResource(
-                    when (status) {
-                        ServiceStatus.RUNNING -> R.string.onboarding_service_ready
-                        ServiceStatus.ENABLED_NOT_RUNNING -> R.string.onboarding_service_stalled_title
-                        ServiceStatus.DISABLED -> R.string.onboarding_accessibility_title
+                    when {
+                        status == ServiceStatus.RUNNING -> R.string.onboarding_service_ready
+                        crashed -> R.string.onboarding_service_error_title
+                        problem -> R.string.onboarding_service_stalled_title
+                        else -> R.string.onboarding_accessibility_title
                     }
                 ),
                 style = MaterialTheme.typography.titleMedium,
@@ -162,11 +168,26 @@ private fun AccessibilityCard(status: ServiceStatus, onOpen: () -> Unit) {
             Spacer(Modifier.height(6.dp))
             Text(
                 stringResource(
-                    if (stalled) R.string.onboarding_service_stalled_body
-                    else R.string.onboarding_accessibility_body
+                    when {
+                        crashed -> R.string.onboarding_service_error_body
+                        problem -> R.string.onboarding_service_stalled_body
+                        else -> R.string.onboarding_accessibility_body
+                    }
                 ),
                 style = MaterialTheme.typography.bodyMedium,
             )
+
+            // The actual exception, so it can be read off the screen and reported. Toggling the
+            // service off and on will not help if it crashes every time it starts.
+            if (crashed) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    service.error!!,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                )
+            }
+
             Spacer(Modifier.height(12.dp))
             OutlinedButton(onClick = onOpen) {
                 Text(stringResource(R.string.onboarding_accessibility_action))
