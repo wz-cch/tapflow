@@ -10,6 +10,7 @@ import android.view.ViewConfiguration
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import androidx.core.content.ContextCompat
 import com.tapflow.android.R
 import com.tapflow.android.data.MarkerDensity
@@ -60,6 +61,33 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
 
     private val iconIdle = ContextCompat.getColor(context, R.color.overlay_icon)
 
+    /**
+     * A ScrollView that wraps its content but never grows past [maxHeightPx].
+     *
+     * The button column is around 480dp tall, which does not fit a phone in landscape — the collapse
+     * button ended up below the bottom edge and could not be reached at all.
+     */
+    private class CappedScrollView(context: Context) : ScrollView(context) {
+        var maxHeightPx: Int = 0
+
+        override fun onMeasure(widthSpec: Int, heightSpec: Int) {
+            val capped = if (maxHeightPx > 0) {
+                MeasureSpec.makeMeasureSpec(maxHeightPx, MeasureSpec.AT_MOST)
+            } else {
+                heightSpec
+            }
+            super.onMeasure(widthSpec, capped)
+        }
+    }
+
+    /** The buttons, scrollable when they do not fit. */
+    private val column = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+
+    private val scroller = CappedScrollView(context).apply {
+        isVerticalScrollBarEnabled = false
+        overScrollMode = OVER_SCROLL_NEVER
+    }
+
     private val expanded = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         background = panelBackground(dp(14f))
@@ -80,10 +108,13 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
     private val dismiss = icon(R.drawable.ic_close)
     private val collapse = icon(R.drawable.ic_collapse)
 
-    private val allButtons = listOf(
-        grip, primary, secondary, insertPause, undo, edit, addTap, deleteStep, save, eye,
+    /** Everything inside the scroller, in display order. The grip sits outside it. */
+    private val scrollingButtons = listOf(
+        primary, secondary, insertPause, undo, edit, addTap, deleteStep, save, eye,
         quickSettings, dismiss, collapse,
     )
+
+    private val allButtons = listOf(grip) + scrollingButtons
 
     private val ball = ImageView(context).apply {
         scaleType = ImageView.ScaleType.CENTER_INSIDE
@@ -93,7 +124,13 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
     var ballIntent: BallIntent = BallIntent.EXPAND
 
     init {
-        allButtons.forEach { expanded.addView(it) }
+        scrollingButtons.forEach { column.addView(it) }
+        scroller.addView(column, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
+
+        // The grip is deliberately outside the scroller. Inside it, ScrollView would intercept the
+        // vertical drag and the toolbar could no longer be moved.
+        expanded.addView(grip)
+        expanded.addView(scroller)
 
         addView(expanded, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
         addView(ball, LayoutParams(dp(BALL_DP), dp(BALL_DP)))
@@ -204,6 +241,19 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
             MarkerDensity.RECENT -> 0.7f
             MarkerDensity.HIDDEN -> 0.35f
         }
+    }
+
+    /**
+     * @param availableHeightPx how tall the toolbar may be before its buttons start scrolling.
+     *   Landscape does not fit the whole column, and an unreachable collapse button is worse than
+     *   having to scroll for it.
+     */
+    fun setAvailableHeight(availableHeightPx: Int) {
+        val gripHeight = grip.layoutParams?.height?.takeIf { it > 0 } ?: dp(44f)
+        val forScroller = availableHeightPx - gripHeight - dp(12f)
+        if (scroller.maxHeightPx == forScroller) return
+        scroller.maxHeightPx = forScroller.coerceAtLeast(dp(88f))
+        scroller.requestLayout()
     }
 
     fun applyAppearance(scale: Float, opacity: Float) {

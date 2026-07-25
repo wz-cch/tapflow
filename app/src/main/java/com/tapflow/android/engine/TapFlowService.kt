@@ -417,6 +417,8 @@ class TapFlowService : AccessibilityService() {
         val selectedId = EngineState.selectedStepId.value
 
         toolbar.applyAppearance(current.uiScale, current.uiOpacity)
+        // Recomputed here so a rotation, or a change of scale, re-caps the scrolling area.
+        toolbar.setAvailableHeight(host.displaySize().y - dpToPx(32f).toInt())
         toolbar.render(
             mode = mode,
             form = EngineState.toolbarForm.value,
@@ -738,11 +740,15 @@ class TapFlowService : AccessibilityService() {
         return before != listOf(toolbarParams.x, toolbarParams.y, transportParams.x, transportParams.y)
     }
 
-    /** Snaps the toolbar to whichever side edge is closer, and remembers where it ended up. */
+    /**
+     * Remembers where the toolbar was dropped.
+     *
+     * It used to snap to whichever side edge was nearer, which meant it could not be put anywhere
+     * else — drag it to the middle and it sprang back. Edge docking is easy enough to do by hand if
+     * that is what you want, so the toolbar now simply stays where it is put.
+     */
     private fun settleToolbar() {
-        val size = host.displaySize()
-        val centre = toolbarParams.x + toolbar.width / 2
-        toolbarParams.x = if (centre < size.x / 2) 0 else max(0, size.x - toolbar.width)
+        clampWindows()
         host.update(toolbar, toolbarParams)
         Repo.writeInt(PREF_TOOLBAR_X, toolbarParams.x)
         Repo.writeInt(PREF_TOOLBAR_Y, toolbarParams.y)
