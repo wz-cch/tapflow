@@ -3,6 +3,7 @@ package com.tapflow.android.data
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlin.math.hypot
+import kotlin.math.roundToLong
 
 // ---------------------------------------------------------------------------
 // Layer 1 — atomic actions.
@@ -91,6 +92,101 @@ data class GestureStep(
         const val SWIPE_TRAVEL_PX = 24f
     }
 }
+
+// --- Editing transforms -----------------------------------------------------
+//
+// Pure functions on the model, so on-screen editing has no geometry logic of its own and this can
+// all be exercised without a device.
+
+/** Shifts every sample of every stroke. Used when a marker is dragged by its number badge. */
+fun GestureStep.translated(dx: Float, dy: Float): GestureStep = copy(
+    strokes = strokes.map { stroke ->
+        stroke.copy(points = stroke.points.map { it.copy(x = it.x + dx, y = it.y + dy) })
+    }
+)
+
+/** Puts the anchor at an absolute position, keeping the shape of the gesture. */
+fun GestureStep.movedTo(x: Float, y: Float): GestureStep =
+    translated(x - anchor.x, y - anchor.y)
+
+/**
+ * Rescales the timeline so the whole gesture takes [ms].
+ *
+ * A stroke captured as a single sample has no timeline to scale, so it gains an explicit end sample
+ * instead — which is also what makes it a valid non-empty path at dispatch time.
+ */
+fun GestureStep.withDuration(ms: Long): GestureStep {
+    val target = ms.coerceAtLeast(1L)
+    val current = duration
+
+    if (current <= 0L) {
+        return copy(
+            strokes = strokes.map { stroke ->
+                stroke.copy(points = stroke.points + stroke.points.last().copy(t = target))
+            }
+        )
+    }
+
+    val factor = target.toDouble() / current
+    return copy(
+        strokes = strokes.map { stroke ->
+            stroke.copy(
+                startOffset = (stroke.startOffset * factor).roundToLong(),
+                points = stroke.points.map { it.copy(t = (it.t * factor).roundToLong()) },
+            )
+        }
+    )
+}
+
+/**
+ * Moves the end of a single-stroke gesture to an absolute position.
+ *
+ * The path is rotated and scaled about its start rather than merely stretched along one axis, so a
+ * curved swipe keeps its shape when its direction or length is changed. Multi-finger gestures are
+ * left alone: there is no single end point to speak of.
+ */
+fun GestureStep.withEndAt(x: Float, y: Float): GestureStep {
+    val stroke = strokes.singleOrNull() ?: return this
+    val start = stroke.start
+    val oldDx = stroke.end.x - start.x
+    val oldDy = stroke.end.y - start.y
+    val oldLengthSquared = oldDx * oldDx + oldDy * oldDy
+
+    // A tap has no direction to rotate about, so it becomes a straight two-sample swipe.
+    if (oldLengthSquared < MIN_DIRECTION_LENGTH_SQUARED) {
+        return copy(
+            strokes = listOf(
+                stroke.copy(points = listOf(start, Pt(x, y, stroke.duration.coerceAtLeast(1L))))
+            )
+        )
+    }
+
+    // Complex division: the rotation-and-scale that maps the old end vector onto the new one.
+    val newDx = x - start.x
+    val newDy = y - start.y
+    val a = (newDx * oldDx + newDy * oldDy) / oldLengthSquared
+    val b = (newDy * oldDx - newDx * oldDy) / oldLengthSquared
+
+    return copy(
+        strokes = listOf(
+            stroke.copy(
+                points = stroke.points.map { point ->
+                    val px = point.x - start.x
+                    val py = point.y - start.y
+                    point.copy(x = start.x + a * px - b * py, y = start.y + b * px + a * py)
+                }
+            )
+        )
+    )
+}
+
+private const val MIN_DIRECTION_LENGTH_SQUARED = 1f
+
+/** A single tap at a position, used by the toolbar's add button. */
+fun tapStep(x: Float, y: Float, holdMs: Long, delayBefore: Long): GestureStep = GestureStep(
+    strokes = listOf(Stroke(points = listOf(Pt(x, y, 0), Pt(x, y, holdMs.coerceAtLeast(1L))))),
+    delayBefore = delayBefore,
+)
 
 @Serializable
 @SerialName("global")

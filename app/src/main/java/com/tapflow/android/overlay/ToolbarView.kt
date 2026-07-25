@@ -39,6 +39,9 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
 
         fun onInsertPausePoint()
         fun onUndo()
+        fun onToggleEdit()
+        fun onAddTap()
+        fun onDeleteSelected()
         fun onSave()
         fun onSaveAsNew()
         fun onCycleDensity()
@@ -67,10 +70,17 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
     private val secondary = icon(R.drawable.ic_record)
     private val insertPause = icon(R.drawable.ic_pause_add)
     private val undo = icon(R.drawable.ic_undo)
+    private val edit = icon(R.drawable.ic_edit)
+    private val addTap = icon(R.drawable.ic_add)
+    private val deleteStep = icon(R.drawable.ic_remove)
     private val save = icon(R.drawable.ic_save)
     private val eye = icon(R.drawable.ic_eye)
     private val dismiss = icon(R.drawable.ic_close)
     private val collapse = icon(R.drawable.ic_collapse)
+
+    private val allButtons = listOf(
+        grip, primary, secondary, insertPause, undo, edit, addTap, deleteStep, save, eye, dismiss, collapse,
+    )
 
     private val ball = ImageView(context).apply {
         scaleType = ImageView.ScaleType.CENTER_INSIDE
@@ -80,8 +90,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
     var ballIntent: BallIntent = BallIntent.EXPAND
 
     init {
-        listOf(grip, primary, secondary, insertPause, undo, save, eye, dismiss, collapse)
-            .forEach { expanded.addView(it) }
+        allButtons.forEach { expanded.addView(it) }
 
         addView(expanded, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
         addView(ball, LayoutParams(dp(BALL_DP), dp(BALL_DP)))
@@ -90,6 +99,9 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         secondary.setOnClickListener { actions.onSecondary() }
         insertPause.setOnClickListener { actions.onInsertPausePoint() }
         undo.setOnClickListener { actions.onUndo() }
+        edit.setOnClickListener { actions.onToggleEdit() }
+        addTap.setOnClickListener { actions.onAddTap() }
+        deleteStep.setOnClickListener { actions.onDeleteSelected() }
         eye.setOnClickListener { actions.onCycleDensity() }
         dismiss.setOnClickListener { actions.onDismiss() }
         collapse.setOnClickListener { actions.onCollapse() }
@@ -114,8 +126,19 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         setContentDescriptions()
     }
 
-    /** @param workspaceSize step count, used to disable actions that need a non-empty workspace. */
-    fun render(mode: Mode, form: ToolbarForm, workspaceSize: Int, density: MarkerDensity) {
+    /**
+     * @param workspaceSize step count, used to disable actions that need a non-empty workspace.
+     * @param editing whether the canvas is in editing mode, which swaps the button set.
+     * @param hasSelection whether a step is selected, which is what delete acts on.
+     */
+    fun render(
+        mode: Mode,
+        form: ToolbarForm,
+        workspaceSize: Int,
+        density: MarkerDensity,
+        editing: Boolean,
+        hasSelection: Boolean,
+    ) {
         expanded.visibility = if (form == ToolbarForm.EXPANDED) VISIBLE else GONE
         ball.visibility = if (form == ToolbarForm.BALL) VISIBLE else GONE
 
@@ -133,6 +156,17 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         val recording = mode == Mode.RECORDING
         val replaying = mode == Mode.PLAYING || mode == Mode.PAUSED || mode == Mode.COUNTDOWN
 
+        // Editing shows a different, shorter set rather than a dozen greyed-out buttons. Playing and
+        // recording make no sense alongside dragging markers, and add/delete make no sense outside
+        // it, so nothing here is ever merely disabled when it could just be absent.
+        primary.visibility = if (editing) GONE else VISIBLE
+        secondary.visibility = if (editing) GONE else VISIBLE
+        insertPause.visibility = if (editing) GONE else VISIBLE
+        undo.visibility = if (editing) GONE else VISIBLE
+        dismiss.visibility = if (editing) GONE else VISIBLE
+        addTap.visibility = if (editing) VISIBLE else GONE
+        deleteStep.visibility = if (editing) VISIBLE else GONE
+
         primary.setImageResource(if (mode == Mode.PLAYING) R.drawable.ic_pause else R.drawable.ic_play)
         setActionEnabled(primary, hasSteps && !recording)
 
@@ -143,8 +177,14 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         )
         setActionEnabled(secondary, true)
 
+        edit.imageTintList = android.content.res.ColorStateList.valueOf(
+            if (editing) ContextCompat.getColor(context, R.color.marker_highlight) else iconIdle
+        )
+        setActionEnabled(edit, hasSteps && !recording && !replaying)
+
         setActionEnabled(insertPause, !replaying)
         setActionEnabled(undo, hasSteps && !replaying)
+        setActionEnabled(deleteStep, hasSelection)
         setActionEnabled(save, hasSteps && !replaying)
         setActionEnabled(dismiss, !recording && !replaying)
 
@@ -160,9 +200,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
     fun applyAppearance(scale: Float, opacity: Float) {
         alpha = opacity.coerceIn(0.3f, 1f)
         val size = (dp(44f) * scale.coerceIn(0.7f, 1.5f)).toInt()
-        listOf(grip, primary, secondary, insertPause, undo, save, eye, dismiss, collapse).forEach {
-            it.layoutParams = LinearLayout.LayoutParams(size, size)
-        }
+        allButtons.forEach { it.layoutParams = LinearLayout.LayoutParams(size, size) }
         val ballSize = (dp(BALL_DP) * scale.coerceIn(0.7f, 1.5f)).toInt()
         ball.layoutParams = LayoutParams(ballSize, ballSize)
         requestLayout()
@@ -262,6 +300,9 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         secondary.contentDescription = context.getString(R.string.action_record)
         insertPause.contentDescription = context.getString(R.string.action_insert_pause)
         undo.contentDescription = context.getString(R.string.action_undo)
+        edit.contentDescription = context.getString(R.string.action_edit_mode)
+        addTap.contentDescription = context.getString(R.string.action_add_tap)
+        deleteStep.contentDescription = context.getString(R.string.action_delete)
         save.contentDescription = context.getString(R.string.action_save)
         eye.contentDescription = context.getString(R.string.action_density)
         dismiss.contentDescription = context.getString(R.string.action_dismiss)

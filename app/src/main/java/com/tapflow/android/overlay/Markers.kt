@@ -21,21 +21,31 @@ import kotlin.math.sin
  * One on-screen marker.
  *
  * [number] is the 1-based position in the whole step list, including pause points, so the numbers
- * painted on screen line up with the step list even though pause points draw nothing.
+ * painted on screen line up with the step list even though pause points draw nothing. [stepId] is
+ * what hit-testing reports back, so editing never has to reason about positions in a list.
  */
 data class Marker(
+    val stepId: String,
     val number: Int,
     val kind: GestureKind,
     val anchorX: Float,
     val anchorY: Float,
     val paths: List<List<Pair<Float, Float>>>,
     val durationMs: Long,
-)
+) {
+    /** End of the first stroke — the arrow tip, and the grab point for changing a swipe. */
+    val endX: Float get() = paths.firstOrNull()?.lastOrNull()?.first ?: anchorX
+    val endY: Float get() = paths.firstOrNull()?.lastOrNull()?.second ?: anchorY
+
+    /** Only a single-stroke swipe has a meaningful end to drag. */
+    val hasEndHandle: Boolean get() = kind == GestureKind.SWIPE && paths.size == 1
+}
 
 /** Builds the markers for a step list. Pause points and waits have no coordinates, so they are skipped. */
 fun buildMarkers(steps: List<Step>): List<Marker> = steps.mapIndexedNotNull { index, step ->
     if (step !is GestureStep) return@mapIndexedNotNull null
     Marker(
+        stepId = step.id,
         number = index + 1,
         kind = step.kind,
         anchorX = step.anchor.x,
@@ -96,12 +106,46 @@ class MarkerPainter(context: Context) {
     /**
      * @param highlightNumber the step currently being replayed, drawn larger and in the accent
      *   colour so it is obvious where the automation has got to.
+     * @param selectedStepId the step being edited, given a corner frame and grab handles.
      */
-    fun draw(canvas: Canvas, markers: List<Marker>, highlightNumber: Int?, scale: Float) {
+    fun draw(
+        canvas: Canvas,
+        markers: List<Marker>,
+        highlightNumber: Int?,
+        selectedStepId: String?,
+        scale: Float,
+    ) {
         drawLinks(canvas, markers)
         markers.forEach { marker ->
             val highlighted = marker.number == highlightNumber
             drawMarker(canvas, marker, highlighted, scale)
+            if (marker.stepId == selectedStepId) drawSelection(canvas, marker, scale)
+        }
+    }
+
+    /** Corner frame plus a ring on each grab point, so what can be dragged is visible. */
+    private fun drawSelection(canvas: Canvas, marker: Marker, scale: Float) {
+        val reach = dp(30f) * scale
+        stroke.color = colorHighlight
+        stroke.strokeWidth = dp(2f) * scale
+
+        val arm = dp(9f) * scale
+        val left = marker.anchorX - reach
+        val right = marker.anchorX + reach
+        val top = marker.anchorY - reach
+        val bottom = marker.anchorY + reach
+
+        canvas.drawLine(left, top, left + arm, top, stroke)
+        canvas.drawLine(left, top, left, top + arm, stroke)
+        canvas.drawLine(right, top, right - arm, top, stroke)
+        canvas.drawLine(right, top, right, top + arm, stroke)
+        canvas.drawLine(left, bottom, left + arm, bottom, stroke)
+        canvas.drawLine(left, bottom, left, bottom - arm, stroke)
+        canvas.drawLine(right, bottom, right - arm, bottom, stroke)
+        canvas.drawLine(right, bottom, right, bottom - arm, stroke)
+
+        if (marker.hasEndHandle) {
+            canvas.drawCircle(marker.endX, marker.endY, dp(13f) * scale, stroke)
         }
     }
 

@@ -63,6 +63,41 @@ object Workspace {
         return true
     }
 
+    fun stepById(id: String?): Step? = id?.let { key -> steps.value.firstOrNull { it.id == key } }
+
+    /**
+     * Replaces a step in place.
+     *
+     * [persist] is false while a marker is being dragged: writing the draft file on every touch
+     * sample would be dozens of writes per gesture. [flush] commits once the drag ends.
+     */
+    fun updateStep(step: Step, persist: Boolean = true) {
+        val current = steps.value
+        if (current.none { it.id == step.id }) return
+        steps.value = current.map { if (it.id == step.id) step else it }
+        dirty.value = true
+        if (persist) persist()
+    }
+
+    fun removeStep(id: String) {
+        val current = steps.value
+        if (current.none { it.id == id }) return
+        steps.value = current.filterNot { it.id == id }
+        markDirty()
+    }
+
+    /** Inserts after [afterId], or at the end when it is null or unknown. */
+    fun insertAfter(afterId: String?, step: Step, capturedOn: ScreenSpec) {
+        if (screen == null) screen = capturedOn
+        val current = steps.value
+        val index = current.indexOfFirst { it.id == afterId }
+        steps.value = if (index < 0) current + step else current.toMutableList().apply { add(index + 1, step) }
+        markDirty()
+    }
+
+    /** Writes the draft after a run of non-persisting edits. */
+    fun flush() = persist()
+
     fun clear() {
         steps.value = emptyList()
         sourceClipId = null

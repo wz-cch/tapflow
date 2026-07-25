@@ -118,8 +118,57 @@
     <string name="dialog_confirm">OK</string>
     <string name="dialog_cancel">Cancel</string>
 
+    <!-- Editing -->
+    <string name="toast_edit_mode_on">Editing. The whole screen is captured — drag a numbered marker to move it, tap one to change it.</string>
+    <string name="toast_pick_coordinate">Tap where this step should go</string>
+    <string name="param_title">Step %1$d · %2$s</string>
+    <string name="param_type_tap">Tap</string>
+    <string name="param_type_long_press">Long press</string>
+    <string name="param_type_swipe">Swipe</string>
+    <string name="param_type_multi_touch">Multi-finger</string>
+    <string name="param_type_pause">Pause point</string>
+    <string name="param_type_other">Action</string>
+    <string name="param_coordinates">%1$d, %2$d</string>
+    <string name="param_repick">Re-pick</string>
+    <string name="param_duration">Duration</string>
+    <string name="param_delay">Delay before</string>
+    <string name="param_ms">%1$d ms</string>
+    <string name="param_done">Done</string>
+
     <!-- Settings -->
     <string name="settings_title">Settings</string>
     <string name="settings_reset">Restore defaults</string>
+    <string name="settings_section_defaults">Defaults for new actions</string>
+    <string name="settings_default_gap">Gap between actions</string>
+    <string name="settings_default_tap">Tap hold time</string>
+    <string name="settings_default_swipe">Swipe duration</string>
+    <string name="settings_section_playback">Playback</string>
+    <string name="settings_loop_count">Repeat count</string>
+    <string name="settings_loop_forever">Until stopped</string>
+    <string name="settings_speed">Speed</string>
+    <string name="settings_start_delay">Countdown before starting</string>
+    <string name="settings_section_randomise">Randomisation</string>
+    <string name="settings_jitter_radius">Position jitter radius</string>
+    <string name="settings_jitter_radius_body">Offsets the whole gesture by a random amount within this radius on each replay. Also stops every run hitting the exact same pixel.</string>
+    <string name="settings_jitter_time">Timing jitter</string>
+    <string name="settings_section_recording">Recording</string>
+    <string name="settings_replay_each">Replay each gesture</string>
+    <string name="settings_replay_each_body">Sends every recorded gesture straight back to the app underneath so the screen moves on. Turn it off for blind recording, where the screen never changes but fast swipes stay accurate.</string>
+    <string name="settings_replay_delay">Wait after replaying</string>
+    <string name="settings_section_appearance">Appearance</string>
+    <string name="settings_ui_scale">Toolbar size</string>
+    <string name="settings_ui_opacity">Toolbar opacity</string>
+    <string name="settings_show_timer">Show timer</string>
+    <string name="settings_section_screen">Screen</string>
+    <string name="settings_keep_screen_on">Keep screen on</string>
+    <string name="settings_keep_screen_on_body">Injected gestures do nothing once the screen turns off.</string>
+    <string name="settings_dim">Black out while replaying</string>
+    <string name="settings_dim_body">The screen stays on, it just shows nothing. Only useful for leaving something running.</string>
+    <string name="settings_dim_alpha">Blackout strength</string>
+    <string name="value_ms">%1$d ms</string>
+    <string name="value_px">%1$d px</string>
+    <string name="value_percent">%1$d%%</string>
+    <string name="value_times">%1$d×</string>
+    <string name="value_multiplier">%1$s×</string>
 
 </resources>
