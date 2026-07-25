@@ -21,9 +21,9 @@ import kotlin.math.hypot
 enum class BallIntent { EXPAND, RESUME_PLAYBACK, RESUME_RECORDING }
 
 /**
- * The vertical toolbar, in its three shapes: expanded, collapsed ball, and edge handle.
+ * The vertical toolbar, in its two shapes: expanded, and collapsed to a ball.
  *
- * All three live in one window so there is only one z-order and one saved position to manage. The
+ * Both live in one window so there is only one z-order and one saved position to manage. The
  * view stays dumb about what the buttons mean — [Actions.onPrimary] and [Actions.onSecondary] are
  * interpreted by the service according to the current mode, so the mapping lives in one place.
  */
@@ -74,10 +74,8 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
 
     private val ball = ImageView(context).apply {
         scaleType = ImageView.ScaleType.CENTER_INSIDE
-        setPadding(dp(14f), dp(14f), dp(14f), dp(14f))
+        setPadding(dp(16f), dp(16f), dp(16f), dp(16f))
     }
-
-    private val handle = View(context)
 
     var ballIntent: BallIntent = BallIntent.EXPAND
 
@@ -86,8 +84,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
             .forEach { expanded.addView(it) }
 
         addView(expanded, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
-        addView(ball, LayoutParams(dp(56f), dp(56f)))
-        addView(handle, LayoutParams(dp(6f), dp(96f)))
+        addView(ball, LayoutParams(dp(BALL_DP), dp(BALL_DP)))
 
         primary.setOnClickListener { actions.onPrimary() }
         secondary.setOnClickListener { actions.onSecondary() }
@@ -110,8 +107,6 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
                 BallIntent.RESUME_RECORDING -> actions.onSecondary()
             }
         }
-        attachDrag(handle) { actions.onExpand() }
-
         // No long-press on the ball: an OnTouchListener that consumes the event stops the view from
         // generating long clicks at all. The ball never needs to expand while paused anyway, because
         // the toolbar restores itself the moment playback resumes.
@@ -123,10 +118,8 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
     fun render(mode: Mode, form: ToolbarForm, workspaceSize: Int, density: MarkerDensity) {
         expanded.visibility = if (form == ToolbarForm.EXPANDED) VISIBLE else GONE
         ball.visibility = if (form == ToolbarForm.BALL) VISIBLE else GONE
-        handle.visibility = if (form == ToolbarForm.HANDLE) VISIBLE else GONE
 
-        handle.background = pillBackground(stateColor(mode), dp(3f))
-        ball.background = pillBackground(stateColor(mode), dp(28f))
+        ball.background = ballBackground(stateColor(mode), dp(BALL_DP / 2))
         ball.setImageResource(
             when (ballIntent) {
                 BallIntent.RESUME_RECORDING -> R.drawable.ic_record
@@ -170,7 +163,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         listOf(grip, primary, secondary, insertPause, undo, save, eye, dismiss, collapse).forEach {
             it.layoutParams = LinearLayout.LayoutParams(size, size)
         }
-        val ballSize = (dp(56f) * scale.coerceIn(0.7f, 1.5f)).toInt()
+        val ballSize = (dp(BALL_DP) * scale.coerceIn(0.7f, 1.5f)).toInt()
         ball.layoutParams = LayoutParams(ballSize, ballSize)
         requestLayout()
     }
@@ -205,7 +198,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         setColor(ContextCompat.getColor(context, R.color.overlay_panel))
     }
 
-    private fun pillBackground(color: Int, radius: Int) = GradientDrawable().apply {
+    private fun ballBackground(color: Int, radius: Int) = GradientDrawable().apply {
         shape = GradientDrawable.RECTANGLE
         cornerRadius = radius.toFloat()
         setColor(color)
@@ -244,11 +237,20 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
                 }
 
                 MotionEvent.ACTION_UP -> {
-                    if (dragging) actions.onDragEnd() else onTap?.invoke()
+                    // Decided on net displacement at release, not on whether the slop was ever
+                    // crossed. A finger that wobbles past the threshold and comes back is a tap;
+                    // latching a dragging flag made those taps vanish silently.
+                    val moved = hypot(totalX, totalY) > touchSlop
+                    if (moved || onTap == null) actions.onDragEnd() else onTap.invoke()
+                    dragging = false
                     true
                 }
 
-                MotionEvent.ACTION_CANCEL -> true
+                MotionEvent.ACTION_CANCEL -> {
+                    if (dragging) actions.onDragEnd()
+                    dragging = false
+                    true
+                }
 
                 else -> false
             }
@@ -267,4 +269,9 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
     }
 
     private fun dp(value: Float) = (value * displayDensity).toInt()
+
+    private companion object {
+        /** Collapsed ball diameter. Comfortably above the 48dp minimum touch target. */
+        const val BALL_DP = 56f
+    }
 }
