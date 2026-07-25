@@ -1,0 +1,18 @@
+# Normalise line endings so Windows and CI agree.
+* text=auto eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+*.jar binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.keystore binary
+*.jks binary
+*.apk binary
+*.aab binary
+
+# Keep generated lockfiles out of diffs.
+gradle/verification-metadata.xml linguist-generated=true

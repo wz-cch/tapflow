@@ -1,0 +1,26 @@
+*.iml
+.gradle/
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# IDE
+/.idea/*
+!/.idea/codeStyles/
+!/.idea/inspectionProfiles/
+*.hprof
+
+# Build output
+app/build/
+*/build/
+/app/release/
+
+# Signing — never commit these
+*.jks
+*.keystore
+keystore.properties
+
+.DS_Store
+Thumbs.db
