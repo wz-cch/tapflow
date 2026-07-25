@@ -114,6 +114,8 @@
     <string name="toast_overlay_failed">Could not show the toolbar. This device may need the display-over-other-apps permission.</string>
     <string name="toast_gesture_refused">The system would not accept the gesture. The coordinates may be off screen, or another gesture is still running.</string>
     <string name="toast_gesture_cancelled">The gesture was cancelled part way. This usually means the app on screen rejects injected or obscured touches, which cannot be worked around without root.</string>
+    <string name="toast_replay_echo">The overlay did not step aside in time and swallowed the replayed gesture. Turn on “Move the overlay aside to replay” in quick settings.</string>
+    <string name="home_version">version %1$s</string>
 
     <!-- Clip actions -->
     <string name="clip_action_load">Load into workspace</string>

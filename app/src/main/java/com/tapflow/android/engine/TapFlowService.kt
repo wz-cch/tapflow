@@ -281,6 +281,7 @@ class TapFlowService : AccessibilityService() {
             onDragStep = { stepId, handle, x, y -> dragStep(stepId, handle, x, y) }
             onDragEnd = { Workspace.flush() }
             onPickCoordinate = { x, y -> pickCoordinate(x, y) }
+            onReplayEcho = { onReplayEcho() }
         }
         toolbar = ToolbarView(this, ToolbarActions())
         transport = TransportView(this, TransportActions())
@@ -794,6 +795,21 @@ class TapFlowService : AccessibilityService() {
     }
 
     private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
+
+    /**
+     * The canvas received the gesture it had just injected.
+     *
+     * FLAG_NOT_TOUCHABLE had not taken effect in time, so the replay was swallowed by our own window
+     * and the app below saw nothing — which looks exactly like the replay doing nothing at all.
+     * Moving the window aside sidesteps the race entirely, so that is what the message suggests.
+     */
+    private fun onReplayEcho() {
+        Log.w(TAG, "Replayed gesture was swallowed by the canvas; FLAG_NOT_TOUCHABLE had not landed")
+        val now = SystemClock.uptimeMillis()
+        if (now - lastGestureWarningAt < GESTURE_WARNING_INTERVAL_MS) return
+        lastGestureWarningAt = now
+        toast(getString(R.string.toast_replay_echo))
+    }
 
     /**
      * Surfaces gestures the system would not deliver.

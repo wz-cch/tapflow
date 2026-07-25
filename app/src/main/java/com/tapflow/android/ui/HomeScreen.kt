@@ -48,6 +48,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.tapflow.android.BuildConfig
 import com.tapflow.android.R
 import com.tapflow.android.data.Clip
 import com.tapflow.android.data.Repo
@@ -132,7 +133,17 @@ fun HomeScreen(onOpenSettings: () -> Unit) {
                 }
             }
 
-            item { Spacer(Modifier.height(24.dp)) }
+            item {
+                Spacer(Modifier.height(24.dp))
+                // Shown so a bug report identifies its build. Every CI APK used to claim 0.1.0.
+                Text(
+                    stringResource(R.string.home_version, BuildConfig.VERSION_NAME),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontFamily = FontFamily.Monospace,
+                )
+                Spacer(Modifier.height(24.dp))
+            }
         }
     }
 }

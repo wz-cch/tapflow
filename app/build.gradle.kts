@@ -14,7 +14,12 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = 1
-        versionName = "0.1.0"
+
+        // Every CI build otherwise reports the same version, which made it impossible to tell which
+        // APK a bug report came from — and with builds landing minutes apart that ambiguity cost real
+        // debugging time. CI passes -PbuildId=<sha>; a local build says so.
+        val buildId = (project.findProperty("buildId") as String?)?.trim()?.take(7)
+        versionName = if (buildId.isNullOrEmpty()) "0.1.0-local" else "0.1.0+$buildId"
 
         // English is the default locale (values/), Traditional Chinese is values-zh-rTW/.
         resourceConfigurations += setOf("en", "zh-rTW")
@@ -38,6 +43,8 @@ android {
 
     buildFeatures {
         compose = true
+        // For BuildConfig.VERSION_NAME, which the app shows so a bug report identifies its build.
+        buildConfig = true
     }
 }
 

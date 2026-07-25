@@ -29,10 +29,12 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
+      # buildId ends up in versionName and is shown in the app, so a bug report says which
+      # commit it came from.
       - name: Build debug APK
         run: |
           set -o pipefail
-          gradle assembleDebug --stacktrace 2>&1 | tee build.log
+          gradle assembleDebug -PbuildId=${GITHUB_SHA} --stacktrace 2>&1 | tee build.log
 
       # Compiler errors are otherwise only visible inside the raw log, which needs an
       # authenticated API call to read. Emitting them as an annotation puts them on the
