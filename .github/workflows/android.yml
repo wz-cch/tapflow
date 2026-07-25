@@ -1,9 +1,11 @@
 name: Android
 
 on:
+  # Every branch, not just main. This is a solo repo where most work happens on
+  # feature/* branches, and the whole point of CI here is that nothing gets built
+  # locally — so a branch that never builds would go unnoticed until merge time.
   push:
-    branches: [main, master]
-  pull_request:
+    branches: ['**']
   workflow_dispatch:
 
 jobs:
