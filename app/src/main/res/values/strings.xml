@@ -93,7 +93,7 @@
     <string name="onboarding_service_stalled_title">Accessibility service is not running</string>
     <string name="onboarding_service_error_title">The service failed to start</string>
     <string name="onboarding_service_error_body">TapFlow is switched on in accessibility settings, but the service threw an error while starting up, so turning it off and on again will not help. Please send the line below — it says exactly what failed.</string>
-    <string name="onboarding_service_stalled_body">TapFlow is switched on in accessibility settings, but Android has not restarted the service. This usually happens after the app is swiped off the recents list or force stopped. Switch TapFlow off and back on in accessibility settings to bring it back.\n\nYou can turn the toolbar on below already — it will appear as soon as the service reconnects.</string>
+    <string name="onboarding_service_stalled_body">TapFlow is switched on in accessibility settings, but Android has not restarted the service. This usually happens after the app is swiped off the recents list or force stopped.\n\nTry switching TapFlow off and back on in accessibility settings. If that does not help, this device is holding the app in a stopped state: exclude TapFlow from battery optimisation and allow it to auto-start, or reinstall it. Nothing inside the app can force Android to bind the service.\n\nYou can turn the toolbar on below already — it will appear as soon as the service reconnects.</string>
 
     <!-- Home screen -->
     <string name="home_show_toolbar">Show floating toolbar</string>

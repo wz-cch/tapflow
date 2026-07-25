@@ -97,13 +97,15 @@ class Recorder(
     }
 
     /**
-     * Waits for the non-touchable flag to actually take effect.
+     * Waits for the window change to actually take effect.
      *
-     * Changing window flags is an IPC to system_server, so a single frame is not a guarantee. One
-     * frame plus a short grace period is cheap and has proven enough in practice; if a device turns
-     * out to still echo the injected gesture back into capture, this is the knob to turn.
+     * The canvas is both made non-touchable and shrunk to a pixel before the replay, and both go
+     * through an IPC to system_server, so a single frame is not a guarantee. Two frames adapts to the
+     * refresh rate, and the grace period covers the rest. If a device still echoes the injected
+     * gesture back into capture, or the replay still lands on an obscured point, this is the knob.
      */
     private suspend fun awaitWindowSettled() {
+        awaitFrame()
         awaitFrame()
         delay(WINDOW_SETTLE_MS)
     }

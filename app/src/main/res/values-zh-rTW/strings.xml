@@ -90,7 +90,7 @@
     <string name="onboarding_service_stalled_title">無障礙服務沒有在運行</string>
     <string name="onboarding_service_error_title">服務啟動失敗</string>
     <string name="onboarding_service_error_body">觸控流在無障礙設定裡是開著的,但服務在啟動過程中丟出錯誤,所以關掉再開沒有用。請把下面這一行回報給我 —— 它會直接指出是哪裡壞的。</string>
-    <string name="onboarding_service_stalled_body">觸控流在無障礙設定裡是開著的,但 Android 沒有把服務重新啟動。通常是 app 被從最近工作清單滑掉、或被強制停止之後會這樣。到無障礙設定把觸控流關掉再打開就會回來。\n\n下面的開關你現在就可以打開 —— 服務一連上,工具列就會出現。</string>
+    <string name="onboarding_service_stalled_body">觸控流在無障礙設定裡是開著的,但 Android 沒有把服務重新啟動。通常是 app 被從最近工作清單滑掉、或被強制停止之後會這樣。\n\n先試著到無障礙設定把觸控流關掉再打開。如果沒用,代表這台裝置把 app 壓在停止狀態:請把觸控流排除在電池最佳化之外、允許自動啟動,或重新安裝。app 內部沒有任何辦法強迫 Android 綁定服務。\n\n下面的開關你現在就可以打開 —— 服務一連上,工具列就會出現。</string>
 
     <!-- 主畫面 -->
     <string name="home_show_toolbar">顯示懸浮工具列</string>

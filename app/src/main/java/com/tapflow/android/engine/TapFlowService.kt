@@ -601,13 +601,27 @@ class TapFlowService : AccessibilityService() {
         canvas.blockedAreas = areas
     }
 
+    /**
+     * True while a captured gesture is being pushed back down and the canvas has to be out of the way.
+     *
+     * "Out of the way" means more than untouchable. FLAG_NOT_TOUCHABLE stops the window taking the
+     * touch, but the window still covers the point the gesture is aimed at, and that is what sets
+     * FLAG_WINDOW_IS_OBSCURED on the event. A view with filterTouchesWhenObscured discards exactly
+     * those, so the replay never lands and recording in such an app does nothing.
+     *
+     * The window is therefore shrunk to a single pixel for the duration. Only FLAG_WINDOW_IS_OBSCURED
+     * is filtered, not FLAG_WINDOW_IS_PARTIALLY_OBSCURED, so a one-pixel window in the corner is
+     * enough — and updateViewLayout is far cheaper than detaching and re-attaching the window.
+     */
+    private var canvasOutOfTheWay = false
+
     private fun updateCanvasFlags() {
         var flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
 
         val intercepting = when (canvas.mode) {
-            CanvasMode.RECORDING -> !canvas.replaying
+            CanvasMode.RECORDING -> !canvasOutOfTheWay
             CanvasMode.EDIT -> true
             CanvasMode.READ_ONLY -> false
         }
@@ -618,13 +632,18 @@ class TapFlowService : AccessibilityService() {
             flags = flags or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
         }
 
-        if (canvasParams.flags == flags) return
+        val extent = if (canvasOutOfTheWay) 1 else WindowManager.LayoutParams.MATCH_PARENT
+
+        if (canvasParams.flags == flags && canvasParams.width == extent) return
         canvasParams.flags = flags
+        canvasParams.width = extent
+        canvasParams.height = extent
         host.update(canvas, canvasParams)
     }
 
     private fun setCanvasTouchable(touchable: Boolean) {
-        canvas.replaying = !touchable && canvas.mode == CanvasMode.RECORDING
+        canvasOutOfTheWay = !touchable && canvas.mode == CanvasMode.RECORDING
+        canvas.replaying = canvasOutOfTheWay
         updateCanvasFlags()
     }
 
@@ -637,6 +656,7 @@ class TapFlowService : AccessibilityService() {
         EngineState.toolbarForm.value = ToolbarForm.EXPANDED
         toolbar.ballIntent = BallIntent.EXPAND
         canvas.replaying = false
+        canvasOutOfTheWay = false
         recorder.restartTiming()
 
         // syncOverlay derives the canvas mode, flags, attachment and stacking from the state.
@@ -648,6 +668,7 @@ class TapFlowService : AccessibilityService() {
         if (!EngineState.isRecording) return
 
         canvas.replaying = false
+        canvasOutOfTheWay = false
         EngineState.mode.value = Mode.IDLE
         if (collapseForInput) collapseToBall(BallIntent.RESUME_RECORDING)
         syncOverlay()
