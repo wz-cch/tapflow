@@ -115,8 +115,57 @@
     <string name="dialog_confirm">確定</string>
     <string name="dialog_cancel">取消</string>
 
+    <!-- 編輯 -->
+    <string name="toast_edit_mode_on">編輯模式。整個螢幕會被攔截 —— 拖曳序號標記可移動,點一下可修改。</string>
+    <string name="toast_pick_coordinate">點一下這一步要移到的位置</string>
+    <string name="param_title">第 %1$d 步 · %2$s</string>
+    <string name="param_type_tap">點擊</string>
+    <string name="param_type_long_press">長按</string>
+    <string name="param_type_swipe">滑動</string>
+    <string name="param_type_multi_touch">多指手勢</string>
+    <string name="param_type_pause">暫停點</string>
+    <string name="param_type_other">動作</string>
+    <string name="param_coordinates">%1$d, %2$d</string>
+    <string name="param_repick">重新指定</string>
+    <string name="param_duration">時長</string>
+    <string name="param_delay">前置延遲</string>
+    <string name="param_ms">%1$d ms</string>
+    <string name="param_done">完成</string>
+
     <!-- 設定 -->
     <string name="settings_title">設定</string>
     <string name="settings_reset">恢復預設值</string>
+    <string name="settings_section_defaults">新增動作的預設值</string>
+    <string name="settings_default_gap">動作間隔時間</string>
+    <string name="settings_default_tap">輕觸並按住的時間</string>
+    <string name="settings_default_swipe">滑動持續時間</string>
+    <string name="settings_section_playback">播放</string>
+    <string name="settings_loop_count">重複次數</string>
+    <string name="settings_loop_forever">直到按下停止</string>
+    <string name="settings_speed">速度</string>
+    <string name="settings_start_delay">開始前倒數</string>
+    <string name="settings_section_randomise">隨機化</string>
+    <string name="settings_jitter_radius">隨機位置半徑</string>
+    <string name="settings_jitter_radius_body">每次重播時,整個手勢會在這個半徑內隨機偏移。也避免每次都戳到同一個 pixel。</string>
+    <string name="settings_jitter_time">時間隨機化</string>
+    <string name="settings_section_recording">錄製</string>
+    <string name="settings_replay_each">逐手勢補發</string>
+    <string name="settings_replay_each_body">錄到的每個手勢會立刻送回下層 app,畫面才會前進。關掉就是純盲錄:畫面完全不動,但快速滑動比較準。</string>
+    <string name="settings_replay_delay">補發後等待</string>
+    <string name="settings_section_appearance">外觀</string>
+    <string name="settings_ui_scale">工具列大小</string>
+    <string name="settings_ui_opacity">工具列不透明度</string>
+    <string name="settings_show_timer">顯示計時器</string>
+    <string name="settings_section_screen">螢幕</string>
+    <string name="settings_keep_screen_on">保持螢幕不熄</string>
+    <string name="settings_keep_screen_on_body">螢幕一熄,注入的手勢就全部無效。</string>
+    <string name="settings_dim">播放時蓋黑幕</string>
+    <string name="settings_dim_body">螢幕其實還亮著,只是看不到內容。適合放著跑。</string>
+    <string name="settings_dim_alpha">黑幕濃度</string>
+    <string name="value_ms">%1$d ms</string>
+    <string name="value_px">%1$d px</string>
+    <string name="value_percent">%1$d%%</string>
+    <string name="value_times">%1$d 次</string>
+    <string name="value_multiplier">%1$s 倍</string>
 
 </resources>

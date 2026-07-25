@@ -10,6 +10,7 @@ import android.graphics.RectF
 import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import androidx.core.content.ContextCompat
 import com.tapflow.android.R
 import com.tapflow.android.data.MarkerDensity
@@ -17,8 +18,17 @@ import com.tapflow.android.data.Pt
 import com.tapflow.android.data.Stroke
 import kotlin.math.hypot
 
-/** What the canvas is currently for. Editing (dragging markers) arrives in M2. */
-enum class CanvasMode { READ_ONLY, RECORDING }
+/** What the canvas is currently for. */
+enum class CanvasMode { READ_ONLY, RECORDING, EDIT }
+
+/** Which part of a marker was grabbed. */
+enum class Handle {
+    /** The numbered badge: moves the whole gesture. */
+    BODY,
+
+    /** A swipe's arrow tip: changes its direction and length, keeping the curve shape. */
+    END,
+}
 
 /**
  * Full-screen window that paints the step markers and, while recording, captures touches.
@@ -32,6 +42,18 @@ class CanvasView(context: Context) : View(context) {
 
     /** Called with a finished gesture: the strokes, and the down/up times on the uptime clock. */
     var onGesture: ((strokes: List<Stroke>, downUptime: Long, upUptime: Long) -> Unit)? = null
+
+    /** Editing: a marker was tapped, or empty space was tapped (null). */
+    var onSelect: ((stepId: String?) -> Unit)? = null
+
+    /** Editing: a handle is being dragged to an absolute screen position. */
+    var onDragStep: ((stepId: String, handle: Handle, x: Float, y: Float) -> Unit)? = null
+
+    /** Editing: the drag finished, so transient edits can be committed to the draft. */
+    var onDragEnd: (() -> Unit)? = null
+
+    /** Editing: a position was picked for the step whose coordinate is being re-specified. */
+    var onPickCoordinate: ((x: Float, y: Float) -> Unit)? = null
 
     var mode: CanvasMode = CanvasMode.READ_ONLY
         set(value) {
@@ -72,6 +94,20 @@ class CanvasView(context: Context) : View(context) {
             invalidate()
         }
 
+    /** Step being edited, drawn with a corner frame and grab handles. */
+    var selectedStepId: String? = null
+        set(value) {
+            field = value
+            invalidate()
+        }
+
+    /** When true the next tap reports a position instead of selecting anything. */
+    var pickingCoordinate: Boolean = false
+        set(value) {
+            field = value
+            invalidate()
+        }
+
     /** Black layer opacity for idling with the screen on but unreadable. 0 disables it. */
     var dimAlpha: Float = 0f
         set(value) {
@@ -96,6 +132,7 @@ class CanvasView(context: Context) : View(context) {
 
     private val minSampleDistance = dp(4f)
     private val cornerRadius = dp(10f)
+    private val editSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
 
     private val scrimColor = ContextCompat.getColor(context, R.color.record_scrim)
     private val hatchColor = ContextCompat.getColor(context, R.color.warn_hatch)
@@ -138,6 +175,7 @@ class CanvasView(context: Context) : View(context) {
     private var gestureDownUptime = 0L
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (mode == CanvasMode.EDIT) return handleEditTouch(event)
         if (mode != CanvasMode.RECORDING) return false
 
         // While a captured gesture is being pushed down to the app below, the window is already
@@ -209,6 +247,79 @@ class CanvasView(context: Context) : View(context) {
         invalidate()
     }
 
+    // --- Editing --------------------------------------------------------------
+
+    private class Grab(val stepId: String, val handle: Handle, val offsetX: Float, val offsetY: Float)
+
+    private var grab: Grab? = null
+    private var editDownX = 0f
+    private var editDownY = 0f
+
+    private fun handleEditTouch(event: MotionEvent): Boolean {
+        getLocationOnScreen(origin)
+        val x = event.x + origin[0]
+        val y = event.y + origin[1]
+
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                editDownX = x
+                editDownY = y
+                grab = if (pickingCoordinate) null else hitTest(x, y)?.let { (marker, handle) ->
+                    val anchorX = if (handle == Handle.END) marker.endX else marker.anchorX
+                    val anchorY = if (handle == Handle.END) marker.endY else marker.anchorY
+                    Grab(marker.stepId, handle, x - anchorX, y - anchorY)
+                }
+            }
+
+            MotionEvent.ACTION_MOVE -> {
+                val target = grab ?: return true
+                if (!movedPastSlop(x, y)) return true
+                onDragStep?.invoke(target.stepId, target.handle, x - target.offsetX, y - target.offsetY)
+            }
+
+            MotionEvent.ACTION_UP -> {
+                val moved = movedPastSlop(x, y)
+                when {
+                    pickingCoordinate -> onPickCoordinate?.invoke(x, y)
+                    // Same rule as the toolbar: decided from net displacement at release, so a tap
+                    // that wobbles is still a tap.
+                    !moved -> onSelect?.invoke(hitTest(x, y)?.first?.stepId)
+                    grab != null -> onDragEnd?.invoke()
+                }
+                grab = null
+            }
+
+            MotionEvent.ACTION_CANCEL -> {
+                if (grab != null) onDragEnd?.invoke()
+                grab = null
+            }
+        }
+        return true
+    }
+
+    private fun movedPastSlop(x: Float, y: Float) =
+        hypot(x - editDownX, y - editDownY) > editSlop
+
+    /**
+     * Finds the marker under a point.
+     *
+     * Searched newest first because later markers are painted on top, so the one the user can see is
+     * the one that gets picked. End handles win over bodies: a short swipe can have both within the
+     * same radius, and the tip is the more specific intent.
+     */
+    private fun hitTest(x: Float, y: Float): Pair<Marker, Handle>? {
+        val radius = dp(26f)
+        for (marker in markers.forDensity(density).asReversed()) {
+            if (marker.hasEndHandle && hypot(x - marker.endX, y - marker.endY) <= radius) {
+                return marker to Handle.END
+            }
+            if (hypot(x - marker.anchorX, y - marker.anchorY) <= radius) {
+                return marker to Handle.BODY
+            }
+        }
+        return null
+    }
+
     // --- Drawing -------------------------------------------------------------
 
     override fun onDraw(canvas: Canvas) {
@@ -217,18 +328,21 @@ class CanvasView(context: Context) : View(context) {
             canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), dimPaint)
         }
 
-        if (mode == CanvasMode.RECORDING) {
-            canvas.drawColor(scrimColor)
+        if (mode == CanvasMode.RECORDING || mode == CanvasMode.EDIT) {
+            if (mode == CanvasMode.RECORDING) canvas.drawColor(scrimColor)
             blockedAreas.forEach { painter.drawBlockedArea(canvas, it, hatchColor) }
         }
 
         // HIDDEN still shows the newest marker, it just stops showing the trail of older ones —
         // forDensity handles that, so there is nothing to branch on here.
-        painter.draw(canvas, markers.forDensity(density), highlightNumber, scale = 1f)
+        painter.draw(canvas, markers.forDensity(density), highlightNumber, selectedStepId, scale = 1f)
 
         drawInProgressStrokes(canvas)
 
-        if (density != MarkerDensity.HIDDEN && stepLines.isNotEmpty()) drawStepList(canvas)
+        // The step list would sit under the parameter card while editing, and the markers are the
+        // thing being looked at anyway.
+        val showList = mode != CanvasMode.EDIT && density != MarkerDensity.HIDDEN
+        if (showList && stepLines.isNotEmpty()) drawStepList(canvas)
     }
 
     private fun drawInProgressStrokes(canvas: Canvas) {

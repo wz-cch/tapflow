@@ -38,6 +38,21 @@ object EngineState {
     val mode = MutableStateFlow(Mode.IDLE)
     val toolbarForm = MutableStateFlow(ToolbarForm.EXPANDED)
 
+    /**
+     * Whether the canvas is in editing mode.
+     *
+     * Editing has to intercept the whole screen: a window either takes every touch in its bounds or
+     * none of them, so markers cannot be draggable while the app underneath stays usable. Making it
+     * an explicit mode is the honest version of that constraint.
+     */
+    val editing = MutableStateFlow(false)
+
+    /** Step selected for editing, by id. Null when nothing is selected. */
+    val selectedStepId = MutableStateFlow<String?>(null)
+
+    /** True while the next canvas tap should be read as "put the selected step here". */
+    val pickingCoordinate = MutableStateFlow(false)
+
     /** Whether the accessibility service is connected. Drives the onboarding card. */
     val serviceRunning = MutableStateFlow(false)
 
@@ -66,5 +81,8 @@ object EngineState {
         progress.value = null
         pausePrompt.value = null
         elapsedMs.value = 0
+        editing.value = false
+        selectedStepId.value = null
+        pickingCoordinate.value = false
     }
 }

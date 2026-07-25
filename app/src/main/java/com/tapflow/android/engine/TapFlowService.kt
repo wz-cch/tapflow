@@ -11,14 +11,25 @@ import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.widget.Toast
 import com.tapflow.android.R
+import com.tapflow.android.data.GestureStep
+import com.tapflow.android.data.GlobalStep
+import com.tapflow.android.data.MarkerDensity
+import com.tapflow.android.data.PauseStep
 import com.tapflow.android.data.Repo
 import com.tapflow.android.data.ScreenSpec
 import com.tapflow.android.data.Settings
 import com.tapflow.android.data.Step
+import com.tapflow.android.data.WaitStep
+import com.tapflow.android.data.movedTo
+import com.tapflow.android.data.tapStep
+import com.tapflow.android.data.withDuration
+import com.tapflow.android.data.withEndAt
 import com.tapflow.android.overlay.BallIntent
 import com.tapflow.android.overlay.CanvasMode
 import com.tapflow.android.overlay.CanvasView
+import com.tapflow.android.overlay.Handle
 import com.tapflow.android.overlay.OverlayHost
+import com.tapflow.android.overlay.ParamCardView
 import com.tapflow.android.overlay.ToolbarView
 import com.tapflow.android.overlay.TransportView
 import com.tapflow.android.overlay.buildMarkers
@@ -71,10 +82,12 @@ class TapFlowService : AccessibilityService() {
     private lateinit var canvas: CanvasView
     private lateinit var toolbar: ToolbarView
     private lateinit var transport: TransportView
+    private lateinit var paramCard: ParamCardView
 
     private lateinit var canvasParams: WindowManager.LayoutParams
     private lateinit var toolbarParams: WindowManager.LayoutParams
     private lateinit var transportParams: WindowManager.LayoutParams
+    private lateinit var paramCardParams: WindowManager.LayoutParams
 
     private lateinit var dispatcher: GestureDispatcher
     private lateinit var recorder: Recorder
@@ -200,9 +213,14 @@ class TapFlowService : AccessibilityService() {
 
         canvas = CanvasView(this).apply {
             onGesture = { strokes, down, up -> recorder.onGesture(strokes, down, up) }
+            onSelect = { stepId -> select(stepId) }
+            onDragStep = { stepId, handle, x, y -> dragStep(stepId, handle, x, y) }
+            onDragEnd = { Workspace.flush() }
+            onPickCoordinate = { x, y -> pickCoordinate(x, y) }
         }
         toolbar = ToolbarView(this, ToolbarActions())
         transport = TransportView(this, TransportActions())
+        paramCard = ParamCardView(this, ParamCardActions())
 
         canvasParams = host.params(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -213,6 +231,10 @@ class TapFlowService : AccessibilityService() {
             WindowManager.LayoutParams.WRAP_CONTENT,
         )
         transportParams = host.params(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+        )
+        paramCardParams = host.params(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
         )
@@ -282,6 +304,8 @@ class TapFlowService : AccessibilityService() {
     private fun detachOverlay() {
         stopRecording(collapseForInput = false)
         player.stop()
+        exitEditing()
+        host.remove(paramCard)
         host.remove(toolbar)
         host.remove(transport)
         host.remove(canvas)
@@ -297,6 +321,9 @@ class TapFlowService : AccessibilityService() {
         scope.launch { Repo.settings.collect { syncOverlay() } }
         scope.launch { EngineState.mode.collect { syncOverlay() } }
         scope.launch { EngineState.toolbarForm.collect { syncOverlay() } }
+        scope.launch { EngineState.editing.collect { syncOverlay() } }
+        scope.launch { EngineState.selectedStepId.collect { syncOverlay() } }
+        scope.launch { EngineState.pickingCoordinate.collect { syncOverlay() } }
         scope.launch {
             EngineState.progress.collect { progress ->
                 // Updated here rather than in syncOverlay so the highlight follows playback without
@@ -318,21 +345,65 @@ class TapFlowService : AccessibilityService() {
         val current = settings
         val steps = Workspace.steps.value
         val mode = EngineState.mode.value
+        val editing = EngineState.editing.value
+        val selectedId = EngineState.selectedStepId.value
 
         toolbar.applyAppearance(current.uiScale, current.uiOpacity)
-        toolbar.render(mode, EngineState.toolbarForm.value, steps.size, current.markerDensity)
+        toolbar.render(
+            mode = mode,
+            form = EngineState.toolbarForm.value,
+            workspaceSize = steps.size,
+            density = current.markerDensity,
+            editing = editing,
+            hasSelection = selectedId != null,
+        )
         host.update(toolbar, toolbarParams)
 
         canvas.markers = buildMarkers(steps)
-        canvas.density = current.markerDensity
+        // Editing something invisible is not possible, so density is forced open while editing and
+        // the user's own setting is left untouched underneath.
+        canvas.density = if (editing) MarkerDensity.ALL else current.markerDensity
         canvas.stepLines = stepLines(steps)
         canvas.highlightNumber = EngineState.progress.value?.step
+        canvas.selectedStepId = selectedId
+        canvas.pickingCoordinate = EngineState.pickingCoordinate.value
         canvas.dimAlpha = if (current.dimOverlay && mode == Mode.PLAYING) current.dimAlpha else 0f
-        canvas.mode = if (mode == Mode.RECORDING) CanvasMode.RECORDING else CanvasMode.READ_ONLY
+        canvas.mode = when {
+            mode == Mode.RECORDING -> CanvasMode.RECORDING
+            editing -> CanvasMode.EDIT
+            else -> CanvasMode.READ_ONLY
+        }
         updateCanvasFlags()
         syncBlockedAreas()
 
+        syncParamCard()
         syncTransport()
+    }
+
+    /**
+     * The card is only attached while a step is selected and its coordinate is not being re-picked.
+     * Detaching rather than hiding keeps it out of the blocked-area list, which is computed from
+     * attached windows.
+     */
+    private fun syncParamCard() {
+        val step = Workspace.stepById(EngineState.selectedStepId.value)
+        val wanted = EngineState.editing.value && step != null && !EngineState.pickingCoordinate.value
+
+        if (!wanted) {
+            host.remove(paramCard)
+            return
+        }
+
+        val number = Workspace.steps.value.indexOfFirst { it.id == step!!.id } + 1
+        paramCard.render(step!!, number)
+
+        if (!host.isAttached(paramCard)) {
+            val size = host.displaySize()
+            paramCardParams.x = (size.x * 0.18f).toInt()
+            paramCardParams.y = (size.y * 0.62f).toInt()
+            host.add(paramCard, paramCardParams)
+        }
+        host.update(paramCard, paramCardParams)
     }
 
     private fun syncTransport() {
@@ -369,7 +440,12 @@ class TapFlowService : AccessibilityService() {
      */
     private fun syncBlockedAreas() {
         val areas = mutableListOf<RectF>()
-        listOf(toolbar to toolbarParams, transport to transportParams).forEach { (view, params) ->
+        val windows = listOf(
+            toolbar to toolbarParams,
+            transport to transportParams,
+            paramCard to paramCardParams,
+        )
+        windows.forEach { (view, params) ->
             if (!host.isAttached(view) || view.visibility != View.VISIBLE) return@forEach
             if (view.width == 0 || view.height == 0) return@forEach
             areas += RectF(
@@ -387,7 +463,12 @@ class TapFlowService : AccessibilityService() {
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
 
-        if (canvas.mode != CanvasMode.RECORDING || canvas.replaying) {
+        val intercepting = when (canvas.mode) {
+            CanvasMode.RECORDING -> !canvas.replaying
+            CanvasMode.EDIT -> true
+            CanvasMode.READ_ONLY -> false
+        }
+        if (!intercepting) {
             flags = flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
         }
         if (settings.keepScreenOn && EngineState.mode.value != Mode.IDLE) {
@@ -409,6 +490,7 @@ class TapFlowService : AccessibilityService() {
     private fun startRecording() {
         if (EngineState.isReplaying || EngineState.isRecording) return
 
+        exitEditing()
         EngineState.toolbarForm.value = ToolbarForm.EXPANDED
         toolbar.ballIntent = BallIntent.EXPAND
         EngineState.mode.value = Mode.RECORDING
@@ -528,6 +610,7 @@ class TapFlowService : AccessibilityService() {
     private fun startPlayback() {
         val steps = Workspace.steps.value
         if (steps.isEmpty()) return
+        exitEditing()
         player.play(steps, Workspace.screen, settings.defaultLoopCount)
     }
 
@@ -542,6 +625,87 @@ class TapFlowService : AccessibilityService() {
     }
 
     private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
+
+    // --- Editing -------------------------------------------------------------
+
+    private fun enterEditing() {
+        if (EngineState.isRecording || EngineState.isReplaying) return
+        if (Workspace.isEmpty) return
+        EngineState.toolbarForm.value = ToolbarForm.EXPANDED
+        EngineState.editing.value = true
+        // The canvas now takes the whole screen; the toolbar and card must sit above it.
+        host.bringToFront(transport, transportParams)
+        host.bringToFront(toolbar, toolbarParams)
+        toast(getString(R.string.toast_edit_mode_on))
+    }
+
+    private fun exitEditing() {
+        EngineState.editing.value = false
+        EngineState.selectedStepId.value = null
+        EngineState.pickingCoordinate.value = false
+    }
+
+    private fun select(stepId: String?) {
+        EngineState.selectedStepId.value = stepId
+        // Re-attaching the card puts it above the canvas; without this it would be underneath and
+        // its buttons unreachable.
+        if (stepId != null) scope.launch { host.bringToFront(paramCard, paramCardParams) }
+    }
+
+    private fun dragStep(stepId: String, handle: Handle, x: Float, y: Float) {
+        val step = Workspace.stepById(stepId) as? GestureStep ?: return
+        val updated = when (handle) {
+            Handle.BODY -> step.movedTo(x, y)
+            Handle.END -> step.withEndAt(x, y)
+        }
+        // Not persisted per sample: a drag would otherwise write the draft file dozens of times.
+        // onDragEnd flushes.
+        Workspace.updateStep(updated, persist = false)
+    }
+
+    private fun pickCoordinate(x: Float, y: Float) {
+        val step = Workspace.stepById(EngineState.selectedStepId.value) as? GestureStep
+        EngineState.pickingCoordinate.value = false
+        if (step == null) return
+        Workspace.updateStep(step.movedTo(x, y))
+    }
+
+    private fun adjustSelected(transform: (Step) -> Step?) {
+        val step = Workspace.stepById(EngineState.selectedStepId.value) ?: return
+        transform(step)?.let { Workspace.updateStep(it) }
+    }
+
+    private inner class ParamCardActions : ParamCardView.Actions {
+        override fun onAdjustDuration(deltaMs: Long) = adjustSelected { step ->
+            (step as? GestureStep)?.let { it.withDuration(it.duration + deltaMs) }
+        }
+
+        override fun onAdjustDelay(deltaMs: Long) = adjustSelected { step ->
+            val next = (step.delayBefore + deltaMs).coerceIn(0L, Timing.MAX_RECORDED_GAP_MS)
+            when (step) {
+                is GestureStep -> step.copy(delayBefore = next)
+                is PauseStep -> step.copy(delayBefore = next)
+                is WaitStep -> step.copy(delayBefore = next)
+                is GlobalStep -> step.copy(delayBefore = next)
+            }
+        }
+
+        override fun onPickCoordinate() {
+            EngineState.pickingCoordinate.value = true
+            toast(getString(R.string.toast_pick_coordinate))
+        }
+
+        override fun onDelete() {
+            val id = EngineState.selectedStepId.value ?: return
+            EngineState.selectedStepId.value = null
+            Workspace.removeStep(id)
+            if (Workspace.isEmpty) exitEditing()
+        }
+
+        override fun onDone() {
+            EngineState.selectedStepId.value = null
+        }
+    }
 
     private inner class ToolbarActions : ToolbarView.Actions {
         override fun onPrimary() {
@@ -572,6 +736,32 @@ class TapFlowService : AccessibilityService() {
 
         override fun onUndo() {
             if (Workspace.undo()) toast(getString(R.string.toast_undone))
+        }
+
+        override fun onToggleEdit() {
+            if (EngineState.editing.value) exitEditing() else enterEditing()
+        }
+
+        override fun onAddTap() {
+            val size = host.displaySize()
+            val current = settings
+            val step = tapStep(
+                x = size.x / 2f,
+                y = size.y / 2f,
+                holdMs = current.defaultTapMs,
+                delayBefore = current.defaultGapMs,
+            )
+            // Inserted after the selection so building a sequence by hand goes in reading order,
+            // then selected so the parameter card is already open on the thing just created.
+            Workspace.insertAfter(EngineState.selectedStepId.value, step, currentScreen())
+            select(step.id)
+        }
+
+        override fun onDeleteSelected() {
+            val id = EngineState.selectedStepId.value ?: return
+            EngineState.selectedStepId.value = null
+            Workspace.removeStep(id)
+            if (Workspace.isEmpty) exitEditing()
         }
 
         override fun onSave() = save(asNew = false)
