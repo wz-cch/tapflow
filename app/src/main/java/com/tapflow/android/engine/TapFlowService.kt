@@ -316,10 +316,7 @@ class TapFlowService : AccessibilityService() {
         EngineState.toolbarForm.value = ToolbarForm.EXPANDED
         toolbar.ballIntent = BallIntent.EXPAND
 
-        // Order matters: same-type overlays stack in the order they are added, so the canvas has to
-        // go on first or it would swallow every toolbar press while recording.
-        updateCanvasFlags()
-        host.add(canvas, canvasParams)
+        // The canvas is attached on demand, not here — see syncCanvasAttachment.
         host.add(transport, transportParams)
 
         if (!host.add(toolbar, toolbarParams)) {
@@ -410,6 +407,7 @@ class TapFlowService : AccessibilityService() {
             else -> CanvasMode.READ_ONLY
         }
         updateCanvasFlags()
+        syncCanvasAttachment()
         syncBlockedAreas()
 
         syncParamCard()
@@ -432,6 +430,47 @@ class TapFlowService : AccessibilityService() {
             host.add(quickSettings, quickSettingsParams)
         }
         host.update(quickSettings, quickSettingsParams)
+    }
+
+    /**
+     * Keeps the full-screen canvas attached only while it is actually needed.
+     *
+     * FLAG_NOT_TOUCHABLE lets touches pass through, but it does not stop the window counting as an
+     * obscuring one. While it is attached, every touch every app on the device receives carries
+     * FLAG_WINDOW_IS_OBSCURED — and a view with filterTouchesWhenObscured set simply discards those.
+     * Apps that do this become completely unresponsive, to the user's own finger as much as to an
+     * injected gesture, merely because the toolbar is switched on. Launchers do not set it, which is
+     * why this looks like "works on the home screen, dead inside an app".
+     *
+     * So the canvas goes up to intercept (recording, editing) or when the user has explicitly asked
+     * for something painted over everything, and comes down otherwise.
+     */
+    private fun syncCanvasAttachment() {
+        val needed = canvasNeeded()
+        if (needed == host.isAttached(canvas)) return
+
+        if (needed) {
+            host.add(canvas, canvasParams)
+            // Same-type overlays stack in the order they were added, so everything else has to be
+            // re-added above the canvas or its buttons become unreachable.
+            restackAboveCanvas()
+        } else {
+            host.remove(canvas)
+        }
+    }
+
+    private fun canvasNeeded(): Boolean {
+        if (EngineState.mode.value == Mode.RECORDING) return true
+        if (EngineState.editing.value) return true
+        if (settings.dimOverlay && EngineState.mode.value == Mode.PLAYING) return true
+        return settings.showMarkersWhenIdle && Workspace.steps.value.isNotEmpty()
+    }
+
+    private fun restackAboveCanvas() {
+        host.bringToFront(transport, transportParams)
+        if (host.isAttached(paramCard)) host.bringToFront(paramCard, paramCardParams)
+        if (host.isAttached(quickSettings)) host.bringToFront(quickSettings, quickSettingsParams)
+        host.bringToFront(toolbar, toolbarParams)
     }
 
     private fun dpToPx(dp: Float) = dp * resources.displayMetrics.density
@@ -561,27 +600,19 @@ class TapFlowService : AccessibilityService() {
         exitEditing()
         EngineState.toolbarForm.value = ToolbarForm.EXPANDED
         toolbar.ballIntent = BallIntent.EXPAND
-        EngineState.mode.value = Mode.RECORDING
-        canvas.mode = CanvasMode.RECORDING
         canvas.replaying = false
         recorder.restartTiming()
-        updateCanvasFlags()
 
-        // The canvas is now intercepting the whole screen, so re-stack the other two windows above
-        // it or their buttons become unreachable.
-        host.bringToFront(transport, transportParams)
-        host.bringToFront(toolbar, toolbarParams)
+        // syncOverlay derives the canvas mode, flags, attachment and stacking from the state.
+        EngineState.mode.value = Mode.RECORDING
         syncOverlay()
     }
 
     private fun stopRecording(collapseForInput: Boolean) {
         if (!EngineState.isRecording) return
 
-        canvas.mode = CanvasMode.READ_ONLY
         canvas.replaying = false
         EngineState.mode.value = Mode.IDLE
-        updateCanvasFlags()
-
         if (collapseForInput) collapseToBall(BallIntent.RESUME_RECORDING)
         syncOverlay()
     }
@@ -726,10 +757,9 @@ class TapFlowService : AccessibilityService() {
         if (EngineState.isRecording || EngineState.isReplaying) return
         if (Workspace.isEmpty) return
         EngineState.toolbarForm.value = ToolbarForm.EXPANDED
+        // syncOverlay attaches the canvas and re-stacks everything above it.
         EngineState.editing.value = true
-        // The canvas now takes the whole screen; the toolbar and card must sit above it.
-        host.bringToFront(transport, transportParams)
-        host.bringToFront(toolbar, toolbarParams)
+        syncOverlay()
         toast(getString(R.string.toast_edit_mode_on))
     }
 

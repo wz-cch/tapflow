@@ -170,11 +170,13 @@
     <string name="settings_ui_scale">Toolbar size</string>
     <string name="settings_ui_opacity">Toolbar opacity</string>
     <string name="settings_show_timer">Show timer</string>
+    <string name="settings_show_markers_idle">Keep markers on screen</string>
+    <string name="settings_show_markers_idle_body">Shows the numbered markers while idle and during playback, not just while recording or editing. Leave this off unless you need it: painting them requires a full-screen overlay, and some apps discard every touch that arrives through one — they stop responding to your own finger too.</string>
     <string name="settings_section_screen">Screen</string>
     <string name="settings_keep_screen_on">Keep screen on</string>
     <string name="settings_keep_screen_on_body">Injected gestures do nothing once the screen turns off.</string>
     <string name="settings_dim">Black out while replaying</string>
-    <string name="settings_dim_body">The screen stays on, it just shows nothing. Only useful for leaving something running.</string>
+    <string name="settings_dim_body">The screen stays on, it just shows nothing. Only useful for leaving something running. Needs a full-screen overlay, so apps that discard obscured touches will ignore the replay while this is on.</string>
     <string name="settings_dim_alpha">Blackout strength</string>
     <string name="value_ms">%1$d ms</string>
     <string name="value_px">%1$d px</string>
