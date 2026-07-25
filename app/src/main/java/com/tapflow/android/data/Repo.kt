@@ -6,6 +6,9 @@ import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+// Without this the single-argument reified form is invisible and the call resolves to the
+// two-argument member encodeToString(serializer, value) instead.
+import kotlinx.serialization.encodeToString
 import java.io.File
 
 /**

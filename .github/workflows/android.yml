@@ -41,11 +41,13 @@ jobs:
         if: failure()
         run: |
           {
-            (grep -E '^(e:|w: .*error|ERROR|error:) ' build.log || true) | head -n 40
+            (grep -E '^(e:|ERROR|error:|FAILED|Manifest merger)' build.log || true) | head -n 40
             echo "--- what went wrong ---"
             (grep -A 20 '^\* What went wrong' build.log || true) | head -n 25
             echo "--- tail of build output ---"
-            tail -n 50 build.log
+            # Drop Java stack frames: they are always Gradle internals and crowd out the
+            # only lines that matter.
+            (grep -v -E '^\s+at [a-z]+\.' build.log || true) | tail -n 30
           } > failure.txt
           # One multi-line annotation rather than many: GitHub caps how many it shows per
           # step, and workflow commands need newlines percent-escaped.
