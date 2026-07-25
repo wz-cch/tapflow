@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Default locale: English.
+  Traditional Chinese lives in values-zh-rTW/strings.xml.
+
+  Every string the user can read must be declared here. Nothing user-facing may be hard-coded in
+  Kotlin, including strings drawn on the overlay views.
+-->
+<resources>
+
+    <!-- App and accessibility service -->
+    <string name="app_name">TapFlow</string>
+    <string name="service_label">TapFlow — record and replay</string>
+    <string name="accessibility_summary">Record your touches and replay them automatically</string>
+    <string name="accessibility_description">TapFlow needs this to show its floating toolbar, record your touch paths, and tap and swipe on your behalf during replay. It does not read screen contents and never connects to the network.</string>
+
+    <!-- Step labels. Coordinates are integers, durations are milliseconds. -->
+    <string name="step_tap">Tap (%1$d, %2$d)</string>
+    <string name="step_long_press">Long press (%1$d, %2$d) · %3$d ms</string>
+    <string name="step_swipe">Swipe (%1$d, %2$d) → (%3$d, %4$d) · %5$d ms</string>
+    <string name="step_multi_touch">%1$d-finger gesture · %2$d ms</string>
+    <string name="step_wait">Wait %1$d ms</string>
+    <string name="step_global">System action: %1$s</string>
+    <string name="step_pause">⏸ Pause point</string>
+    <string name="step_pause_with_note">⏸ Pause point: %1$s</string>
+    <string name="pause_default_prompt">Paused — finish by hand, then press resume</string>
+
+    <!-- Global actions -->
+    <string name="global_back">Back</string>
+    <string name="global_home">Home</string>
+    <string name="global_recents">Recents</string>
+    <string name="global_notifications">Notification shade</string>
+
+    <!-- Text matching modes -->
+    <string name="match_contains">Contains</string>
+    <string name="match_exact">Exact</string>
+    <string name="match_view_id">View ID</string>
+
+    <!-- Marker density -->
+    <string name="density_all">All markers</string>
+    <string name="density_recent">Recent only</string>
+    <string name="density_hidden">Hidden</string>
+
+    <!-- Flow nodes -->
+    <string name="node_clip_repeat">%1$s ×%2$d</string>
+    <string name="node_clip_missing">(clip deleted)</string>
+    <string name="node_await_text">Wait for “%1$s” on screen</string>
+
+    <!-- Clips -->
+    <string name="clip_default_name">Recording %1$s</string>
+
+    <!-- Toolbar buttons. Used as content descriptions, so they must stay short. -->
+    <string name="action_play">Play</string>
+    <string name="action_pause">Pause</string>
+    <string name="action_resume">Resume</string>
+    <string name="action_stop">Stop</string>
+    <string name="action_record">Record</string>
+    <string name="action_record_resume">Resume recording</string>
+    <string name="action_record_stop">Stop recording</string>
+    <string name="action_insert_pause">Insert pause point</string>
+    <string name="action_undo">Undo last step</string>
+    <string name="action_add_tap">Add tap</string>
+    <string name="action_delete">Delete selected</string>
+    <string name="action_edit_mode">Edit mode</string>
+    <string name="action_save">Save as clip</string>
+    <string name="action_density">Marker density</string>
+    <string name="action_collapse">Collapse</string>
+    <string name="action_dismiss">Hide toolbar</string>
+
+    <!-- Transport panel -->
+    <string name="transport_loop">Loop %1$d/%2$d</string>
+    <string name="transport_loop_infinite">Loop %1$d/∞</string>
+    <string name="transport_step">Step %1$d/%2$d</string>
+    <string name="transport_countdown">%1$d…</string>
+    <string name="transport_recording">Recording · %1$d actions</string>
+
+    <!-- Warnings shown on the canvas or in the editor -->
+    <string name="warn_toolbar_area">This area cannot be recorded — drag the toolbar away</string>
+    <string name="warn_rotation_changed">Screen rotated during recording, so recording stopped. Coordinates would not line up.</string>
+    <string name="warn_clip_rotation">This clip was recorded in a different orientation. Rotate the device, then press resume.</string>
+    <string name="warn_clip_scaled">Coordinates rescaled from the recorded screen size</string>
+    <string name="warn_unsaved">The workspace has unsaved changes</string>
+
+    <!-- Permission onboarding -->
+    <string name="onboarding_accessibility_title">Enable the accessibility service</string>
+    <string name="onboarding_accessibility_body">TapFlow needs the accessibility service to show its toolbar, record your touches, and replay them. This is the only switch most devices need.</string>
+    <string name="onboarding_accessibility_action">Open accessibility settings</string>
+    <string name="onboarding_overlay_title">Allow display over other apps</string>
+    <string name="onboarding_overlay_body">Only needed as a fallback: some ROMs block accessibility overlays. TapFlow will ask for this if and when its toolbar fails to attach.</string>
+    <string name="onboarding_overlay_action">Open overlay settings</string>
+    <string name="onboarding_service_ready">Accessibility service is running</string>
+
+    <!-- Home screen -->
+    <string name="home_show_toolbar">Show floating toolbar</string>
+    <string name="home_tab_clips">Clips</string>
+    <string name="home_tab_flows">Flows</string>
+    <string name="home_no_clips">No clips yet. Turn on the toolbar, press record, and do something.</string>
+    <string name="home_no_flows">No flows yet. Chain saved clips into a flow to run them in one go.</string>
+    <string name="clip_summary">%1$d actions · about %2$s</string>
+    <string name="clip_summary_with_pauses">%1$d actions · %2$d pause points · about %3$s</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_reset">Restore defaults</string>
+
+</resources>

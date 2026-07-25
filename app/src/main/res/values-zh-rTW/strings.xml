@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  正體中文(台灣)。預設語系(英文)在 values/strings.xml。
+  新增字串時請兩邊一起加,並保持 key 順序一致以便對照。
+-->
+<resources>
+
+    <!-- App 與無障礙服務 -->
+    <string name="app_name">觸控流</string>
+    <string name="service_label">觸控流 — 錄製與重播</string>
+    <string name="accessibility_summary">錄製你的觸控操作並自動重播</string>
+    <string name="accessibility_description">開啟後,觸控流才能在螢幕上顯示懸浮工具列、錄製你的觸控軌跡,並在重播時代替你點擊與滑動。本服務不會讀取畫面內容,也不會連線網路。</string>
+
+    <!-- 步驟描述。座標為整數,時間單位為毫秒。 -->
+    <string name="step_tap">點擊 (%1$d, %2$d)</string>
+    <string name="step_long_press">長按 (%1$d, %2$d) · %3$d ms</string>
+    <string name="step_swipe">滑動 (%1$d, %2$d) → (%3$d, %4$d) · %5$d ms</string>
+    <string name="step_multi_touch">%1$d 指手勢 · %2$d ms</string>
+    <string name="step_wait">等待 %1$d ms</string>
+    <string name="step_global">系統動作:%1$s</string>
+    <string name="step_pause">⏸ 暫停點</string>
+    <string name="step_pause_with_note">⏸ 暫停點:%1$s</string>
+    <string name="pause_default_prompt">已暫停,請手動處理後按繼續</string>
+
+    <!-- 系統動作 -->
+    <string name="global_back">返回</string>
+    <string name="global_home">主畫面</string>
+    <string name="global_recents">最近應用</string>
+    <string name="global_notifications">通知欄</string>
+
+    <!-- 文字比對方式 -->
+    <string name="match_contains">包含</string>
+    <string name="match_exact">完全相符</string>
+    <string name="match_view_id">元件 ID</string>
+
+    <!-- 標記顯示密度 -->
+    <string name="density_all">顯示全部</string>
+    <string name="density_recent">只顯示最近</string>
+    <string name="density_hidden">隱藏</string>
+
+    <!-- 流程節點 -->
+    <string name="node_clip_repeat">%1$s ×%2$d</string>
+    <string name="node_clip_missing">(片段已刪除)</string>
+    <string name="node_await_text">等待畫面出現「%1$s」</string>
+
+    <!-- 片段 -->
+    <string name="clip_default_name">錄製 %1$s</string>
+
+    <!-- 工具列按鍵。會當成無障礙描述使用,請保持簡短。 -->
+    <string name="action_play">播放</string>
+    <string name="action_pause">暫停</string>
+    <string name="action_resume">繼續</string>
+    <string name="action_stop">停止</string>
+    <string name="action_record">錄製</string>
+    <string name="action_record_resume">繼續錄製</string>
+    <string name="action_record_stop">停止錄製</string>
+    <string name="action_insert_pause">插入暫停點</string>
+    <string name="action_undo">復原上一步</string>
+    <string name="action_add_tap">新增點擊點</string>
+    <string name="action_delete">刪除選取</string>
+    <string name="action_edit_mode">編輯模式</string>
+    <string name="action_save">儲存為片段</string>
+    <string name="action_density">標記顯示密度</string>
+    <string name="action_collapse">摺疊</string>
+    <string name="action_dismiss">收起工具列</string>
+
+    <!-- 播放面板 -->
+    <string name="transport_loop">輪 %1$d/%2$d</string>
+    <string name="transport_loop_infinite">輪 %1$d/∞</string>
+    <string name="transport_step">步 %1$d/%2$d</string>
+    <string name="transport_countdown">%1$d…</string>
+    <string name="transport_recording">錄製中 · 已錄 %1$d 個動作</string>
+
+    <!-- 畫布與編輯器上的警示 -->
+    <string name="warn_toolbar_area">此區域無法錄製,請拖走工具列</string>
+    <string name="warn_rotation_changed">錄製中螢幕轉向,已中止錄製。座標系會對不上。</string>
+    <string name="warn_clip_rotation">此片段錄製於不同方向,請轉回原方向後按繼續。</string>
+    <string name="warn_clip_scaled">座標已依錄製時的螢幕尺寸換算</string>
+    <string name="warn_unsaved">工作區有未儲存的變更</string>
+
+    <!-- 權限引導 -->
+    <string name="onboarding_accessibility_title">開啟無障礙服務</string>
+    <string name="onboarding_accessibility_body">觸控流需要無障礙服務才能顯示工具列、錄製你的觸控並重播。大多數裝置只要開這一個開關。</string>
+    <string name="onboarding_accessibility_action">前往無障礙設定</string>
+    <string name="onboarding_overlay_title">允許顯示在其他應用上層</string>
+    <string name="onboarding_overlay_body">只是備援:部分 ROM 會擋掉無障礙懸浮視窗。真的掛不上去時,觸控流才會請你開這個權限。</string>
+    <string name="onboarding_overlay_action">前往懸浮視窗設定</string>
+    <string name="onboarding_service_ready">無障礙服務運行中</string>
+
+    <!-- 主畫面 -->
+    <string name="home_show_toolbar">顯示懸浮工具列</string>
+    <string name="home_tab_clips">片段</string>
+    <string name="home_tab_flows">流程</string>
+    <string name="home_no_clips">還沒有片段。打開工具列、按錄製,操作一次看看。</string>
+    <string name="home_no_flows">還沒有流程。把存好的片段串成流程,就能一次跑完。</string>
+    <string name="clip_summary">%1$d 個動作 · 約 %2$s</string>
+    <string name="clip_summary_with_pauses">%1$d 個動作 · %2$d 個暫停點 · 約 %3$s</string>
+
+    <!-- 設定 -->
+    <string name="settings_title">設定</string>
+    <string name="settings_reset">恢復預設值</string>
+
+</resources>
