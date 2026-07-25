@@ -619,7 +619,15 @@ class TapFlowService : AccessibilityService() {
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
 
         val intercepting = when (canvas.mode) {
-            CanvasMode.RECORDING -> !canvasOutOfTheWay
+            // Never while a captured gesture is being replayed. The canvas would otherwise swallow
+            // the event it just injected and the app below would see nothing at all.
+            //
+            // This is keyed off canvas.replaying, not canvasOutOfTheWay. They are different things:
+            // not intercepting is what makes the replay possible in the first place, whereas moving
+            // the window away is an extra measure for apps that discard obscured touches. Keying it
+            // off the latter tied an essential behaviour to an optional setting, and with that
+            // setting off — the default — per-gesture replay did nothing anywhere.
+            CanvasMode.RECORDING -> !canvas.replaying
             CanvasMode.EDIT -> true
             CanvasMode.READ_ONLY -> false
         }
