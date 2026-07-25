@@ -61,6 +61,7 @@
     <string name="action_edit_mode">編輯模式</string>
     <string name="action_save">儲存為片段</string>
     <string name="action_density">標記顯示密度</string>
+    <string name="action_quick_settings">快捷設定</string>
     <string name="action_collapse">摺疊</string>
     <string name="action_dismiss">收起工具列</string>
 
@@ -131,6 +132,12 @@
     <string name="param_delay">前置延遲</string>
     <string name="param_ms">%1$d ms</string>
     <string name="param_done">完成</string>
+
+    <!-- 懸浮快捷設定面板 -->
+    <string name="quick_title">快捷設定</string>
+    <string name="quick_on">開</string>
+    <string name="quick_off">關</string>
+    <string name="quick_full_settings">完整設定在 app 裡 →</string>
 
     <!-- 設定 -->
     <string name="settings_title">設定</string>
