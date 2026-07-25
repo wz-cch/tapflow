@@ -1,0 +1,91 @@
+package com.tapflow.android.data
+
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+
+/**
+ * How densely on-screen sequence markers and the step list are shown.
+ * Cycled by the eye button on the toolbar.
+ */
+@Serializable
+enum class MarkerDensity {
+    /** Keep every marker, step list visible. */
+    @SerialName("all") ALL,
+
+    /** Keep the last 10 markers, step list visible. */
+    @SerialName("recent") RECENT,
+
+    /** Keep only the last marker and fade it out, step list collapsed. For seeing the app below. */
+    @SerialName("hidden") HIDDEN,
+    ;
+
+    fun next(): MarkerDensity = entries[(ordinal + 1) % entries.size]
+
+    /** How many markers to keep on screen. */
+    val keepCount: Int
+        get() = when (this) {
+            ALL -> Int.MAX_VALUE
+            RECENT -> 10
+            HIDDEN -> 1
+        }
+}
+
+@Serializable
+data class Settings(
+    // --- Defaults applied to newly added actions ---
+    /** Default gap between actions. */
+    val defaultGapMs: Long = 50,
+    /** How long a manually added tap is held. */
+    val defaultTapMs: Long = 75,
+    /** Default swipe duration. */
+    val defaultSwipeMs: Long = 300,
+    /** Default two-finger pinch duration. */
+    val defaultPinchMs: Long = 3000,
+
+    // --- Execution ---
+    /** 0 means run until stopped. */
+    val defaultLoopCount: Int = 1,
+    val speed: Float = 1f,
+    /** Countdown after pressing play. */
+    val startDelayMs: Long = 3000,
+
+    // --- Randomisation ---
+    /**
+     * Each replay offsets the whole stroke by a random vector within this radius. 0 disables it.
+     * The offset is applied per stroke, not per sample, otherwise swipe paths turn into zigzags.
+     */
+    val jitterRadiusPx: Int = 0,
+    /** Randomise delays and durations by plus or minus this percentage. 0 disables it. */
+    val jitterTimePercent: Int = 0,
+
+    // --- Recording ---
+    /**
+     * Replay each gesture to the app below right after recording it, so the screen actually
+     * advances. Turning this off gives pure blind recording, where the screen never moves.
+     */
+    val replayEachGesture: Boolean = true,
+    /** How long to wait after a replayed gesture for the target app to finish animating. */
+    val replayDelayMs: Long = 80,
+
+    // --- Appearance ---
+    val uiScale: Float = 1f,
+    val uiOpacity: Float = 1f,
+    val showTimer: Boolean = true,
+    val markerDensity: MarkerDensity = MarkerDensity.RECENT,
+
+    // --- Screen ---
+    /** Keep the screen awake while recording or replaying; injected gestures do nothing once off. */
+    val keepScreenOn: Boolean = true,
+    /** Cover the screen with a black layer during replay. The screen stays on; only useful idling. */
+    val dimOverlay: Boolean = false,
+    val dimAlpha: Float = 0.85f,
+) {
+    companion object {
+        val DEFAULT = Settings()
+
+        const val JITTER_RADIUS_MAX = 150
+        const val JITTER_TIME_MAX = 50
+        val UI_SCALE_RANGE = 0.7f..1.5f
+        val UI_OPACITY_RANGE = 0.3f..1.0f
+    }
+}
