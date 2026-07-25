@@ -58,7 +58,14 @@ class TapFlowService : AccessibilityService() {
         private const val VOLUME_LONG_PRESS_MS = 1000L
     }
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    /**
+     * Recreated on every connect.
+     *
+     * A service instance can be reconnected after onUnbind, and teardown cancels the scope. A
+     * cancelled scope drops every collector without a word, which left the overlay unable to react
+     * to the app switch for the rest of the process lifetime.
+     */
+    private var scope = createScope()
 
     private lateinit var host: OverlayHost
     private lateinit var canvas: CanvasView
@@ -83,9 +90,14 @@ class TapFlowService : AccessibilityService() {
 
     // --- Lifecycle -----------------------------------------------------------
 
+    private fun createScope() = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
+
+        scope.cancel()
+        scope = createScope()
 
         Repo.init(this)
         Workspace.restore()
@@ -229,18 +241,41 @@ class TapFlowService : AccessibilityService() {
             onPausedChanged = { paused -> onPausedChanged(paused) },
         )
 
-        val refreshBlocked = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> syncBlockedAreas() }
-        toolbar.addOnLayoutChangeListener(refreshBlocked)
-        transport.addOnLayoutChangeListener(refreshBlocked)
+        // Clamping in attachOverlay happens before either view has been measured, so a position
+        // saved on a wider screen (or before a rotation) can still be parked offscreen. Re-clamp
+        // once the real sizes are known. Guarded on an actual change so this cannot loop.
+        val onMeasured = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            if (clampWindows()) {
+                host.update(toolbar, toolbarParams)
+                host.update(transport, transportParams)
+            }
+            syncBlockedAreas()
+        }
+        toolbar.addOnLayoutChangeListener(onMeasured)
+        transport.addOnLayoutChangeListener(onMeasured)
     }
 
     private fun attachOverlay() {
+        // Always come back expanded. Turning the switch on is a request to see the toolbar, and a
+        // collapsed state carried over from last time reads as "the switch does nothing".
+        EngineState.toolbarForm.value = ToolbarForm.EXPANDED
+        toolbar.ballIntent = BallIntent.EXPAND
+
         // Order matters: same-type overlays stack in the order they are added, so the canvas has to
         // go on first or it would swallow every toolbar press while recording.
         updateCanvasFlags()
         host.add(canvas, canvasParams)
         host.add(transport, transportParams)
-        host.add(toolbar, toolbarParams)
+
+        if (!host.add(toolbar, toolbarParams)) {
+            // Silence here would look identical to the switch being broken.
+            toast(getString(R.string.toast_overlay_failed))
+            Repo.setOverlayEnabled(false)
+            return
+        }
+
+        // A window dragged to the edge on a larger screen, or before a rotation, can land offscreen.
+        clampWindows()
         syncOverlay()
     }
 
@@ -453,12 +488,17 @@ class TapFlowService : AccessibilityService() {
         syncBlockedAreas()
     }
 
-    private fun clampWindows() {
+    /** @return true when a position actually had to move, so callers can skip a pointless update. */
+    private fun clampWindows(): Boolean {
         val size = host.displaySize()
+        val before = listOf(toolbarParams.x, toolbarParams.y, transportParams.x, transportParams.y)
+
         toolbarParams.x = toolbarParams.x.coerceIn(0, max(0, size.x - max(toolbar.width, 1)))
         toolbarParams.y = toolbarParams.y.coerceIn(0, max(0, size.y - max(toolbar.height, 1)))
         transportParams.x = transportParams.x.coerceIn(0, max(0, size.x - max(transport.width, 1)))
         transportParams.y = transportParams.y.coerceIn(0, max(0, size.y - max(transport.height, 1)))
+
+        return before != listOf(toolbarParams.x, toolbarParams.y, transportParams.x, transportParams.y)
     }
 
     /** Snaps the toolbar to whichever side edge is closer, and remembers where it ended up. */
@@ -541,9 +581,17 @@ class TapFlowService : AccessibilityService() {
         override fun onCycleDensity() =
             Repo.updateSettings { it.copy(markerDensity = it.markerDensity.next()) }
 
+        /**
+         * Dismiss turns the overlay off rather than shrinking it.
+         *
+         * It used to collapse into a 6dp edge handle. On a real device that is not a touch target,
+         * and because the form was never reset there was no way back — the app switch, and even
+         * restarting the accessibility service, both restored the same unhittable sliver. Turning the
+         * overlay off is honest, the app switch mirrors it, and the toast says how to undo it.
+         */
         override fun onDismiss() {
-            EngineState.toolbarForm.value = ToolbarForm.HANDLE
-            settleToolbar()
+            Repo.setOverlayEnabled(false)
+            toast(getString(R.string.toast_toolbar_hidden))
         }
 
         override fun onCollapse() {

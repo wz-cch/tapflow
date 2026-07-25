@@ -16,8 +16,14 @@ enum class Mode { IDLE, RECORDING, COUNTDOWN, PLAYING, PAUSED }
  *
  * [BALL] is also entered automatically while paused, to clear the on-screen keyboard area — the
  * toolbar sits above TYPE_INPUT_METHOD and would otherwise swallow the Q/A/Z key column.
+ *
+ * There used to be a third, edge-handle form that the dismiss button collapsed into. It was removed
+ * after device testing: a 6dp sliver is not a touch target, and because this state was never reset,
+ * a user who hit dismiss could not get the toolbar back by any means — not by toggling the app
+ * switch, not by restarting the accessibility service. Dismiss now turns the overlay off outright,
+ * which the app switch reflects honestly.
  */
-enum class ToolbarForm { EXPANDED, BALL, HANDLE }
+enum class ToolbarForm { EXPANDED, BALL }
 
 data class Progress(val loop: Int, val totalLoops: Int, val step: Int, val totalSteps: Int)
 

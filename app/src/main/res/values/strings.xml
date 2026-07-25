@@ -105,6 +105,8 @@
     <string name="toast_pause_inserted">Pause point inserted — do this step by hand, then press record again</string>
     <string name="toast_undone">Last step removed</string>
     <string name="toast_loaded">Loaded “%1$s” into the workspace</string>
+    <string name="toast_toolbar_hidden">Toolbar hidden. Turn it back on in the TapFlow app.</string>
+    <string name="toast_overlay_failed">Could not show the toolbar. This device may need the display-over-other-apps permission.</string>
 
     <!-- Clip actions -->
     <string name="clip_action_load">Load into workspace</string>
