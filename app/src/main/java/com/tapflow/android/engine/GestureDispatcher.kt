@@ -40,20 +40,43 @@ data class ScaleSpec(val sx: Float, val sy: Float, val maxX: Float, val maxY: Fl
     }
 }
 
-/** Turns a [Step] into an actual system gesture. The only place that calls dispatchGesture. */
-class GestureDispatcher(private val service: AccessibilityService) {
+/**
+ * What became of a dispatched gesture.
+ *
+ * The distinction matters for diagnosis. [REFUSED] means the system would not accept the gesture at
+ * all — the service is not ready, another gesture is still running, or the description was invalid.
+ * [CANCELLED] means it was accepted and then interrupted, which is what a target app blocking
+ * injected or obscured touches looks like from here. Both used to be swallowed silently, so
+ * "nothing happened" was indistinguishable from "it ran and the app ignored it".
+ */
+enum class GestureOutcome { COMPLETED, REFUSED, CANCELLED, SKIPPED }
 
-    /** Returns false when the system refused or cancelled the gesture. */
-    suspend fun perform(step: Step, scale: ScaleSpec, settings: Settings): Boolean = when (step) {
-        is GestureStep -> dispatch(step, scale, settings)
-        is GlobalStep -> service.performGlobalAction(step.kind.toGlobalAction())
-        // Waits are handled by the caller so it can honour pause requests mid-wait, and pause
-        // points are not something to dispatch at all.
-        is WaitStep, is PauseStep -> true
+/** Turns a [Step] into an actual system gesture. The only place that calls dispatchGesture. */
+class GestureDispatcher(
+    private val service: AccessibilityService,
+    /** Called for every dispatched gesture so failures can be surfaced rather than swallowed. */
+    private val report: (GestureOutcome) -> Unit = {},
+) {
+
+    suspend fun perform(step: Step, scale: ScaleSpec, settings: Settings): GestureOutcome {
+        val outcome = when (step) {
+            is GestureStep -> dispatch(step, scale, settings)
+            is GlobalStep ->
+                if (service.performGlobalAction(step.kind.toGlobalAction())) {
+                    GestureOutcome.COMPLETED
+                } else {
+                    GestureOutcome.REFUSED
+                }
+            // Waits are handled by the caller so it can honour pause requests mid-wait, and pause
+            // points are not something to dispatch at all.
+            is WaitStep, is PauseStep -> GestureOutcome.SKIPPED
+        }
+        if (outcome != GestureOutcome.SKIPPED) report(outcome)
+        return outcome
     }
 
-    private suspend fun dispatch(step: GestureStep, scale: ScaleSpec, settings: Settings): Boolean {
-        val gesture = build(step, scale, settings) ?: return false
+    private suspend fun dispatch(step: GestureStep, scale: ScaleSpec, settings: Settings): GestureOutcome {
+        val gesture = build(step, scale, settings) ?: return GestureOutcome.REFUSED
         return await(gesture)
     }
 
@@ -114,15 +137,16 @@ class GestureDispatcher(private val service: AccessibilityService) {
         }.onFailure { Log.w(TAG, "Rejected stroke", it) }.getOrNull()
     }
 
-    private suspend fun await(gesture: GestureDescription): Boolean =
+    private suspend fun await(gesture: GestureDescription): GestureOutcome =
         suspendCancellableCoroutine { continuation ->
             val callback = object : AccessibilityService.GestureResultCallback() {
                 override fun onCompleted(description: GestureDescription) {
-                    if (continuation.isActive) continuation.resume(true)
+                    if (continuation.isActive) continuation.resume(GestureOutcome.COMPLETED)
                 }
 
                 override fun onCancelled(description: GestureDescription) {
-                    if (continuation.isActive) continuation.resume(false)
+                    Log.w(TAG, "Gesture cancelled: ${gesture.describeForLog()}")
+                    if (continuation.isActive) continuation.resume(GestureOutcome.CANCELLED)
                 }
             }
 
@@ -132,8 +156,23 @@ class GestureDispatcher(private val service: AccessibilityService) {
 
             // When the call is refused outright the callback never fires, so resume here or the
             // player would hang forever on this step.
-            if (!accepted && continuation.isActive) continuation.resume(false)
+            if (!accepted) {
+                Log.w(TAG, "Gesture refused: ${gesture.describeForLog()}")
+                if (continuation.isActive) continuation.resume(GestureOutcome.REFUSED)
+            }
         }
+
+    /** Stroke bounds, so a logcat line is enough to tell whether the coordinates were sane. */
+    private fun GestureDescription.describeForLog(): String = buildString {
+        append("strokes=").append(strokeCount)
+        for (index in 0 until strokeCount) {
+            val bounds = android.graphics.RectF()
+            getStroke(index).path.computeBounds(bounds, false)
+            append(" [").append(bounds.left.toInt()).append(',').append(bounds.top.toInt())
+            append("..").append(bounds.right.toInt()).append(',').append(bounds.bottom.toInt())
+            append(" ").append(getStroke(index).duration).append("ms]")
+        }
+    }
 
     private fun randomOffset(radiusPx: Int): Pair<Float, Float> {
         if (radiusPx <= 0) return 0f to 0f

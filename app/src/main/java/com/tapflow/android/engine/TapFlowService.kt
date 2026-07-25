@@ -5,6 +5,7 @@ import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.RectF
+import android.os.SystemClock
 import android.util.Log
 import android.view.KeyEvent
 import android.view.View
@@ -73,6 +74,9 @@ class TapFlowService : AccessibilityService() {
         private const val VOLUME_LONG_PRESS_MS = 1000L
 
         private const val TAG = "TapFlowService"
+
+        /** Minimum gap between "gesture rejected" toasts. */
+        private const val GESTURE_WARNING_INTERVAL_MS = 4000L
     }
 
     /**
@@ -106,6 +110,9 @@ class TapFlowService : AccessibilityService() {
     private var toolbarYBeforePause = 0
 
     private var volumeLongPressJob: Job? = null
+
+    private var consecutiveGestureFailures = 0
+    private var lastGestureWarningAt = 0L
 
     private val settings: Settings get() = Repo.settings.value
 
@@ -230,7 +237,7 @@ class TapFlowService : AccessibilityService() {
 
     private fun buildOverlay() {
         host = OverlayHost(this)
-        dispatcher = GestureDispatcher(this)
+        dispatcher = GestureDispatcher(this) { outcome -> onGestureOutcome(outcome) }
 
         canvas = CanvasView(this).apply {
             onGesture = { strokes, down, up -> recorder.onGesture(strokes, down, up) }
@@ -686,6 +693,32 @@ class TapFlowService : AccessibilityService() {
     }
 
     private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
+
+    /**
+     * Surfaces gestures the system would not deliver.
+     *
+     * This used to be swallowed, which made "the app ignored the tap" look exactly like "the tap was
+     * never delivered" — two problems with nothing in common. Reported at most once every few
+     * seconds, because a rejected run rejects every step and a toast per step would bury the screen.
+     */
+    private fun onGestureOutcome(outcome: GestureOutcome) {
+        if (outcome == GestureOutcome.COMPLETED || outcome == GestureOutcome.SKIPPED) {
+            consecutiveGestureFailures = 0
+            return
+        }
+
+        consecutiveGestureFailures++
+        val now = SystemClock.uptimeMillis()
+        if (now - lastGestureWarningAt < GESTURE_WARNING_INTERVAL_MS) return
+        lastGestureWarningAt = now
+
+        toast(
+            getString(
+                if (outcome == GestureOutcome.CANCELLED) R.string.toast_gesture_cancelled
+                else R.string.toast_gesture_refused
+            )
+        )
+    }
 
     // --- Editing -------------------------------------------------------------
 
