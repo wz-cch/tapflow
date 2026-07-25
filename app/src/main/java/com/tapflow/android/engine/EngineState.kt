@@ -53,6 +53,9 @@ object EngineState {
     /** True while the next canvas tap should be read as "put the selected step here". */
     val pickingCoordinate = MutableStateFlow(false)
 
+    /** Whether the in-place settings panel is showing. */
+    val quickSettingsOpen = MutableStateFlow(false)
+
     /** Whether the accessibility service is connected. Drives the onboarding card. */
     val serviceRunning = MutableStateFlow(false)
 
@@ -84,5 +87,6 @@ object EngineState {
         editing.value = false
         selectedStepId.value = null
         pickingCoordinate.value = false
+        quickSettingsOpen.value = false
     }
 }

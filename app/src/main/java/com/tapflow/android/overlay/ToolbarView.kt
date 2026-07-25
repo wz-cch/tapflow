@@ -45,6 +45,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         fun onSave()
         fun onSaveAsNew()
         fun onCycleDensity()
+        fun onToggleQuickSettings()
         fun onDismiss()
         fun onCollapse()
         fun onExpand()
@@ -75,11 +76,13 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
     private val deleteStep = icon(R.drawable.ic_remove)
     private val save = icon(R.drawable.ic_save)
     private val eye = icon(R.drawable.ic_eye)
+    private val quickSettings = icon(R.drawable.ic_tune)
     private val dismiss = icon(R.drawable.ic_close)
     private val collapse = icon(R.drawable.ic_collapse)
 
     private val allButtons = listOf(
-        grip, primary, secondary, insertPause, undo, edit, addTap, deleteStep, save, eye, dismiss, collapse,
+        grip, primary, secondary, insertPause, undo, edit, addTap, deleteStep, save, eye,
+        quickSettings, dismiss, collapse,
     )
 
     private val ball = ImageView(context).apply {
@@ -103,6 +106,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         addTap.setOnClickListener { actions.onAddTap() }
         deleteStep.setOnClickListener { actions.onDeleteSelected() }
         eye.setOnClickListener { actions.onCycleDensity() }
+        quickSettings.setOnClickListener { actions.onToggleQuickSettings() }
         dismiss.setOnClickListener { actions.onDismiss() }
         collapse.setOnClickListener { actions.onCollapse() }
 
@@ -138,6 +142,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         density: MarkerDensity,
         editing: Boolean,
         hasSelection: Boolean,
+        quickSettingsOpen: Boolean,
     ) {
         expanded.visibility = if (form == ToolbarForm.EXPANDED) VISIBLE else GONE
         ball.visibility = if (form == ToolbarForm.BALL) VISIBLE else GONE
@@ -181,6 +186,10 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
             if (editing) ContextCompat.getColor(context, R.color.marker_highlight) else iconIdle
         )
         setActionEnabled(edit, hasSteps && !recording && !replaying)
+
+        quickSettings.imageTintList = android.content.res.ColorStateList.valueOf(
+            if (quickSettingsOpen) ContextCompat.getColor(context, R.color.marker_highlight) else iconIdle
+        )
 
         setActionEnabled(insertPause, !replaying)
         setActionEnabled(undo, hasSteps && !replaying)
@@ -305,6 +314,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         deleteStep.contentDescription = context.getString(R.string.action_delete)
         save.contentDescription = context.getString(R.string.action_save)
         eye.contentDescription = context.getString(R.string.action_density)
+        quickSettings.contentDescription = context.getString(R.string.action_quick_settings)
         dismiss.contentDescription = context.getString(R.string.action_dismiss)
         collapse.contentDescription = context.getString(R.string.action_collapse)
     }

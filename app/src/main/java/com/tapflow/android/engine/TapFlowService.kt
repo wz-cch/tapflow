@@ -10,6 +10,7 @@ import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.widget.Toast
+import com.tapflow.android.MainActivity
 import com.tapflow.android.R
 import com.tapflow.android.data.GestureStep
 import com.tapflow.android.data.GlobalStep
@@ -30,6 +31,7 @@ import com.tapflow.android.overlay.CanvasView
 import com.tapflow.android.overlay.Handle
 import com.tapflow.android.overlay.OverlayHost
 import com.tapflow.android.overlay.ParamCardView
+import com.tapflow.android.overlay.QuickSettingsView
 import com.tapflow.android.overlay.ToolbarView
 import com.tapflow.android.overlay.TransportView
 import com.tapflow.android.overlay.buildMarkers
@@ -44,6 +46,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 /**
  * The only thing that actually does anything.
@@ -83,11 +86,13 @@ class TapFlowService : AccessibilityService() {
     private lateinit var toolbar: ToolbarView
     private lateinit var transport: TransportView
     private lateinit var paramCard: ParamCardView
+    private lateinit var quickSettings: QuickSettingsView
 
     private lateinit var canvasParams: WindowManager.LayoutParams
     private lateinit var toolbarParams: WindowManager.LayoutParams
     private lateinit var transportParams: WindowManager.LayoutParams
     private lateinit var paramCardParams: WindowManager.LayoutParams
+    private lateinit var quickSettingsParams: WindowManager.LayoutParams
 
     private lateinit var dispatcher: GestureDispatcher
     private lateinit var recorder: Recorder
@@ -221,6 +226,7 @@ class TapFlowService : AccessibilityService() {
         toolbar = ToolbarView(this, ToolbarActions())
         transport = TransportView(this, TransportActions())
         paramCard = ParamCardView(this, ParamCardActions())
+        quickSettings = QuickSettingsView(this, QuickSettingsActions())
 
         canvasParams = host.params(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -235,6 +241,10 @@ class TapFlowService : AccessibilityService() {
             WindowManager.LayoutParams.WRAP_CONTENT,
         )
         paramCardParams = host.params(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+        )
+        quickSettingsParams = host.params(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
         )
@@ -305,6 +315,7 @@ class TapFlowService : AccessibilityService() {
         stopRecording(collapseForInput = false)
         player.stop()
         exitEditing()
+        host.remove(quickSettings)
         host.remove(paramCard)
         host.remove(toolbar)
         host.remove(transport)
@@ -324,6 +335,7 @@ class TapFlowService : AccessibilityService() {
         scope.launch { EngineState.editing.collect { syncOverlay() } }
         scope.launch { EngineState.selectedStepId.collect { syncOverlay() } }
         scope.launch { EngineState.pickingCoordinate.collect { syncOverlay() } }
+        scope.launch { EngineState.quickSettingsOpen.collect { syncOverlay() } }
         scope.launch {
             EngineState.progress.collect { progress ->
                 // Updated here rather than in syncOverlay so the highlight follows playback without
@@ -356,6 +368,7 @@ class TapFlowService : AccessibilityService() {
             density = current.markerDensity,
             editing = editing,
             hasSelection = selectedId != null,
+            quickSettingsOpen = EngineState.quickSettingsOpen.value,
         )
         host.update(toolbar, toolbarParams)
 
@@ -377,7 +390,38 @@ class TapFlowService : AccessibilityService() {
         syncBlockedAreas()
 
         syncParamCard()
+        syncQuickSettings()
         syncTransport()
+    }
+
+    private fun syncQuickSettings() {
+        if (!EngineState.quickSettingsOpen.value) {
+            host.remove(quickSettings)
+            return
+        }
+
+        quickSettings.render(settings)
+        if (!host.isAttached(quickSettings)) {
+            val size = host.displaySize()
+            // Roughly centred, biased upwards so the toolbar down one edge stays visible next to it.
+            quickSettingsParams.x = (size.x * 0.5f - dpToPx(150f)).toInt().coerceAtLeast(0)
+            quickSettingsParams.y = (size.y * 0.12f).toInt()
+            host.add(quickSettings, quickSettingsParams)
+        }
+        host.update(quickSettings, quickSettingsParams)
+    }
+
+    private fun dpToPx(dp: Float) = dp * resources.displayMetrics.density
+
+    /**
+     * Rounds to a multiple of [step] before clamping.
+     *
+     * Repeated float addition drifts, and a value like 0.7000001 fails an exact comparison against
+     * a range end and shows up as "0.7" that will not move any further.
+     */
+    private fun snap(value: Float, step: Float, range: ClosedFloatingPointRange<Float>): Float {
+        val snapped = (value / step).roundToInt() * step
+        return snapped.coerceIn(range.start, range.endInclusive)
     }
 
     /**
@@ -444,6 +488,7 @@ class TapFlowService : AccessibilityService() {
             toolbar to toolbarParams,
             transport to transportParams,
             paramCard to paramCardParams,
+            quickSettings to quickSettingsParams,
         )
         windows.forEach { (view, params) ->
             if (!host.isAttached(view) || view.visibility != View.VISIBLE) return@forEach
@@ -675,6 +720,52 @@ class TapFlowService : AccessibilityService() {
         transform(step)?.let { Workspace.updateStep(it) }
     }
 
+    private inner class QuickSettingsActions : QuickSettingsView.Actions {
+        override fun onAdjustLoopCount(delta: Int) = Repo.updateSettings { current ->
+            // 0 means "until stopped" and simply sits at the bottom of the range, rather than being
+            // a special case that has to be handled everywhere else.
+            current.copy(
+                defaultLoopCount = (current.defaultLoopCount + delta)
+                    .coerceIn(0, Settings.MAX_LOOP_COUNT)
+            )
+        }
+
+        override fun onAdjustSpeed(delta: Float) = Repo.updateSettings { current ->
+            current.copy(speed = snap(current.speed + delta, 0.25f, Settings.SPEED_RANGE))
+        }
+
+        override fun onToggleReplayEachGesture() =
+            Repo.updateSettings { it.copy(replayEachGesture = !it.replayEachGesture) }
+
+        override fun onToggleKeepScreenOn() =
+            Repo.updateSettings { it.copy(keepScreenOn = !it.keepScreenOn) }
+
+        override fun onToggleDim() = Repo.updateSettings { it.copy(dimOverlay = !it.dimOverlay) }
+
+        override fun onToggleTimer() = Repo.updateSettings { it.copy(showTimer = !it.showTimer) }
+
+        override fun onAdjustUiScale(delta: Float) = Repo.updateSettings { current ->
+            current.copy(uiScale = snap(current.uiScale + delta, 0.1f, Settings.UI_SCALE_RANGE))
+        }
+
+        override fun onAdjustUiOpacity(delta: Float) = Repo.updateSettings { current ->
+            current.copy(uiOpacity = snap(current.uiOpacity + delta, 0.1f, Settings.UI_OPACITY_RANGE))
+        }
+
+        override fun onOpenFullSettings() {
+            EngineState.quickSettingsOpen.value = false
+            startActivity(
+                Intent(this@TapFlowService, MainActivity::class.java)
+                    .putExtra(MainActivity.EXTRA_OPEN_SETTINGS, true)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        }
+
+        override fun onClose() {
+            EngineState.quickSettingsOpen.value = false
+        }
+    }
+
     private inner class ParamCardActions : ParamCardView.Actions {
         override fun onAdjustDuration(deltaMs: Long) = adjustSelected { step ->
             (step as? GestureStep)?.let { it.withDuration(it.duration + deltaMs) }
@@ -770,6 +861,13 @@ class TapFlowService : AccessibilityService() {
 
         override fun onCycleDensity() =
             Repo.updateSettings { it.copy(markerDensity = it.markerDensity.next()) }
+
+        override fun onToggleQuickSettings() {
+            val opening = !EngineState.quickSettingsOpen.value
+            EngineState.quickSettingsOpen.value = opening
+            // Re-stack above the canvas, which covers the whole screen while recording or editing.
+            if (opening) scope.launch { host.bringToFront(quickSettings, quickSettingsParams) }
+        }
 
         /**
          * Dismiss turns the overlay off rather than shrinking it.

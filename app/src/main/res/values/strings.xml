@@ -64,6 +64,7 @@
     <string name="action_edit_mode">Edit mode</string>
     <string name="action_save">Save as clip</string>
     <string name="action_density">Marker density</string>
+    <string name="action_quick_settings">Quick settings</string>
     <string name="action_collapse">Collapse</string>
     <string name="action_dismiss">Hide toolbar</string>
 
@@ -134,6 +135,12 @@
     <string name="param_delay">Delay before</string>
     <string name="param_ms">%1$d ms</string>
     <string name="param_done">Done</string>
+
+    <!-- Quick settings panel on the overlay -->
+    <string name="quick_title">Quick settings</string>
+    <string name="quick_on">ON</string>
+    <string name="quick_off">OFF</string>
+    <string name="quick_full_settings">All settings in the app →</string>
 
     <!-- Settings -->
     <string name="settings_title">Settings</string>

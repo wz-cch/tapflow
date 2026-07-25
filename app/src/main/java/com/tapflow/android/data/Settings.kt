@@ -85,6 +85,8 @@ data class Settings(
 
         const val JITTER_RADIUS_MAX = 150
         const val JITTER_TIME_MAX = 50
+        const val MAX_LOOP_COUNT = 9999
+        val SPEED_RANGE = 0.25f..4f
         val UI_SCALE_RANGE = 0.7f..1.5f
         val UI_OPACITY_RANGE = 0.3f..1.0f
     }
