@@ -99,6 +99,23 @@
     <string name="clip_summary">%1$d actions · about %2$s</string>
     <string name="clip_summary_with_pauses">%1$d actions · %2$d pause points · about %3$s</string>
 
+    <!-- Toasts raised from the overlay -->
+    <string name="toast_saved">Saved as “%1$s”</string>
+    <string name="toast_nothing_to_save">Nothing recorded yet</string>
+    <string name="toast_pause_inserted">Pause point inserted — do this step by hand, then press record again</string>
+    <string name="toast_undone">Last step removed</string>
+    <string name="toast_loaded">Loaded “%1$s” into the workspace</string>
+
+    <!-- Clip actions -->
+    <string name="clip_action_load">Load into workspace</string>
+    <string name="clip_action_rename">Rename</string>
+    <string name="clip_action_delete">Delete</string>
+    <string name="clip_rename_title">Rename clip</string>
+    <string name="clip_delete_title">Delete “%1$s”?</string>
+    <string name="clip_delete_body">This cannot be undone.</string>
+    <string name="dialog_confirm">OK</string>
+    <string name="dialog_cancel">Cancel</string>
+
     <!-- Settings -->
     <string name="settings_title">Settings</string>
     <string name="settings_reset">Restore defaults</string>
