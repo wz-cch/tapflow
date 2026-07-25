@@ -220,6 +220,19 @@ enum class MatchMode {
     @SerialName("view_id") VIEW_ID,
 }
 
+/**
+ * Autosaved workspace draft.
+ *
+ * The workspace is what the user is actually manipulating on screen before pressing save. It is
+ * written out on every change so a hard-recorded sequence survives the service being restarted.
+ */
+@Serializable
+data class WorkspaceSnapshot(
+    val steps: List<Step> = emptyList(),
+    val sourceClipId: String? = null,
+    val screen: ScreenSpec? = null,
+)
+
 @Serializable
 data class Flow(
     val id: String = newId(),
