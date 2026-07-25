@@ -30,20 +30,21 @@ Android 按鍵精靈:錄製你的觸控操作並自動重播。**不需要 root*
 | 階段 | 內容 | 狀態 |
 |---|---|---|
 | 規格 | [docs/SPEC.md](docs/SPEC.md) v2.0 | ✅ 定稿 |
-| M1 | 能錄能播:三個 window、錄製與逐手勢補發、接續錄製、暫停點、復原上一步、標記顯示、工作區、存片段、播放 | 🚧 未開始 |
+| M1 | 能錄能播:三個 window、錄製與逐手勢補發、接續錄製、暫停點、復原上一步、標記顯示、工作區、存片段、播放 | 🧪 已實作,待實機驗收 |
 | M2 | 螢幕上直接編輯:拖曳標記、加點刪點、參數卡、全域設定 | ⬜ |
 | M3 | 流程層:多片段串成流程、兩層迴圈 | ⬜ |
 | M4 | 條件等待、多指手勢、匯出匯入 | ⬜ |
 
-**目前專案編不過** —— Manifest 引用的 `App` 與 `MainActivity` 還沒建立,那是 M1 的範圍。這是預期狀態。
-
-已完成的部分:
+M1 的程式碼都在 `feature/m1-record-replay` 分支上,**還沒在實機上驗過**。三個風險項目見 [docs/SPEC.md](docs/SPEC.md) 第十五節:逐手勢補發的手感、`FLAG_NOT_TOUCHABLE` 切換是否可靠、暫停時鍵盤是否真的按得到。
 
 ```
 docs/SPEC.md                     完整規格書
 CONTRIBUTING.md                  Git Flow、commit 格式、程式碼與語系規則
-app/src/main/java/.../data/      三層資料模型、全域設定、持久化(純 Kotlin,無 Android 依賴)
+app/src/main/java/.../data/      三層資料模型、全域設定、持久化
 app/src/main/java/.../text/      使用者可見字串的格式化
+app/src/main/java/.../engine/    無障礙服務、工作區、錄製、播放、手勢派送
+app/src/main/java/.../overlay/   三個懸浮視窗與標記繪製
+app/src/main/java/.../ui/        Compose 主畫面
 app/src/main/res/values/         英文語系(預設)
 app/src/main/res/values-zh-rTW/  正體中文語系
 .github/workflows/android.yml    CI

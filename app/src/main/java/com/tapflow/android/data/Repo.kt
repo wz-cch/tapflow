@@ -6,6 +6,9 @@ import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+// Without this the single-argument reified form is invisible and the call resolves to the
+// two-argument member encodeToString(serializer, value) instead.
+import kotlinx.serialization.encodeToString
 import java.io.File
 
 /**
@@ -28,6 +31,7 @@ object Repo {
     private val clipsFile: File get() = File(appContext.filesDir, "clips.json")
     private val flowsFile: File get() = File(appContext.filesDir, "flows.json")
     private val settingsFile: File get() = File(appContext.filesDir, "settings.json")
+    private val workspaceFile: File get() = File(appContext.filesDir, "workspace.json")
 
     // --- Persisted data ---
 
@@ -122,6 +126,19 @@ object Repo {
 
     fun resetSettings() = updateSettings { Settings.DEFAULT }
 
+    // --- Workspace draft ---
+    //
+    // All file access lives in this object, so the in-memory workspace (engine/Workspace.kt) calls
+    // through here rather than touching filesDir itself.
+
+    fun readWorkspace(): WorkspaceSnapshot = runCatching {
+        if (!workspaceFile.exists()) WorkspaceSnapshot()
+        else AppJson.decodeFromString<WorkspaceSnapshot>(workspaceFile.readText())
+    }.onFailure { Log.e(TAG, "Failed to read workspace draft, starting empty", it) }
+        .getOrDefault(WorkspaceSnapshot())
+
+    fun writeWorkspace(snapshot: WorkspaceSnapshot) = write(workspaceFile, snapshot, "workspace draft")
+
     // --- Preferences ---
 
     fun setCurrentFlow(id: String?) {
@@ -138,6 +155,11 @@ object Repo {
         overlayEnabled.value = enabled
         prefs.edit().putBoolean(KEY_OVERLAY_ON, enabled).apply()
     }
+
+    /** Small scalar preferences, used for remembering where the floating windows were dragged to. */
+    fun readInt(key: String, default: Int): Int = prefs.getInt(key, default)
+
+    fun writeInt(key: String, value: Int) = prefs.edit().putInt(key, value).apply()
 
     // --- I/O ---
 

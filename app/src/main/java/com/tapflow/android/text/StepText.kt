@@ -30,7 +30,9 @@ import java.time.format.DateTimeFormatter
  */
 
 fun Step.label(res: Resources): String = when (this) {
-    is GestureStep -> label(res)
+    // Named differently from this function on purpose: two same-named extensions on a type and its
+    // supertype invite the compiler to resolve the wrong one and recurse forever.
+    is GestureStep -> gestureLabel(res)
     is GlobalStep -> res.getString(R.string.step_global, kind.label(res))
     is WaitStep -> res.getString(R.string.step_wait, ms)
     is PauseStep -> if (note.isBlank()) {
@@ -40,7 +42,7 @@ fun Step.label(res: Resources): String = when (this) {
     }
 }
 
-fun GestureStep.label(res: Resources): String {
+fun GestureStep.gestureLabel(res: Resources): String {
     val stroke = strokes.first()
     val start = stroke.start
     return when (kind) {

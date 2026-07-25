@@ -96,6 +96,23 @@
     <string name="clip_summary">%1$d 個動作 · 約 %2$s</string>
     <string name="clip_summary_with_pauses">%1$d 個動作 · %2$d 個暫停點 · 約 %3$s</string>
 
+    <!-- 從懸浮視窗發出的提示 -->
+    <string name="toast_saved">已存成「%1$s」</string>
+    <string name="toast_nothing_to_save">還沒有錄到任何動作</string>
+    <string name="toast_pause_inserted">已插入暫停點 — 請手動完成這一步,再按錄製接續</string>
+    <string name="toast_undone">已移除最後一步</string>
+    <string name="toast_loaded">已把「%1$s」載入工作區</string>
+
+    <!-- 片段操作 -->
+    <string name="clip_action_load">載入到工作區</string>
+    <string name="clip_action_rename">重新命名</string>
+    <string name="clip_action_delete">刪除</string>
+    <string name="clip_rename_title">重新命名片段</string>
+    <string name="clip_delete_title">要刪除「%1$s」嗎?</string>
+    <string name="clip_delete_body">刪除後無法復原。</string>
+    <string name="dialog_confirm">確定</string>
+    <string name="dialog_cancel">取消</string>
+
     <!-- 設定 -->
     <string name="settings_title">設定</string>
     <string name="settings_reset">恢復預設值</string>

@@ -1,4 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#FF1B1F2A</color>
+
+    <!-- Floating windows. Drawn over arbitrary apps, so they stay dark and semi-opaque
+         regardless of the system theme. -->
+    <color name="overlay_panel">#E6202632</color>
+    <color name="overlay_panel_pressed">#FF39445A</color>
+    <color name="overlay_icon">#FFE9EEF7</color>
+    <color name="overlay_icon_muted">#FF6E798C</color>
+    <color name="overlay_text">#FFE9EEF7</color>
+    <color name="overlay_text_dim">#FF9AA6B8</color>
+
+    <!-- Engine state, used for the collapsed ball and the record tint. -->
+    <color name="state_idle">#FF8A94A6</color>
+    <color name="state_recording">#FFE5484D</color>
+    <color name="state_playing">#FF30A46C</color>
+    <color name="state_paused">#FFF5A524</color>
+
+    <!-- On-screen step markers. -->
+    <color name="marker_tap">#FF3E9DF7</color>
+    <color name="marker_long_press">#FF9B7BF7</color>
+    <color name="marker_swipe">#FFE5734F</color>
+    <color name="marker_multi">#FF2FBFAE</color>
+    <color name="marker_path">#59FFFFFF</color>
+    <color name="marker_label">#FFFFFFFF</color>
+    <color name="marker_highlight">#FFFFD24A</color>
+
+    <!-- Recording scrim and the hatched area the toolbar covers. -->
+    <color name="record_scrim">#14E5484D</color>
+    <color name="warn_hatch">#4DE5484D</color>
 </resources>
