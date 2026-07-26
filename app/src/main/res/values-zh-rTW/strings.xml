@@ -111,7 +111,7 @@
     <string name="toast_overlay_failed">工具列掛不上去。這台裝置可能需要「顯示在其他應用上層」權限。</string>
     <string name="toast_gesture_refused">系統不接受這個手勢。可能是座標超出畫面,或還有另一個手勢在執行。</string>
     <string name="toast_gesture_cancelled">手勢執行到一半被取消。通常是畫面上的 app 拒絕接收注入或被遮蔽的觸控,無 root 無法繞過。</string>
-    <string name="toast_replay_echo">遮罩沒有及時放行,補發的手勢被它自己吃掉了。請在快捷設定裡打開「補發時把遮罩移開」。</string>
+    <string name="toast_replay_echo">遮罩沒有及時放行,這一步的補發沒有送出去。再試一次,或關掉「逐手勢補發」改用純盲錄。</string>
     <string name="home_version">版本 %1$s</string>
 
     <!-- 片段操作 -->
@@ -167,8 +167,6 @@
     <string name="settings_replay_each">逐手勢補發</string>
     <string name="settings_replay_each_body">錄到的每個手勢會立刻送回下層 app,畫面才會前進。關掉就是純盲錄:畫面完全不動,但快速滑動比較準。</string>
     <string name="settings_replay_delay">補發後等待</string>
-    <string name="settings_avoid_obscuring">補發時把遮罩移開</string>
-    <string name="settings_avoid_obscuring_body">給「錄製時點了沒反應」的 app 用。有些 app 會丟棄任何從遮罩底下進來的觸控,補發的手勢因此無效;開啟後每次補發會把遮罩移到畫面外。除非需要請保持關閉 —— 每個手勢都搬動 window 很干擾,而且在某些裝置上曾造成標記位置偏移。</string>
     <string name="settings_section_appearance">外觀</string>
     <string name="settings_ui_scale">工具列大小</string>
     <string name="settings_ui_opacity">工具列不透明度</string>

@@ -604,16 +604,6 @@ class TapFlowService : AccessibilityService() {
         canvas.blockedAreas = areas
     }
 
-    /**
-     * True while a captured gesture is being replayed and the canvas is parked off screen.
-     *
-     * Only when [Settings.avoidObscuringOnReplay] is on. It is moved rather than resized: shrinking
-     * the window to a pixel also worked in principle, but on a real device it visibly shifted the
-     * screen and every marker sideways, presumably because the view's coordinate space follows the
-     * window size. Moving keeps the size, so the coordinate space is untouched.
-     */
-    private var canvasOutOfTheWay = false
-
     private fun updateCanvasFlags() {
         var flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
@@ -623,11 +613,9 @@ class TapFlowService : AccessibilityService() {
             // Never while a captured gesture is being replayed. The canvas would otherwise swallow
             // the event it just injected and the app below would see nothing at all.
             //
-            // This is keyed off canvas.replaying, not canvasOutOfTheWay. They are different things:
-            // not intercepting is what makes the replay possible in the first place, whereas moving
-            // the window away is an extra measure for apps that discard obscured touches. Keying it
-            // off the latter tied an essential behaviour to an optional setting, and with that
-            // setting off — the default — per-gesture replay did nothing anywhere.
+            // Keyed off canvas.replaying and nothing else. An earlier attempt tied this to an
+            // optional "move the overlay aside" setting, and because that setting defaulted off the
+            // flag was never applied and per-gesture replay did nothing anywhere.
             CanvasMode.RECORDING -> !canvas.replaying
             CanvasMode.EDIT -> true
             CanvasMode.READ_ONLY -> false
@@ -639,21 +627,17 @@ class TapFlowService : AccessibilityService() {
             flags = flags or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
         }
 
-        // Parked a whole screen below the display. The size stays MATCH_PARENT so the view's
-        // coordinate space never changes, and touch samples add getLocationOnScreen anyway, so even a
-        // stale frame cannot mis-record.
-        val offsetY = if (canvasOutOfTheWay) host.displaySize().y else 0
-
-        if (canvasParams.flags == flags && canvasParams.y == offsetY) return
+        // The window is never moved or resized around a replay. Shrinking it shifted the whole
+        // coordinate space sideways, and moving it made the system cancel the gesture in flight —
+        // both broke recording everywhere in exchange for helping apps that discard obscured
+        // touches, which was never actually shown to work. Those apps stay a documented limitation.
+        if (canvasParams.flags == flags) return
         canvasParams.flags = flags
-        canvasParams.y = offsetY
         host.update(canvas, canvasParams)
     }
 
     private fun setCanvasTouchable(touchable: Boolean) {
-        val replaying = !touchable && canvas.mode == CanvasMode.RECORDING
-        canvas.replaying = replaying
-        canvasOutOfTheWay = replaying && settings.avoidObscuringOnReplay
+        canvas.replaying = !touchable && canvas.mode == CanvasMode.RECORDING
         updateCanvasFlags()
     }
 
@@ -666,7 +650,6 @@ class TapFlowService : AccessibilityService() {
         EngineState.toolbarForm.value = ToolbarForm.EXPANDED
         toolbar.ballIntent = BallIntent.EXPAND
         canvas.replaying = false
-        canvasOutOfTheWay = false
         recorder.restartTiming()
 
         // syncOverlay derives the canvas mode, flags, attachment and stacking from the state.
@@ -678,7 +661,6 @@ class TapFlowService : AccessibilityService() {
         if (!EngineState.isRecording) return
 
         canvas.replaying = false
-        canvasOutOfTheWay = false
         EngineState.mode.value = Mode.IDLE
         if (collapseForInput) collapseToBall(BallIntent.RESUME_RECORDING)
         syncOverlay()
@@ -901,9 +883,6 @@ class TapFlowService : AccessibilityService() {
 
         override fun onToggleReplayEachGesture() =
             Repo.updateSettings { it.copy(replayEachGesture = !it.replayEachGesture) }
-
-        override fun onToggleAvoidObscuring() =
-            Repo.updateSettings { it.copy(avoidObscuringOnReplay = !it.avoidObscuringOnReplay) }
 
         override fun onToggleKeepScreenOn() =
             Repo.updateSettings { it.copy(keepScreenOn = !it.keepScreenOn) }

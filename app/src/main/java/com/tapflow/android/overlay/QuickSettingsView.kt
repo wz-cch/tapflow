@@ -32,7 +32,6 @@ class QuickSettingsView(context: Context, private val actions: Actions) : Scroll
         fun onAdjustLoopCount(delta: Int)
         fun onAdjustSpeed(delta: Float)
         fun onToggleReplayEachGesture()
-        fun onToggleAvoidObscuring()
         fun onToggleKeepScreenOn()
         fun onToggleDim()
         fun onToggleTimer()
@@ -49,7 +48,6 @@ class QuickSettingsView(context: Context, private val actions: Actions) : Scroll
     private val scaleValue = valueLabel()
     private val opacityValue = valueLabel()
     private val replayToggle = togglePill()
-    private val avoidObscuringToggle = togglePill()
     private val keepScreenToggle = togglePill()
     private val dimToggle = togglePill()
     private val timerToggle = togglePill()
@@ -78,11 +76,6 @@ class QuickSettingsView(context: Context, private val actions: Actions) : Scroll
         rows.addView(toggleRow(R.string.settings_replay_each, replayToggle) {
             actions.onToggleReplayEachGesture()
         })
-        // Here rather than only in the app because whether it is needed depends on the app currently
-        // on screen, so it has to be flippable without leaving it.
-        rows.addView(toggleRow(R.string.settings_avoid_obscuring, avoidObscuringToggle) {
-            actions.onToggleAvoidObscuring()
-        })
         rows.addView(toggleRow(R.string.settings_keep_screen_on, keepScreenToggle) {
             actions.onToggleKeepScreenOn()
         })
@@ -109,7 +102,6 @@ class QuickSettingsView(context: Context, private val actions: Actions) : Scroll
             context.getString(R.string.value_percent, (settings.uiOpacity * 100).roundToInt())
 
         setToggle(replayToggle, settings.replayEachGesture)
-        setToggle(avoidObscuringToggle, settings.avoidObscuringOnReplay)
         setToggle(keepScreenToggle, settings.keepScreenOn)
         setToggle(dimToggle, settings.dimOverlay)
         setToggle(timerToggle, settings.showTimer)

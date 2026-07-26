@@ -114,7 +114,7 @@
     <string name="toast_overlay_failed">Could not show the toolbar. This device may need the display-over-other-apps permission.</string>
     <string name="toast_gesture_refused">The system would not accept the gesture. The coordinates may be off screen, or another gesture is still running.</string>
     <string name="toast_gesture_cancelled">The gesture was cancelled part way. This usually means the app on screen rejects injected or obscured touches, which cannot be worked around without root.</string>
-    <string name="toast_replay_echo">The overlay did not step aside in time and swallowed the replayed gesture. Turn on “Move the overlay aside to replay” in quick settings.</string>
+    <string name="toast_replay_echo">The overlay did not release the touch in time, so this gesture was not passed on. Try again, or turn off “Replay each gesture” to record blind.</string>
     <string name="home_version">version %1$s</string>
 
     <!-- Clip actions -->
@@ -170,8 +170,6 @@
     <string name="settings_replay_each">Replay each gesture</string>
     <string name="settings_replay_each_body">Sends every recorded gesture straight back to the app underneath so the screen moves on. Turn it off for blind recording, where the screen never changes but fast swipes stay accurate.</string>
     <string name="settings_replay_delay">Wait after replaying</string>
-    <string name="settings_avoid_obscuring">Move the overlay aside to replay</string>
-    <string name="settings_avoid_obscuring_body">For apps that ignore taps while recording. Some apps discard any touch arriving under an overlay, which makes the replayed gesture do nothing; this parks the overlay off screen for each one. Leave it off unless you need it — moving the window on every gesture is intrusive and has been seen to shift the markers on some devices.</string>
     <string name="settings_section_appearance">Appearance</string>
     <string name="settings_ui_scale">Toolbar size</string>
     <string name="settings_ui_opacity">Toolbar opacity</string>
