@@ -11,7 +11,14 @@ android {
 
     defaultConfig {
         applicationId = "com.tapflow.android"
-        minSdk = 26
+
+        // Android 7.0. Nothing this app does actually needs more: dispatchGesture and
+        // canPerformGestures both arrived in 24, and TYPE_ACCESSIBILITY_OVERLAY in 22. The three
+        // things that did require 26 were java.time (now desugared), the adaptive launcher icon (a
+        // legacy vector sits in mipmap/ for older releases) and TYPE_APPLICATION_OVERLAY (guarded in
+        // OverlayHost). The one genuinely gated capability left is the four-argument
+        // StrokeDescription with willContinue, which would only refine swipe fidelity.
+        minSdk = 24
         targetSdk = 35
         versionCode = 1
 
@@ -35,6 +42,9 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // java.time is API 26; desugaring makes it work back to minSdk without rewriting the
+        // formatting code around SimpleDateFormat.
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -66,4 +76,6 @@ dependencies {
 
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.3")
 }

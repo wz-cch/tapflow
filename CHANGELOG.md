@@ -35,6 +35,11 @@
 - 懸浮工具列多一顆快捷設定鍵:迴圈次數、速度、逐手勢補發、螢幕常亮、黑幕、計時器、工具列大小與不透明度都能在目標 app 裡直接改,面板底部有連結可跳到完整設定
 - 拖曳期間不寫草稿檔,放開才 flush —— 一次拖曳一次寫入,而不是每個觸控取樣寫一次
 
+### Changed — 支援 Android 7
+- **minSdk 從 26 降到 24(Android 7.0)。** 逐項查過,不影響任何功能:`dispatchGesture` 與 `canPerformGestures` 都是 API 24、`TYPE_ACCESSIBILITY_OVERLAY` 是 22。原本頂到 26 的只有三件事,都已處理 —— `java.time` 改用 core library desugaring、adaptive 圖示移到 `mipmap-anydpi-v26` 並在預設資料夾放一般 vector、`TYPE_APPLICATION_OVERLAY` 加版本判斷(舊版用 `TYPE_PHONE`)
+- 唯一仍被 API 26 鎖住的是 `StrokeDescription` 的 `willContinue` 四參數建構子(分段 stroke,用來細緻化曲線滑動的速度變化)。它本來就是 M4 的可選項;真要做時加版本判斷,舊版退回單段 stroke
+- 舊版 Android 對 overlay 的限制其實更少(沒有 Android 12 的不信任觸控封鎖),所以風險不在 API 而在測試面:Android 7 時代的 OEM ROM 對背景服務更兇,「服務不重新綁定」在那類裝置上可能更頻繁
+
 ### Removed — 第六輪實機測試回饋
 - **「補發時把遮罩移開」整個移除。** 它從未被證實對被擋的 app 有幫助,卻確實弄壞了原本正常的桌面錄製 —— 打開時會出現「手勢被取消」,推測是在手勢送出前後搬動 window 會讓系統取消進行中的觸控串流。成本已證實、效益未證實,所以移除
 - 補發路徑回到只切換 `FLAG_NOT_TOUCHABLE`,不再對畫布做任何搬移或縮放。會丟棄被遮蔽觸控的 app 回歸為 README 已列的限制

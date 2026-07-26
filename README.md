@@ -2,7 +2,7 @@
 
 Android 按鍵精靈:錄製你的觸控操作並自動重播。**不需要 root**,靠無障礙服務(`AccessibilityService`)實現。
 
-純 Kotlin + Jetpack Compose。自用側載,不上 Google Play。
+純 Kotlin + Jetpack Compose。支援 **Android 7.0 以上**。自用側載,不上 Google Play。
 
 > **完整規格見 [docs/SPEC.md](docs/SPEC.md)** —— 資料模型、狀態機、互動設計、分期計畫都在裡面。
 > 開發慣例(Git Flow、commit 格式、程式碼與語系規則)見 [CONTRIBUTING.md](CONTRIBUTING.md)。
@@ -57,7 +57,7 @@ app/src/main/res/values-zh-rTW/  正體中文語系
 
 本專案**不需要在本機安裝 Android Studio**。推上 GitHub 後 [Actions](.github/workflows/android.yml) 會自動編譯,到該次 run 的 Artifacts 下載 `app-debug.apk`。
 
-本機若要編譯,需要 JDK 17 + Android SDK(compileSdk 35),然後:
+本機若要編譯,需要 JDK 17 + Android SDK(compileSdk 35,minSdk 24),然後:
 
 ```bash
 gradle assembleDebug
