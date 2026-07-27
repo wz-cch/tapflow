@@ -6,6 +6,7 @@ Android 按鍵精靈:錄製你的觸控操作並自動重播。**不需要 root*
 
 > **完整規格見 [docs/SPEC.md](docs/SPEC.md)** —— 資料模型、狀態機、互動設計、分期計畫都在裡面。
 > 開發慣例(Git Flow、commit 格式、程式碼與語系規則)見 [CONTRIBUTING.md](CONTRIBUTING.md)。
+> **接手開發前先讀 [docs/HANDOFF.md](docs/HANDOFF.md)** —— 實機驗證狀態、待決事項、以及每個踩過一次的坑。
 
 ---
 
@@ -40,6 +41,7 @@ Android 按鍵精靈:錄製你的觸控操作並自動重播。**不需要 root*
 
 ```
 docs/SPEC.md                     完整規格書
+docs/HANDOFF.md                  交接筆記:驗證狀態、待決事項、踩過的坑
 CONTRIBUTING.md                  Git Flow、commit 格式、程式碼與語系規則
 app/src/main/java/.../data/      三層資料模型、全域設定、持久化
 app/src/main/java/.../text/      使用者可見字串的格式化
