@@ -108,6 +108,27 @@ fun Node.label(res: Resources, clips: List<Clip>): String = when (this) {
     is GlobalNode -> res.getString(R.string.step_global, kind.label(res))
 }
 
+/**
+ * One-line description of a clip for a list row.
+ *
+ * Shared by the app's clip list and the overlay's load dialog, so the two never drift apart.
+ */
+fun clipSummary(res: Resources, clip: Clip): String {
+    val duration = formatDuration(clip.estimatedDurationMs)
+    return if (clip.pauseCount > 0) {
+        res.getString(R.string.clip_summary_with_pauses, clip.stepCount, clip.pauseCount, duration)
+    } else {
+        res.getString(R.string.clip_summary, clip.stepCount, duration)
+    }
+}
+
+private fun formatDuration(ms: Long): String {
+    val totalSeconds = ms / 1000
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return if (minutes > 0) "${minutes}m ${seconds}s" else "${seconds}s"
+}
+
 /** Default name for a freshly saved clip, e.g. "Recording 07-25 14:32". */
 fun defaultClipName(res: Resources, createdAt: Long): String {
     val stamp = CLIP_NAME_FORMAT.format(Instant.ofEpochMilli(createdAt).atZone(ZoneId.systemDefault()))

@@ -35,12 +35,22 @@ object Workspace {
     val isEmpty: Boolean get() = steps.value.isEmpty()
     val size: Int get() = steps.value.size
 
+    /**
+     * Brings back the draft, but only if it held unsaved work.
+     *
+     * A saved workspace is already a clip, so restoring it looks like the app opening a file by
+     * itself. The draft is here to stop a long recording being lost, nothing more.
+     */
     fun restore() {
         val snapshot = Repo.readWorkspace()
+        if (!snapshot.dirty) {
+            clear()
+            return
+        }
         steps.value = snapshot.steps
         sourceClipId = snapshot.sourceClipId
         screen = snapshot.screen
-        dirty.value = false
+        dirty.value = true
     }
 
     fun append(step: Step, capturedOn: ScreenSpec) {
@@ -115,22 +125,27 @@ object Workspace {
     }
 
     /**
-     * Commits the workspace to a clip.
+     * Commits the workspace to a clip under [name].
      *
-     * When [asNew] is false and the workspace came from a clip, that clip is overwritten and keeps
-     * its name; otherwise a new clip is created with [defaultName].
+     * When [asNew] is false and the workspace came from a clip, that clip is updated in place;
+     * otherwise a new one is created. [name] always wins, so renaming while saving works.
      *
      * Returns null when there is nothing to save, or when no screen geometry was ever captured —
      * without it replay could not rescale coordinates on another device.
      */
-    fun commit(defaultName: String, now: Long, asNew: Boolean): Clip? {
+    fun commit(name: String, now: Long, asNew: Boolean): Clip? {
         val currentSteps = steps.value
         val capturedOn = screen
         if (currentSteps.isEmpty() || capturedOn == null) return null
 
+        val cleanName = name.trim().ifEmpty { return null }
         val existing = if (asNew) null else Repo.clipById(sourceClipId)
-        val clip = existing?.copy(steps = currentSteps, screen = capturedOn, updatedAt = now)
-            ?: Clip(name = defaultName, steps = currentSteps, screen = capturedOn, createdAt = now)
+        val clip = existing?.copy(
+            name = cleanName,
+            steps = currentSteps,
+            screen = capturedOn,
+            updatedAt = now,
+        ) ?: Clip(name = cleanName, steps = currentSteps, screen = capturedOn, createdAt = now)
 
         Repo.upsertClip(clip)
         sourceClipId = clip.id
@@ -140,11 +155,15 @@ object Workspace {
         return clip
     }
 
+    /** Name to offer when saving: the source clip's, or a generated one. */
+    fun suggestedName(fallback: String): String =
+        Repo.clipById(sourceClipId)?.name ?: fallback
+
     private fun markDirty() {
         dirty.value = true
         persist()
     }
 
     private fun persist() =
-        Repo.writeWorkspace(WorkspaceSnapshot(steps.value, sourceClipId, screen))
+        Repo.writeWorkspace(WorkspaceSnapshot(steps.value, sourceClipId, screen, dirty.value))
 }

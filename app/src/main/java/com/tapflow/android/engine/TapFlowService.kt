@@ -13,6 +13,7 @@ import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.widget.Toast
 import com.tapflow.android.MainActivity
+import com.tapflow.android.WorkspaceDialogActivity
 import com.tapflow.android.R
 import com.tapflow.android.data.GestureStep
 import com.tapflow.android.data.GlobalStep
@@ -37,7 +38,6 @@ import com.tapflow.android.overlay.QuickSettingsView
 import com.tapflow.android.overlay.ToolbarView
 import com.tapflow.android.overlay.TransportView
 import com.tapflow.android.overlay.buildMarkers
-import com.tapflow.android.text.defaultClipName
 import com.tapflow.android.text.label
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -766,14 +766,24 @@ class TapFlowService : AccessibilityService() {
         player.play(steps, Workspace.screen, settings.defaultLoopCount)
     }
 
-    private fun save(asNew: Boolean) {
-        val now = System.currentTimeMillis()
-        val clip = Workspace.commit(defaultClipName(resources, now), now, asNew)
-        if (clip == null) {
+    /**
+     * Opens one of the workspace dialogs.
+     *
+     * These are activities rather than more overlay panels because naming a clip needs a text field,
+     * a text field needs input focus, and every overlay here is deliberately FLAG_NOT_FOCUSABLE so it
+     * never takes focus from the app underneath.
+     */
+    private fun openWorkspaceDialog(mode: WorkspaceDialogActivity.Mode) {
+        if (mode != WorkspaceDialogActivity.Mode.LOAD && Workspace.isEmpty) {
             toast(getString(R.string.toast_nothing_to_save))
-        } else {
-            toast(getString(R.string.toast_saved, clip.name))
+            return
         }
+        EngineState.quickSettingsOpen.value = false
+        startActivity(
+            Intent(this, WorkspaceDialogActivity::class.java)
+                .putExtra(WorkspaceDialogActivity.EXTRA_MODE, mode.name)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
     }
 
     private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
@@ -1002,9 +1012,11 @@ class TapFlowService : AccessibilityService() {
             if (Workspace.isEmpty) exitEditing()
         }
 
-        override fun onSave() = save(asNew = false)
+        override fun onSave() = openWorkspaceDialog(WorkspaceDialogActivity.Mode.SAVE)
 
-        override fun onSaveAsNew() = save(asNew = true)
+        override fun onLoad() = openWorkspaceDialog(WorkspaceDialogActivity.Mode.LOAD)
+
+        override fun onNewClip() = openWorkspaceDialog(WorkspaceDialogActivity.Mode.NEW)
 
         override fun onCycleDensity() =
             Repo.updateSettings { it.copy(markerDensity = it.markerDensity.next()) }

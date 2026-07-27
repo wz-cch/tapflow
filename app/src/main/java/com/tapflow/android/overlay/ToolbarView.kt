@@ -44,7 +44,8 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         fun onAddTap()
         fun onDeleteSelected()
         fun onSave()
-        fun onSaveAsNew()
+        fun onLoad()
+        fun onNewClip()
         fun onCycleDensity()
         fun onToggleQuickSettings()
         fun onDismiss()
@@ -102,7 +103,9 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
     private val edit = icon(R.drawable.ic_edit)
     private val addTap = icon(R.drawable.ic_add)
     private val deleteStep = icon(R.drawable.ic_remove)
+    private val newClip = icon(R.drawable.ic_new_clip)
     private val save = icon(R.drawable.ic_save)
+    private val load = icon(R.drawable.ic_folder_open)
     private val eye = icon(R.drawable.ic_eye)
     private val quickSettings = icon(R.drawable.ic_tune)
     private val dismiss = icon(R.drawable.ic_close)
@@ -110,7 +113,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
 
     /** Everything inside the scroller, in display order. The grip sits outside it. */
     private val scrollingButtons = listOf(
-        primary, secondary, insertPause, undo, edit, addTap, deleteStep, save, eye,
+        primary, secondary, insertPause, undo, edit, addTap, deleteStep, newClip, save, load, eye,
         quickSettings, dismiss, collapse,
     )
 
@@ -147,10 +150,11 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         dismiss.setOnClickListener { actions.onDismiss() }
         collapse.setOnClickListener { actions.onCollapse() }
 
-        // Tap saves over the source clip; long press always creates a new one. That avoids putting
-        // a text dialog on an overlay, which would need input focus and fight with the IME.
+        // Each of these opens one small screen that does one thing. Naming needs a text field, and
+        // a text field needs input focus, which no overlay here may take.
         save.setOnClickListener { actions.onSave() }
-        save.setOnLongClickListener { actions.onSaveAsNew(); true }
+        load.setOnClickListener { actions.onLoad() }
+        newClip.setOnClickListener { actions.onNewClip() }
 
         attachDrag(grip, onTap = null)
         attachDrag(ball) {
@@ -208,6 +212,8 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         dismiss.visibility = if (editing) GONE else VISIBLE
         addTap.visibility = if (editing) VISIBLE else GONE
         deleteStep.visibility = if (editing) VISIBLE else GONE
+        newClip.visibility = if (editing) GONE else VISIBLE
+        load.visibility = if (editing) GONE else VISIBLE
 
         primary.setImageResource(if (mode == Mode.PLAYING) R.drawable.ic_pause else R.drawable.ic_play)
         setActionEnabled(primary, hasSteps && !recording)
@@ -232,6 +238,8 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         setActionEnabled(undo, hasSteps && !replaying)
         setActionEnabled(deleteStep, hasSelection)
         setActionEnabled(save, hasSteps && !replaying)
+        setActionEnabled(load, !recording && !replaying)
+        setActionEnabled(newClip, hasSteps && !recording && !replaying)
         setActionEnabled(dismiss, !recording && !replaying)
 
         // The eye dims progressively as fewer markers are shown, so the current setting is readable
@@ -363,6 +371,8 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         addTap.contentDescription = context.getString(R.string.action_add_tap)
         deleteStep.contentDescription = context.getString(R.string.action_delete)
         save.contentDescription = context.getString(R.string.action_save)
+        load.contentDescription = context.getString(R.string.action_load)
+        newClip.contentDescription = context.getString(R.string.action_new_clip)
         eye.contentDescription = context.getString(R.string.action_density)
         quickSettings.contentDescription = context.getString(R.string.action_quick_settings)
         dismiss.contentDescription = context.getString(R.string.action_dismiss)

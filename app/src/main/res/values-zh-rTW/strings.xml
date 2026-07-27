@@ -59,7 +59,9 @@
     <string name="action_add_tap">新增點擊點</string>
     <string name="action_delete">刪除選取</string>
     <string name="action_edit_mode">編輯模式</string>
-    <string name="action_save">儲存為片段</string>
+    <string name="action_save">儲存片段</string>
+    <string name="action_load">讀取片段</string>
+    <string name="action_new_clip">開新的片段</string>
     <string name="action_density">標記顯示密度</string>
     <string name="action_quick_settings">快捷設定</string>
     <string name="action_collapse">摺疊</string>
@@ -146,6 +148,19 @@
     <string name="quick_on">開</string>
     <string name="quick_off">關</string>
     <string name="quick_full_settings">完整設定在 app 裡 →</string>
+
+    <!-- 工作區對話框 -->
+    <string name="save_title">儲存片段</string>
+    <string name="save_name_label">名稱</string>
+    <string name="save_as_new">另存為新片段,不覆蓋原本的</string>
+    <string name="load_title">讀取片段</string>
+    <string name="load_empty">還沒有存過任何片段。</string>
+    <string name="load_unsaved_warning">工作區有 %1$d 個未儲存的動作,讀取會取代它們。</string>
+    <string name="new_title">開新的片段</string>
+    <string name="new_body">會清空畫面上的 %1$d 個動作,未儲存的內容會消失。</string>
+    <string name="new_body_empty">工作區本來就是空的。</string>
+    <string name="new_confirm">清空</string>
+    <string name="toast_workspace_cleared">工作區已清空</string>
 
     <!-- 設定 -->
     <string name="settings_title">設定</string>

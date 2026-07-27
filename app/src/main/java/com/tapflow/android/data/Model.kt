@@ -321,12 +321,17 @@ enum class MatchMode {
  *
  * The workspace is what the user is actually manipulating on screen before pressing save. It is
  * written out on every change so a hard-recorded sequence survives the service being restarted.
+ *
+ * [dirty] is what decides whether it comes back. The draft exists to protect work that was never
+ * saved; restoring unconditionally meant that after saving a clip and reopening, the app looked like
+ * it had loaded a file on its own — surprising, and not what the draft is for.
  */
 @Serializable
 data class WorkspaceSnapshot(
     val steps: List<Step> = emptyList(),
     val sourceClipId: String? = null,
     val screen: ScreenSpec? = null,
+    val dirty: Boolean = false,
 )
 
 @Serializable

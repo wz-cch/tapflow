@@ -54,7 +54,7 @@ import com.tapflow.android.data.Clip
 import com.tapflow.android.data.Repo
 import com.tapflow.android.engine.EngineState
 import com.tapflow.android.engine.Workspace
-import java.util.concurrent.TimeUnit
+import com.tapflow.android.text.clipSummary
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -269,7 +269,7 @@ private fun ClipRow(clip: Clip) {
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    clipSummary(context, clip),
+                    clipSummary(context.resources, clip),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -358,21 +358,6 @@ private fun RenameDialog(initial: String, onDismiss: () -> Unit, onConfirm: (Str
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.dialog_cancel)) }
         },
     )
-}
-
-private fun clipSummary(context: Context, clip: Clip): String {
-    val duration = formatDuration(clip.estimatedDurationMs)
-    return if (clip.pauseCount > 0) {
-        context.getString(R.string.clip_summary_with_pauses, clip.stepCount, clip.pauseCount, duration)
-    } else {
-        context.getString(R.string.clip_summary, clip.stepCount, duration)
-    }
-}
-
-private fun formatDuration(ms: Long): String {
-    val minutes = TimeUnit.MILLISECONDS.toMinutes(ms)
-    val seconds = TimeUnit.MILLISECONDS.toSeconds(ms) % 60
-    return if (minutes > 0) "${minutes}m ${seconds}s" else "${seconds}s"
 }
 
 private fun Context.openAccessibilitySettings() =

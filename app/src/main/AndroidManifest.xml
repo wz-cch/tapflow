@@ -38,6 +38,18 @@
             </intent-filter>
         </activity>
 
+        <!--
+          The workspace save / load / new dialogs. An activity because naming a clip needs a text
+          field, and every overlay window here is FLAG_NOT_FOCUSABLE so that it never takes input
+          focus from the app underneath.
+        -->
+        <activity
+            android:name=".WorkspaceDialogActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.TapFlow.Dialog" />
+
         <service
             android:name=".engine.TapFlowService"
             android:exported="true"

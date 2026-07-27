@@ -62,7 +62,9 @@
     <string name="action_add_tap">Add tap</string>
     <string name="action_delete">Delete selected</string>
     <string name="action_edit_mode">Edit mode</string>
-    <string name="action_save">Save as clip</string>
+    <string name="action_save">Save clip</string>
+    <string name="action_load">Load clip</string>
+    <string name="action_new_clip">Start a new clip</string>
     <string name="action_density">Marker density</string>
     <string name="action_quick_settings">Quick settings</string>
     <string name="action_collapse">Collapse</string>
@@ -149,6 +151,19 @@
     <string name="quick_on">ON</string>
     <string name="quick_off">OFF</string>
     <string name="quick_full_settings">All settings in the app →</string>
+
+    <!-- Workspace dialogs -->
+    <string name="save_title">Save clip</string>
+    <string name="save_name_label">Name</string>
+    <string name="save_as_new">Save as a new clip instead of replacing it</string>
+    <string name="load_title">Load clip</string>
+    <string name="load_empty">No clips saved yet.</string>
+    <string name="load_unsaved_warning">The workspace has %1$d unsaved actions. Loading replaces them.</string>
+    <string name="new_title">Start a new clip</string>
+    <string name="new_body">This clears the %1$d actions on screen. Anything unsaved is lost.</string>
+    <string name="new_body_empty">The workspace is already empty.</string>
+    <string name="new_confirm">Clear</string>
+    <string name="toast_workspace_cleared">Workspace cleared</string>
 
     <!-- Settings -->
     <string name="settings_title">Settings</string>
