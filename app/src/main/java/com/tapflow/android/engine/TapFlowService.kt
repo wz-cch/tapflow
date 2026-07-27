@@ -114,6 +114,9 @@ class TapFlowService : AccessibilityService() {
     private var lastGestureWarningAt = 0L
     private var consecutiveGestureFailures = 0
 
+    /** Re-registration is worth one attempt per binding, not one per gesture. */
+    private var registrationRenewed = false
+
     private val settings: Settings get() = Repo.settings.value
 
     // --- Lifecycle -----------------------------------------------------------
@@ -273,7 +276,11 @@ class TapFlowService : AccessibilityService() {
 
     private fun buildOverlay() {
         host = OverlayHost(this)
-        dispatcher = GestureDispatcher(this) { outcome -> onGestureOutcome(outcome) }
+        dispatcher = GestureDispatcher(
+            service = this,
+            report = { outcome -> onGestureOutcome(outcome) },
+            renewRegistration = { renewRegistration() },
+        )
 
         canvas = CanvasView(this).apply {
             onGesture = { strokes, down, up -> recorder.onGesture(strokes, down, up) }
@@ -816,6 +823,26 @@ class TapFlowService : AccessibilityService() {
      * never delivered" — two problems with nothing in common. Reported at most once every few
      * seconds, because a rejected run rejects every step and a toast per step would bury the screen.
      */
+    /**
+     * Re-applies the service info to prod the framework into rebuilding the accessibility input
+     * filter, which is where the MotionEventInjector lives.
+     *
+     * setServiceInfo makes the system recompute its user state, and that recompute is what installs
+     * the filter. It is a nudge, not a guarantee — if it does not take, only toggling the service in
+     * system settings will — so it is attempted at most once per binding rather than per gesture.
+     */
+    private fun renewRegistration(): Boolean {
+        if (registrationRenewed) return false
+        registrationRenewed = true
+        Diag.log("re-applying service info to rebuild the input filter")
+        return runCatching {
+            serviceInfo = (serviceInfo ?: AccessibilityServiceInfo()).apply {
+                flags = flags or AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
+            }
+            true
+        }.onFailure { Log.w(TAG, "Could not re-apply service info", it) }.getOrDefault(false)
+    }
+
     private fun onGestureOutcome(outcome: GestureOutcome) {
         if (outcome == GestureOutcome.COMPLETED || outcome == GestureOutcome.SKIPPED) {
             consecutiveGestureFailures = 0
@@ -832,8 +859,11 @@ class TapFlowService : AccessibilityService() {
         // only way to tell them apart.
         toast(
             getString(
-                if (outcome == GestureOutcome.CANCELLED) R.string.toast_gesture_cancelled
-                else R.string.toast_gesture_refused,
+                when (outcome) {
+                    GestureOutcome.INJECTOR_MISSING -> R.string.toast_gesture_injector_missing
+                    GestureOutcome.CANCELLED -> R.string.toast_gesture_cancelled
+                    else -> R.string.toast_gesture_refused
+                },
                 consecutiveGestureFailures,
             )
         )

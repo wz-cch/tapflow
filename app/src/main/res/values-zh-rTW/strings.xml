@@ -113,6 +113,7 @@
     <string name="toast_overlay_failed">工具列掛不上去。這台裝置可能需要「顯示在其他應用上層」權限。</string>
     <string name="toast_gesture_refused">系統不接受這個手勢(連續 %1$d 次)。可能是座標超出畫面,或還有另一個手勢在執行。</string>
     <string name="toast_gesture_cancelled">系統取消了這個手勢(連續 %1$d 次)。有東西打斷了它:重播期間有真實觸控落下、另一個手勢接手,或該 app 拒收注入的輸入。偶爾一次是正常的,每次都被取消才是問題。</string>
+    <string name="toast_gesture_injector_missing">Android 沒有把手勢注入器交給這個服務(已失敗 %1$d 次)。app 內部無法修:請到設定 → 無障礙,把觸控流關掉再打開,就會恢復。</string>
     <string name="toast_replay_echo">遮罩沒有及時放行,這一步的補發沒有送出去。再試一次,或關掉「逐手勢補發」改用純盲錄。</string>
     <string name="home_version">版本 %1$s</string>
 
