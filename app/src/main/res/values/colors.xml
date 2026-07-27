@@ -7,7 +7,6 @@
     <color name="overlay_panel">#E6202632</color>
     <color name="overlay_panel_pressed">#FF39445A</color>
     <color name="overlay_icon">#FFE9EEF7</color>
-    <color name="overlay_icon_muted">#FF6E798C</color>
     <color name="overlay_text">#FFE9EEF7</color>
     <color name="overlay_text_dim">#FF9AA6B8</color>
 

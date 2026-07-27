@@ -111,7 +111,6 @@ class TapFlowService : AccessibilityService() {
 
     private var volumeLongPressJob: Job? = null
 
-    private var consecutiveGestureFailures = 0
     private var lastGestureWarningAt = 0L
 
     private val settings: Settings get() = Repo.settings.value
@@ -811,12 +810,8 @@ class TapFlowService : AccessibilityService() {
      * seconds, because a rejected run rejects every step and a toast per step would bury the screen.
      */
     private fun onGestureOutcome(outcome: GestureOutcome) {
-        if (outcome == GestureOutcome.COMPLETED || outcome == GestureOutcome.SKIPPED) {
-            consecutiveGestureFailures = 0
-            return
-        }
+        if (outcome == GestureOutcome.COMPLETED || outcome == GestureOutcome.SKIPPED) return
 
-        consecutiveGestureFailures++
         val now = SystemClock.uptimeMillis()
         if (now - lastGestureWarningAt < GESTURE_WARNING_INTERVAL_MS) return
         lastGestureWarningAt = now
@@ -975,7 +970,9 @@ class TapFlowService : AccessibilityService() {
 
         override fun onInsertPausePoint() {
             if (EngineState.isReplaying) return
-            Workspace.appendPausePoint()
+            // Nothing is ever selected while recording, so this appends then, and lands after the
+            // selected marker when editing — one call covers both.
+            Workspace.insertAfter(EngineState.selectedStepId.value, PauseStep(), currentScreen())
             toast(getString(R.string.toast_pause_inserted))
             // Stopping is the point: the user is about to do this step by hand, so the canvas has to
             // let touches through and the toolbar has to clear the keyboard area.

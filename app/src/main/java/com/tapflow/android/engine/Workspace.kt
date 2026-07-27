@@ -1,7 +1,6 @@
 package com.tapflow.android.engine
 
 import com.tapflow.android.data.Clip
-import com.tapflow.android.data.PauseStep
 import com.tapflow.android.data.Repo
 import com.tapflow.android.data.ScreenSpec
 import com.tapflow.android.data.Step
@@ -56,11 +55,6 @@ object Workspace {
     fun append(step: Step, capturedOn: ScreenSpec) {
         if (screen == null) screen = capturedOn
         steps.value = steps.value + step
-        markDirty()
-    }
-
-    fun appendPausePoint() {
-        steps.value = steps.value + PauseStep()
         markDirty()
     }
 
@@ -154,10 +148,6 @@ object Workspace {
         persist()
         return clip
     }
-
-    /** Name to offer when saving: the source clip's, or a generated one. */
-    fun suggestedName(fallback: String): String =
-        Repo.clipById(sourceClipId)?.name ?: fallback
 
     private fun markDirty() {
         dirty.value = true

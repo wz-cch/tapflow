@@ -223,6 +223,21 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         secondary.imageTintList = android.content.res.ColorStateList.valueOf(
             if (mode == Mode.IDLE) ContextCompat.getColor(context, R.color.state_recording) else iconIdle
         )
+        secondary.contentDescription = context.getString(
+            when {
+                recording -> R.string.action_record_stop
+                replaying -> R.string.action_stop
+                workspaceSize > 0 -> R.string.action_record_resume
+                else -> R.string.action_record
+            }
+        )
+        primary.contentDescription = context.getString(
+            when (mode) {
+                Mode.PLAYING -> R.string.action_pause
+                Mode.PAUSED -> R.string.action_resume
+                else -> R.string.action_play
+            }
+        )
         setActionEnabled(secondary, true)
 
         edit.imageTintList = android.content.res.ColorStateList.valueOf(

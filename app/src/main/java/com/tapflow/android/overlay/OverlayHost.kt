@@ -24,10 +24,6 @@ class OverlayHost(private val service: AccessibilityService) {
     private val windowManager = service.getSystemService(WindowManager::class.java)
     private val attached = mutableSetOf<View>()
 
-    /** True once any window had to use the SYSTEM_ALERT_WINDOW path. */
-    var usingFallback = false
-        private set
-
     /**
      * Full display size including system decor.
      *
@@ -99,7 +95,6 @@ class OverlayHost(private val service: AccessibilityService) {
         params.type = fallbackWindowType
         if (tryAdd(view, params)) {
             attached += view
-            usingFallback = true
             Log.i(TAG, "Fell back to overlay window type ${params.type}")
             return true
         }
