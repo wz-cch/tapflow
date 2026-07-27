@@ -117,11 +117,21 @@ class TransportView(context: Context, private val actions: Actions) : LinearLayo
         timer.text = formatElapsed(elapsedMs)
     }
 
+    private var appliedScale = Float.NaN
+    private var appliedOpacity = Float.NaN
+
+    /** Same reasoning as the toolbar: this runs on the timer tick, so it must not relayout blindly. */
     fun applyAppearance(scale: Float, opacity: Float) {
-        alpha = opacity.coerceIn(0.3f, 1f)
-        val size = (dp(40f) * scale.coerceIn(0.7f, 1.5f)).toInt()
+        val clampedScale = scale.coerceIn(0.7f, 1.5f)
+        val clampedOpacity = opacity.coerceIn(0.3f, 1f)
+        if (clampedScale == appliedScale && clampedOpacity == appliedOpacity) return
+        appliedScale = clampedScale
+        appliedOpacity = clampedOpacity
+
+        alpha = clampedOpacity
+        val size = (dp(40f) * clampedScale).toInt()
         listOf(stop, pause).forEach { it.layoutParams = LayoutParams(size, size) }
-        val text = 12f * scale.coerceIn(0.7f, 1.5f)
+        val text = 12f * clampedScale
         status.textSize = text
         timer.textSize = text
         requestLayout()
