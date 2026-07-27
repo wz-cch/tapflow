@@ -3,6 +3,7 @@ package com.tapflow.android.engine
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
+import android.os.SystemClock
 import android.util.Log
 import com.tapflow.android.data.GestureStep
 import com.tapflow.android.data.GlobalKind
@@ -13,6 +14,7 @@ import com.tapflow.android.data.Settings
 import com.tapflow.android.data.Step
 import com.tapflow.android.data.Stroke
 import com.tapflow.android.data.WaitStep
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.math.cos
@@ -77,7 +79,32 @@ class GestureDispatcher(
 
     private suspend fun dispatch(step: GestureStep, scale: ScaleSpec, settings: Settings): GestureOutcome {
         val gesture = build(step, scale, settings) ?: return GestureOutcome.REFUSED
+
+        val started = SystemClock.uptimeMillis()
+        val first = await(gesture)
+        if (first != GestureOutcome.CANCELLED) return first
+
+        // A cancellation that arrives almost immediately means the gesture never really ran: a stray
+        // real touch, a window change, or another gesture took the stream. Those are transient, so one
+        // retry recovers instead of failing the whole step. A cancellation that arrives part way is
+        // left alone — retrying would replay half a swipe on top of itself.
+        val elapsed = SystemClock.uptimeMillis() - started
+        val expected = gesture.strokeDuration()
+        if (elapsed > expected / 3 + EARLY_CANCEL_GRACE_MS) return first
+
+        Log.i(TAG, "Gesture cancelled after ${elapsed}ms of ${expected}ms; retrying once")
+        delay(RETRY_DELAY_MS)
         return await(gesture)
+    }
+
+    /** Longest stroke in the gesture, which is how long a completed dispatch should have taken. */
+    private fun GestureDescription.strokeDuration(): Long {
+        var longest = 0L
+        for (index in 0 until strokeCount) {
+            val stroke = getStroke(index)
+            longest = maxOf(longest, stroke.startTime + stroke.duration)
+        }
+        return longest
     }
 
     private fun build(step: GestureStep, scale: ScaleSpec, settings: Settings): GestureDescription? {
@@ -190,5 +217,9 @@ class GestureDispatcher(
 
     private companion object {
         const val TAG = "GestureDispatcher"
+
+        /** Allowance on top of a third of the duration before a cancellation counts as "part way". */
+        const val EARLY_CANCEL_GRACE_MS = 40L
+        const val RETRY_DELAY_MS = 60L
     }
 }

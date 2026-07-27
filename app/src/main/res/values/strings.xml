@@ -114,8 +114,8 @@
     <string name="toast_loaded">Loaded “%1$s” into the workspace</string>
     <string name="toast_toolbar_hidden">Toolbar hidden. Turn it back on in the TapFlow app.</string>
     <string name="toast_overlay_failed">Could not show the toolbar. This device may need the display-over-other-apps permission.</string>
-    <string name="toast_gesture_refused">The system would not accept the gesture. The coordinates may be off screen, or another gesture is still running.</string>
-    <string name="toast_gesture_cancelled">The gesture was cancelled part way. This usually means the app on screen rejects injected or obscured touches, which cannot be worked around without root.</string>
+    <string name="toast_gesture_refused">The system would not accept the gesture (%1$d in a row). The coordinates may be off screen, or another gesture is still running.</string>
+    <string name="toast_gesture_cancelled">The system cancelled the gesture (%1$d in a row). Something interrupted it: a real touch landing during replay, another gesture taking over, or an app that rejects injected input. A single one is normal; every one in a row is not.</string>
     <string name="toast_replay_echo">The overlay did not release the touch in time, so this gesture was not passed on. Try again, or turn off “Replay each gesture” to record blind.</string>
     <string name="home_version">version %1$s</string>
 

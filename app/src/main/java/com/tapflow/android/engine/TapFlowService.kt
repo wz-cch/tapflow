@@ -112,6 +112,7 @@ class TapFlowService : AccessibilityService() {
     private var volumeLongPressJob: Job? = null
 
     private var lastGestureWarningAt = 0L
+    private var consecutiveGestureFailures = 0
 
     private val settings: Settings get() = Repo.settings.value
 
@@ -810,16 +811,24 @@ class TapFlowService : AccessibilityService() {
      * seconds, because a rejected run rejects every step and a toast per step would bury the screen.
      */
     private fun onGestureOutcome(outcome: GestureOutcome) {
-        if (outcome == GestureOutcome.COMPLETED || outcome == GestureOutcome.SKIPPED) return
+        if (outcome == GestureOutcome.COMPLETED || outcome == GestureOutcome.SKIPPED) {
+            consecutiveGestureFailures = 0
+            return
+        }
 
+        consecutiveGestureFailures++
         val now = SystemClock.uptimeMillis()
         if (now - lastGestureWarningAt < GESTURE_WARNING_INTERVAL_MS) return
         lastGestureWarningAt = now
 
+        // The run of failures is in the message because one cancelled gesture and every gesture
+        // being cancelled are different problems, and the toast is throttled so the count is the
+        // only way to tell them apart.
         toast(
             getString(
                 if (outcome == GestureOutcome.CANCELLED) R.string.toast_gesture_cancelled
-                else R.string.toast_gesture_refused
+                else R.string.toast_gesture_refused,
+                consecutiveGestureFailures,
             )
         )
     }
