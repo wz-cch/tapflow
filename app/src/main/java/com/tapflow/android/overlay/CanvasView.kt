@@ -367,9 +367,14 @@ class CanvasView(context: Context) : View(context) {
     private fun drawBlockedLabel(canvas: Canvas) {
         val widest = blockedAreas.maxByOrNull { it.width() * it.height() } ?: return
         val text = context.getString(R.string.warn_toolbar_area)
-        val x = (widest.centerX() - lineDimPaint.measureText(text) / 2f)
-            .coerceIn(dp(8f), (width - dp(8f) - lineDimPaint.measureText(text)).coerceAtLeast(dp(8f)))
-        canvas.drawText(text, x, widest.bottom + dp(16f), lineDimPaint)
+        val textWidth = lineDimPaint.measureText(text)
+        val x = (widest.centerX() - textWidth / 2f)
+            .coerceIn(dp(8f), (width - dp(8f) - textWidth).coerceAtLeast(dp(8f)))
+        // Below the area normally, above it when the area runs to the bottom of the screen — the
+        // toolbar can be dragged anywhere, so neither side can be assumed to have room.
+        val below = widest.bottom + dp(16f)
+        val y = if (below <= height - dp(4f)) below else widest.top - dp(8f)
+        canvas.drawText(text, x, y.coerceAtLeast(dp(12f)), lineDimPaint)
     }
 
     private fun drawInProgressStrokes(canvas: Canvas) {
