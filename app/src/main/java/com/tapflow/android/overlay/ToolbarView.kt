@@ -273,9 +273,11 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
      */
     fun setAvailableHeight(availableHeightPx: Int) {
         val gripHeight = grip.layoutParams?.height?.takeIf { it > 0 } ?: dp(44f)
-        val forScroller = availableHeightPx - gripHeight - dp(12f)
+        // Clamp before comparing. Comparing the raw value against the clamped one stored last time
+        // never matches on a short screen, and then this forced a relayout on every refresh.
+        val forScroller = (availableHeightPx - gripHeight - dp(12f)).coerceAtLeast(dp(88f))
         if (scroller.maxHeightPx == forScroller) return
-        scroller.maxHeightPx = forScroller.coerceAtLeast(dp(88f))
+        scroller.maxHeightPx = forScroller
         scroller.requestLayout()
     }
 

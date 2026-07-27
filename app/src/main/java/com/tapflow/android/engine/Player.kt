@@ -44,6 +44,7 @@ class Player(
         if (isActive || steps.isEmpty()) return
         pauseRequested.value = false
 
+        Diag.log("player: play ${steps.size} step(s), loops=$loops, recordedScreen=$recordedScreen")
         job = scope.launch {
             try {
                 countDown(settings().startDelayMs)
@@ -56,6 +57,7 @@ class Player(
                     loop++
                     for ((index, step) in steps.withIndex()) {
                         EngineState.progress.value = Progress(loop, loops, index + 1, steps.size)
+                        Diag.log("player: loop $loop step ${index + 1}/${steps.size} ${step::class.java.simpleName}")
 
                         if (step is PauseStep) {
                             EngineState.pausePrompt.value = step.prompt(resources)

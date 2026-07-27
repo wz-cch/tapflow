@@ -80,8 +80,12 @@ class GestureDispatcher(
     private suspend fun dispatch(step: GestureStep, scale: ScaleSpec, settings: Settings): GestureOutcome {
         val gesture = build(step, scale, settings) ?: return GestureOutcome.REFUSED
 
+        Diag.log("dispatch ${gesture.describeForLog()} scale=${"%.2f".format(scale.sx)}x${"%.2f".format(scale.sy)}")
+
         val started = SystemClock.uptimeMillis()
         val first = await(gesture)
+        val firstElapsed = SystemClock.uptimeMillis() - started
+        Diag.log("  -> $first after ${firstElapsed}ms of ${gesture.strokeDuration()}ms")
         if (first != GestureOutcome.CANCELLED) return first
 
         // A cancellation that arrives almost immediately means the gesture never really ran: a stray
@@ -93,8 +97,12 @@ class GestureDispatcher(
         if (elapsed > expected / 3 + EARLY_CANCEL_GRACE_MS) return first
 
         Log.i(TAG, "Gesture cancelled after ${elapsed}ms of ${expected}ms; retrying once")
+        Diag.log("  retrying once (cancelled early)")
         delay(RETRY_DELAY_MS)
-        return await(gesture)
+        val retryStarted = SystemClock.uptimeMillis()
+        val second = await(gesture)
+        Diag.log("  -> retry $second after ${SystemClock.uptimeMillis() - retryStarted}ms")
+        return second
     }
 
     /** Longest stroke in the gesture, which is how long a completed dispatch should have taken. */
@@ -190,7 +198,7 @@ class GestureDispatcher(
         }
 
     /** Stroke bounds, so a logcat line is enough to tell whether the coordinates were sane. */
-    private fun GestureDescription.describeForLog(): String = buildString {
+    fun GestureDescription.describeForLog(): String = buildString {
         append("strokes=").append(strokeCount)
         for (index in 0 until strokeCount) {
             val bounds = android.graphics.RectF()

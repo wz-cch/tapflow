@@ -162,6 +162,14 @@
     <string name="new_confirm">清空</string>
     <string name="toast_workspace_cleared">工作區已清空</string>
 
+    <!-- 診斷 -->
+    <string name="diag_title">診斷紀錄</string>
+    <string name="diag_body">引擎最近做了什麼。按錄製或播放會清空並重新開始計時。時間是從該次開始起算的毫秒。</string>
+    <string name="diag_copy">複製</string>
+    <string name="diag_clear">清空</string>
+    <string name="diag_copied">已複製</string>
+    <string name="diag_empty">還沒有紀錄。錄一段或播一次,再回來看。</string>
+
     <!-- 設定 -->
     <string name="settings_title">設定</string>
     <string name="settings_reset">恢復預設值</string>

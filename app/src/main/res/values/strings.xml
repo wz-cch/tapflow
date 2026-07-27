@@ -165,6 +165,14 @@
     <string name="new_confirm">Clear</string>
     <string name="toast_workspace_cleared">Workspace cleared</string>
 
+    <!-- Diagnostics -->
+    <string name="diag_title">Diagnostics</string>
+    <string name="diag_body">What the engine did most recently. Recording or playing clears it and starts a fresh timeline. Times are milliseconds from the start of the attempt.</string>
+    <string name="diag_copy">Copy</string>
+    <string name="diag_clear">Clear</string>
+    <string name="diag_copied">Copied</string>
+    <string name="diag_empty">Nothing recorded yet. Record or play something, then come back.</string>
+
     <!-- Settings -->
     <string name="settings_title">Settings</string>
     <string name="settings_reset">Restore defaults</string>

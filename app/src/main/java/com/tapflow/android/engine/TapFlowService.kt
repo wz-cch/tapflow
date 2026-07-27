@@ -488,6 +488,7 @@ class TapFlowService : AccessibilityService() {
         val needed = canvasNeeded()
         if (needed == host.isAttached(canvas)) return
 
+        Diag.log("canvas ${if (needed) "attach" else "detach"} (mode=${EngineState.mode.value})")
         if (needed) {
             host.add(canvas, canvasParams)
             // Same-type overlays stack in the order they were added, so everything else has to be
@@ -645,6 +646,8 @@ class TapFlowService : AccessibilityService() {
 
     private fun startRecording() {
         if (EngineState.isReplaying || EngineState.isRecording) return
+        Diag.clear()
+        Diag.log("record start")
 
         exitEditing()
         EngineState.toolbarForm.value = ToolbarForm.EXPANDED
@@ -762,6 +765,8 @@ class TapFlowService : AccessibilityService() {
     private fun startPlayback() {
         val steps = Workspace.steps.value
         if (steps.isEmpty()) return
+        Diag.clear()
+        Diag.log("playback start")
         exitEditing()
         player.play(steps, Workspace.screen, settings.defaultLoopCount)
     }
@@ -797,6 +802,7 @@ class TapFlowService : AccessibilityService() {
      */
     private fun onReplayEcho() {
         Log.w(TAG, "Replayed gesture was swallowed by the canvas; FLAG_NOT_TOUCHABLE had not landed")
+        Diag.log("!! canvas received a touch during replay: the flag had not landed")
         val now = SystemClock.uptimeMillis()
         if (now - lastGestureWarningAt < GESTURE_WARNING_INTERVAL_MS) return
         lastGestureWarningAt = now

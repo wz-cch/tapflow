@@ -8,11 +8,12 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.mutableStateOf
 import com.tapflow.android.data.Repo
+import com.tapflow.android.ui.DiagnosticsScreen
 import com.tapflow.android.ui.HomeScreen
 import com.tapflow.android.ui.SettingsScreen
 import com.tapflow.android.ui.TapFlowTheme
 
-private enum class Screen { HOME, SETTINGS }
+private enum class Screen { HOME, SETTINGS, DIAGNOSTICS }
 
 class MainActivity : ComponentActivity() {
 
@@ -34,10 +35,19 @@ class MainActivity : ComponentActivity() {
                 // Two screens do not justify a navigation library, and pulling one in would mean a
                 // back stack to configure for something a single enum covers.
                 when (screen.value) {
-                    Screen.HOME -> HomeScreen(onOpenSettings = { screen.value = Screen.SETTINGS })
+                    Screen.HOME -> HomeScreen(
+                        onOpenSettings = { screen.value = Screen.SETTINGS },
+                        onOpenDiagnostics = { screen.value = Screen.DIAGNOSTICS },
+                    )
+
                     Screen.SETTINGS -> {
                         BackHandler { screen.value = Screen.HOME }
                         SettingsScreen(onBack = { screen.value = Screen.HOME })
+                    }
+
+                    Screen.DIAGNOSTICS -> {
+                        BackHandler { screen.value = Screen.HOME }
+                        DiagnosticsScreen(onBack = { screen.value = Screen.HOME })
                     }
                 }
             }

@@ -47,6 +47,7 @@ class Recorder(
     fun restartTiming() {
         timingRestarted = true
         lastEndUptime = SystemClock.uptimeMillis()
+        Diag.log("recorder: timing baseline reset")
     }
 
     fun onGesture(strokes: List<Stroke>, downUptime: Long, upUptime: Long) {
@@ -74,12 +75,20 @@ class Recorder(
         val step = GestureStep(strokes = strokes, delayBefore = delayBefore)
         Workspace.append(step, currentScreen())
         lastEndUptime = upUptime
+        Diag.log(
+            "recorder: captured ${strokes.size} stroke(s), " +
+                "${strokes.sumOf { it.points.size }} samples, delayBefore=${delayBefore}ms"
+        )
 
-        if (!current.replayEachGesture) return
+        if (!current.replayEachGesture) {
+            Diag.log("recorder: per-gesture replay is off, nothing dispatched")
+            return
+        }
 
         canvas.replaying = true
         setCanvasTouchable(false)
         awaitWindowSettled()
+        Diag.log("recorder: canvas released, dispatching replay")
 
         // A faithful re-issue of what the user just did: no jitter, no speed scaling, no rescaling.
         dispatcher.perform(
@@ -91,6 +100,7 @@ class Recorder(
         delay(current.replayDelayMs)
         setCanvasTouchable(true)
         canvas.replaying = false
+        Diag.log("recorder: canvas intercepting again")
 
         // Charging the replay time to the user would inflate the next step's delayBefore.
         lastEndUptime = SystemClock.uptimeMillis()
