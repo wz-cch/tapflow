@@ -77,9 +77,6 @@
     <!-- 畫布與編輯器上的警示 -->
     <string name="warn_toolbar_area">此區域無法錄製,請拖走工具列</string>
     <string name="warn_rotation_changed">錄製中螢幕轉向,已中止錄製。座標系會對不上。</string>
-    <string name="warn_clip_rotation">此片段錄製於不同方向,請轉回原方向後按繼續。</string>
-    <string name="warn_clip_scaled">座標已依錄製時的螢幕尺寸換算</string>
-    <string name="warn_unsaved">工作區有未儲存的變更</string>
 
     <!-- 權限引導 -->
     <string name="onboarding_accessibility_title">開啟無障礙服務</string>
@@ -113,7 +110,7 @@
     <string name="toast_overlay_failed">工具列掛不上去。這台裝置可能需要「顯示在其他應用上層」權限。</string>
     <string name="toast_gesture_refused">系統不接受這個手勢(連續 %1$d 次)。可能是座標超出畫面,或還有另一個手勢在執行。</string>
     <string name="toast_gesture_cancelled">系統取消了這個手勢(連續 %1$d 次)。有東西打斷了它:重播期間有真實觸控落下、另一個手勢接手,或該 app 拒收注入的輸入。偶爾一次是正常的,每次都被取消才是問題。</string>
-    <string name="toast_gesture_injector_missing">Android 沒有把手勢注入器交給這個服務(已失敗 %1$d 次)。app 內部無法修:請到設定 → 無障礙,把觸控流關掉再打開,就會恢復。</string>
+    <string name="toast_gesture_injector_missing">Android 沒有把手勢注入器交給這個服務(已失敗 %1$d 次)。任何 app 都無法從內部修好。請先到設定 → 無障礙把觸控流關掉再打開;沒用的話重開機,那一定有效。</string>
     <string name="toast_replay_echo">遮罩沒有及時放行,這一步的補發沒有送出去。再試一次,或關掉「逐手勢補發」改用純盲錄。</string>
     <string name="home_version">版本 %1$s</string>
 

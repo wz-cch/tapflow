@@ -343,6 +343,7 @@ class CanvasView(context: Context) : View(context) {
         if (mode == CanvasMode.RECORDING || mode == CanvasMode.EDIT) {
             if (mode == CanvasMode.RECORDING) canvas.drawColor(scrimColor)
             blockedAreas.forEach { painter.drawBlockedArea(canvas, it, hatchColor) }
+            drawBlockedLabel(canvas)
         }
 
         // HIDDEN still shows the newest marker, it just stops showing the trail of older ones —
@@ -355,6 +356,20 @@ class CanvasView(context: Context) : View(context) {
         // thing being looked at anyway.
         val showList = mode != CanvasMode.EDIT && density != MarkerDensity.HIDDEN
         if (showList && stepLines.isNotEmpty()) drawStepList(canvas)
+    }
+
+    /**
+     * Names the hatching once, beside the largest blocked area.
+     *
+     * The stripes say "not here" but not why, and the reason — a floating window is on top, and
+     * Android gives a touch only to the topmost window — is not guessable.
+     */
+    private fun drawBlockedLabel(canvas: Canvas) {
+        val widest = blockedAreas.maxByOrNull { it.width() * it.height() } ?: return
+        val text = context.getString(R.string.warn_toolbar_area)
+        val x = (widest.centerX() - lineDimPaint.measureText(text) / 2f)
+            .coerceIn(dp(8f), (width - dp(8f) - lineDimPaint.measureText(text)).coerceAtLeast(dp(8f)))
+        canvas.drawText(text, x, widest.bottom + dp(16f), lineDimPaint)
     }
 
     private fun drawInProgressStrokes(canvas: Canvas) {

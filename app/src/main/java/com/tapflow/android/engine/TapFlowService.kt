@@ -1,7 +1,6 @@
 package com.tapflow.android.engine
 
 import android.accessibilityservice.AccessibilityService
-import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.RectF

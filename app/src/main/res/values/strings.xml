@@ -80,9 +80,6 @@
     <!-- Warnings shown on the canvas or in the editor -->
     <string name="warn_toolbar_area">This area cannot be recorded — drag the toolbar away</string>
     <string name="warn_rotation_changed">Screen rotated during recording, so recording stopped. Coordinates would not line up.</string>
-    <string name="warn_clip_rotation">This clip was recorded in a different orientation. Rotate the device, then press resume.</string>
-    <string name="warn_clip_scaled">Coordinates rescaled from the recorded screen size</string>
-    <string name="warn_unsaved">The workspace has unsaved changes</string>
 
     <!-- Permission onboarding -->
     <string name="onboarding_accessibility_title">Enable the accessibility service</string>
@@ -116,7 +113,7 @@
     <string name="toast_overlay_failed">Could not show the toolbar. This device may need the display-over-other-apps permission.</string>
     <string name="toast_gesture_refused">The system would not accept the gesture (%1$d in a row). The coordinates may be off screen, or another gesture is still running.</string>
     <string name="toast_gesture_cancelled">The system cancelled the gesture (%1$d in a row). Something interrupted it: a real touch landing during replay, another gesture taking over, or an app that rejects injected input. A single one is normal; every one in a row is not.</string>
-    <string name="toast_gesture_injector_missing">Android did not give this service its gesture injector (%1$d failures). Nothing here can fix that: turn TapFlow off and back on under Settings, Accessibility, and it should work again.</string>
+    <string name="toast_gesture_injector_missing">Android did not hand this service its gesture injector (%1$d failures). No app can fix that from inside. Turn TapFlow off and back on under Settings, Accessibility; if that does not help, restart the phone, which does.</string>
     <string name="toast_replay_echo">The overlay did not release the touch in time, so this gesture was not passed on. Try again, or turn off “Replay each gesture” to record blind.</string>
     <string name="home_version">version %1$s</string>
 
