@@ -152,13 +152,16 @@ class TapFlowService : AccessibilityService() {
         // Whatever fails is reported in the app rather than only in logcat.
         step("restore workspace") { Workspace.restore() }
 
-        // Needed for the volume-key fallback. Declared in the config XML too, but setting it here
-        // as well keeps it working if the XML is ever trimmed.
-        step("apply service info") {
-            serviceInfo = (serviceInfo ?: AccessibilityServiceInfo()).apply {
-                flags = flags or AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
-            }
-        }
+        // Deliberately nothing here touches serviceInfo.
+        //
+        // flagRequestFilterKeyEvents is already declared in accessibility_service_config.xml, so
+        // setting it again at runtime bought nothing and carried two real risks. setServiceInfo makes
+        // the system recompute its user state, and that recompute is when the accessibility input
+        // filter — which owns the MotionEventInjector that dispatchGesture needs — gets installed;
+        // poking it during binding is a way to race that installation. And if the getter ever returned
+        // null, the fallback built a blank AccessibilityServiceInfo whose capabilities are zero, which
+        // would drop canPerformGestures altogether. A race matches the symptom: fine most of the time,
+        // then stuck once it goes wrong, surviving reinstalls of any version.
 
         buildOverlay()
 
@@ -834,13 +837,19 @@ class TapFlowService : AccessibilityService() {
     private fun renewRegistration(): Boolean {
         if (registrationRenewed) return false
         registrationRenewed = true
+        // Never fabricate a blank AccessibilityServiceInfo as a fallback: its capabilities are zero,
+        // so setting one would drop canPerformGestures and guarantee the very failure this is trying
+        // to recover from. If the current info cannot be read, decline instead of guessing.
+        val current = runCatching { serviceInfo }.getOrNull()
+        if (current == null) {
+            Diag.log("cannot re-register: service info unavailable")
+            return false
+        }
+
         Diag.log("re-applying service info to rebuild the input filter")
-        return runCatching {
-            serviceInfo = (serviceInfo ?: AccessibilityServiceInfo()).apply {
-                flags = flags or AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
-            }
-            true
-        }.onFailure { Log.w(TAG, "Could not re-apply service info", it) }.getOrDefault(false)
+        return runCatching { serviceInfo = current; true }
+            .onFailure { Log.w(TAG, "Could not re-apply service info", it) }
+            .getOrDefault(false)
     }
 
     private fun onGestureOutcome(outcome: GestureOutcome) {
