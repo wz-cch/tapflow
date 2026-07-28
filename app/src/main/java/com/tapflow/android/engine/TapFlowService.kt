@@ -1172,6 +1172,28 @@ class TapFlowService : AccessibilityService() {
         transform(step)?.let { Workspace.updateStep(it) }
     }
 
+    /**
+     * Copies the selected step, puts the copy straight after it, and moves the selection to the copy.
+     *
+     * Called from two places — the toolbar and the settings panel — and written once. Two entry points
+     * for one behaviour is fine; two implementations is how they would slowly stop agreeing.
+     *
+     * The copy gets a new id, so the two are separate steps rather than one aliased twice: selection,
+     * dragging, the marker list and undo all key off the id. Cheaper than re-capturing when what you
+     * want is the same tap again, or a near-identical one to nudge.
+     */
+    private fun duplicateSelected() {
+        val step = Workspace.stepById(EngineState.selectedStepId.value) ?: return
+        val copy = when (step) {
+            is GestureStep -> step.copy(id = newId())
+            is PauseStep -> step.copy(id = newId())
+            is GlobalStep -> step.copy(id = newId())
+        }
+        Workspace.insertAfter(step.id, copy, currentScreen())
+        select(copy.id)
+        toast(getString(R.string.toast_step_duplicated))
+    }
+
     private inner class StepListActions : StepListView.Actions {
         /**
          * Picking a row is the list's whole job, so it hands straight over to the settings panel.
@@ -1282,6 +1304,9 @@ class TapFlowService : AccessibilityService() {
             EngineState.pendingCapture.value = Capture.Replace(step.id)
             toast(getString(R.string.toast_rerecord_prompt))
         }
+
+        /** Same call as the toolbar's, so the two can never disagree. */
+        override fun onDuplicate() = duplicateSelected()
 
         /**
          * The one place insertion goes backwards, and it says so on the button.
@@ -1478,24 +1503,7 @@ class TapFlowService : AccessibilityService() {
             toast(getString(R.string.toast_capture_prompt))
         }
 
-        /**
-         * Copies the selected step and puts the copy straight after it.
-         *
-         * A new id, so the two are separate steps rather than one aliased twice — everything on screen
-         * keys off the id. Cheaper than re-capturing when what you want is the same tap again, or a
-         * near-identical one to nudge.
-         */
-        override fun onDuplicateStep() {
-            val step = Workspace.stepById(EngineState.selectedStepId.value) ?: return
-            val copy = when (step) {
-                is GestureStep -> step.copy(id = newId())
-                is PauseStep -> step.copy(id = newId())
-                is GlobalStep -> step.copy(id = newId())
-            }
-            Workspace.insertAfter(step.id, copy, currentScreen())
-            select(copy.id)
-            toast(getString(R.string.toast_step_duplicated))
-        }
+        override fun onDuplicateStep() = duplicateSelected()
 
         /**
          * Deletes the selected step and selects whatever took its place.

@@ -151,6 +151,7 @@
     <string name="param_coordinates">%1$d, %2$d</string>
     <string name="param_rerecord">Redo</string>
     <string name="param_insert_before">Insert before</string>
+    <string name="param_duplicate">Duplicate</string>
     <string name="param_edit_note">Note</string>
     <string name="param_note_empty">No note</string>
     <string name="param_wait_length">Wait</string>
