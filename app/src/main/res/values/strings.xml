@@ -90,6 +90,8 @@
     <string name="onboarding_overlay_body">Only needed as a fallback: some ROMs block accessibility overlays. TapFlow will ask for this if and when its toolbar fails to attach.</string>
     <string name="onboarding_overlay_action">Open overlay settings</string>
     <string name="onboarding_service_ready">Accessibility service is running</string>
+    <string name="onboarding_service_stalled_title">Accessibility service is not running</string>
+    <string name="onboarding_service_stalled_body">TapFlow is switched on in accessibility settings, but Android has not restarted the service. This usually happens after the app is swiped off the recents list or force stopped. Switch TapFlow off and back on in accessibility settings to bring it back.\n\nYou can turn the toolbar on below already — it will appear as soon as the service reconnects.</string>
 
     <!-- Home screen -->
     <string name="home_show_toolbar">Show floating toolbar</string>

@@ -58,7 +58,7 @@ import java.util.concurrent.TimeUnit
 @Composable
 fun HomeScreen(onOpenSettings: () -> Unit) {
     val context = LocalContext.current
-    val serviceRunning by EngineState.serviceRunning.collectAsStateWithLifecycle()
+    val status = rememberServiceStatus()
     val overlayEnabled by Repo.overlayEnabled.collectAsStateWithLifecycle()
     val needsOverlayPermission by EngineState.needsOverlayPermission.collectAsStateWithLifecycle()
     val clips by Repo.clips.collectAsStateWithLifecycle()
@@ -85,9 +85,7 @@ fun HomeScreen(onOpenSettings: () -> Unit) {
             item { Spacer(Modifier.height(4.dp)) }
 
             item {
-                AccessibilityCard(serviceRunning) {
-                    context.openAccessibilitySettings()
-                }
+                AccessibilityCard(status) { context.openAccessibilitySettings() }
             }
 
             // Only worth mentioning once the accessibility overlay has actually been refused, which
@@ -100,7 +98,11 @@ fun HomeScreen(onOpenSettings: () -> Unit) {
 
             item {
                 ToolbarSwitch(
-                    enabled = serviceRunning,
+                    // Usable as soon as the service is enabled in settings, not only once it has
+                    // bound. The switch records an intention; the service reads it when it connects
+                    // and puts the toolbar up then. Requiring a live binding turned a normal,
+                    // temporary state into "the switch does nothing".
+                    enabled = status != ServiceStatus.DISABLED,
                     checked = overlayEnabled,
                     onCheckedChange = { Repo.setOverlayEnabled(it) },
                 )
@@ -134,26 +136,40 @@ fun HomeScreen(onOpenSettings: () -> Unit) {
 }
 
 @Composable
-private fun AccessibilityCard(running: Boolean, onOpen: () -> Unit) {
-    Card {
+private fun AccessibilityCard(status: ServiceStatus, onOpen: () -> Unit) {
+    val stalled = status == ServiceStatus.ENABLED_NOT_RUNNING
+    Card(
+        colors = if (stalled) {
+            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+        } else {
+            CardDefaults.cardColors()
+        }
+    ) {
         Column(Modifier.padding(16.dp)) {
             Text(
                 stringResource(
-                    if (running) R.string.onboarding_service_ready
-                    else R.string.onboarding_accessibility_title
+                    when (status) {
+                        ServiceStatus.RUNNING -> R.string.onboarding_service_ready
+                        ServiceStatus.ENABLED_NOT_RUNNING -> R.string.onboarding_service_stalled_title
+                        ServiceStatus.DISABLED -> R.string.onboarding_accessibility_title
+                    }
                 ),
                 style = MaterialTheme.typography.titleMedium,
             )
-            if (!running) {
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    stringResource(R.string.onboarding_accessibility_body),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Spacer(Modifier.height(12.dp))
-                OutlinedButton(onClick = onOpen) {
-                    Text(stringResource(R.string.onboarding_accessibility_action))
-                }
+
+            if (status == ServiceStatus.RUNNING) return@Column
+
+            Spacer(Modifier.height(6.dp))
+            Text(
+                stringResource(
+                    if (stalled) R.string.onboarding_service_stalled_body
+                    else R.string.onboarding_accessibility_body
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Spacer(Modifier.height(12.dp))
+            OutlinedButton(onClick = onOpen) {
+                Text(stringResource(R.string.onboarding_accessibility_action))
             }
         }
     }

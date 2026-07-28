@@ -5,6 +5,7 @@ import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.RectF
+import android.util.Log
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
@@ -70,6 +71,8 @@ class TapFlowService : AccessibilityService() {
 
         /** How long the volume-down key has to be held to stop instead of pause. */
         private const val VOLUME_LONG_PRESS_MS = 1000L
+
+        private const val TAG = "TapFlowService"
     }
 
     /**
@@ -110,8 +113,20 @@ class TapFlowService : AccessibilityService() {
 
     private fun createScope() = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
+    /**
+     * Wrapped in runCatching on purpose.
+     *
+     * An exception thrown out of here kills the service, and Android responds by switching the
+     * accessibility service off — which the user experiences as the toolbar becoming permanently
+     * impossible to turn on, with nothing on screen to explain it. Better to log, come up degraded,
+     * and let the app report that the service is not running.
+     */
     override fun onServiceConnected() {
         super.onServiceConnected()
+        runCatching { connect() }.onFailure { Log.e(TAG, "onServiceConnected failed", it) }
+    }
+
+    private fun connect() {
         instance = this
 
         scope.cancel()
@@ -129,8 +144,9 @@ class TapFlowService : AccessibilityService() {
         buildOverlay()
         EngineState.serviceRunning.value = true
 
+        // The collector fires with the current value straight away, so a toolbar that was on last
+        // session comes back without a second explicit attach call.
         observe()
-        if (Repo.overlayEnabled.value) attachOverlay()
     }
 
     override fun onUnbind(intent: Intent?): Boolean {

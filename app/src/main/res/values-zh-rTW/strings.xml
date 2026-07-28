@@ -87,6 +87,8 @@
     <string name="onboarding_overlay_body">只是備援:部分 ROM 會擋掉無障礙懸浮視窗。真的掛不上去時,觸控流才會請你開這個權限。</string>
     <string name="onboarding_overlay_action">前往懸浮視窗設定</string>
     <string name="onboarding_service_ready">無障礙服務運行中</string>
+    <string name="onboarding_service_stalled_title">無障礙服務沒有在運行</string>
+    <string name="onboarding_service_stalled_body">觸控流在無障礙設定裡是開著的,但 Android 沒有把服務重新啟動。通常是 app 被從最近工作清單滑掉、或被強制停止之後會這樣。到無障礙設定把觸控流關掉再打開就會回來。\n\n下面的開關你現在就可以打開 —— 服務一連上,工具列就會出現。</string>
 
     <!-- 主畫面 -->
     <string name="home_show_toolbar">顯示懸浮工具列</string>

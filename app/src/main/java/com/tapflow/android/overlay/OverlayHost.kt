@@ -35,7 +35,7 @@ class OverlayHost(private val service: AccessibilityService) {
      * cover the whole display, so coordinates need the real size or clamping would cut gestures
      * short near the navigation bar.
      */
-    fun displaySize(): Point =
+    fun displaySize(): Point = runCatching {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             val bounds = windowManager.currentWindowMetrics.bounds
             Point(bounds.width(), bounds.height())
@@ -43,14 +43,22 @@ class OverlayHost(private val service: AccessibilityService) {
             @Suppress("DEPRECATION")
             Point().also { windowManager.defaultDisplay.getRealSize(it) }
         }
+    }.onFailure { Log.w(TAG, "Could not read the display size", it) }.getOrElse {
+        // Falling back to app metrics loses the system decor area, which is worth far less than
+        // taking down the service: an exception here would happen inside onServiceConnected, and
+        // Android switches off an accessibility service that crashes.
+        val metrics = service.resources.displayMetrics
+        Point(metrics.widthPixels, metrics.heightPixels)
+    }
 
-    fun rotation(): Int =
+    fun rotation(): Int = runCatching {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             service.display?.rotation ?: 0
         } else {
             @Suppress("DEPRECATION")
             windowManager.defaultDisplay?.rotation ?: 0
         }
+    }.onFailure { Log.w(TAG, "Could not read the display rotation", it) }.getOrDefault(0)
 
     /**
      * Base layout params for an overlay window.
