@@ -1173,6 +1173,33 @@ class TapFlowService : AccessibilityService() {
     }
 
     /**
+     * Deletes the selected step and steps the selection back one.
+     *
+     * Backwards, not forwards. Deleting the last step leaves you looking at the one before it, which is
+     * the rule isolation is built on (§9.2) — and the same rule in the middle of a script keeps you
+     * behind the gap you just made rather than on top of it. From the first step there is nothing behind,
+     * so whatever slid into slot 0 is what you are left with. Emptying the workspace leaves editing,
+     * because there is nothing to edit.
+     *
+     * Called from the toolbar and from the settings panel, written once, for the same reason
+     * [duplicateSelected] is: two entry points, one behaviour.
+     */
+    private fun deleteSelected() {
+        val before = Workspace.steps.value
+        val index = before.indexOfFirst { it.id == EngineState.selectedStepId.value }
+        if (index < 0) return
+
+        Workspace.removeStep(before[index].id)
+        val after = Workspace.steps.value
+        if (after.isEmpty()) {
+            exitEditing()
+            return
+        }
+        // Always in range: after is exactly one shorter, so index - 1 is at most its last index.
+        select(after[(index - 1).coerceAtLeast(0)].id)
+    }
+
+    /**
      * Copies the selected step, puts the copy straight after it, and moves the selection to the copy.
      *
      * Called from two places — the toolbar and the settings panel — and written once. Two entry points
@@ -1305,8 +1332,10 @@ class TapFlowService : AccessibilityService() {
             toast(getString(R.string.toast_rerecord_prompt))
         }
 
-        /** Same call as the toolbar's, so the two can never disagree. */
+        /** Both of these are the toolbar's calls verbatim, so the two entry points cannot disagree. */
         override fun onDuplicate() = duplicateSelected()
+
+        override fun onDelete() = deleteSelected()
 
         /**
          * The one place insertion goes backwards, and it says so on the button.
@@ -1505,28 +1534,7 @@ class TapFlowService : AccessibilityService() {
 
         override fun onDuplicateStep() = duplicateSelected()
 
-        /**
-         * Deletes the selected step and selects whatever took its place.
-         *
-         * Not cleared, and not left to [resolveSelection] either. That would fall back to the *last*
-         * step, so deleting step 47 of 100 would leave you looking at 100 — and with isolation on, the
-         * only marker on screen would jump to the far end of the script. Taking the neighbour keeps you
-         * where you were working, and for the last step it is the same thing: delete 100 and 99 is what
-         * you are looking at, which is the rule isolation is built on.
-         */
-        override fun onDeleteSelected() {
-            val before = Workspace.steps.value
-            val index = before.indexOfFirst { it.id == EngineState.selectedStepId.value }
-            if (index < 0) return
-
-            Workspace.removeStep(before[index].id)
-            val after = Workspace.steps.value
-            if (after.isEmpty()) {
-                exitEditing()
-                return
-            }
-            select(after[index.coerceAtMost(after.lastIndex)].id)
-        }
+        override fun onDeleteSelected() = deleteSelected()
 
         override fun onSave() = openWorkspaceDialog(WorkspaceDialogActivity.Mode.SAVE)
 

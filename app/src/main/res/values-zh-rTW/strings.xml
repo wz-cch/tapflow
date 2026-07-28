@@ -149,6 +149,7 @@
     <string name="param_rerecord">重錄</string>
     <string name="param_insert_before">往前插</string>
     <string name="param_duplicate">複製</string>
+    <string name="param_delete">刪除</string>
     <string name="param_edit_note">備註</string>
     <string name="param_note_empty">沒有備註</string>
     <string name="param_wait_length">等待</string>
