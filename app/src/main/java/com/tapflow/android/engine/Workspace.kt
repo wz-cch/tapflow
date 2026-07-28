@@ -54,17 +54,44 @@ object Workspace {
 
     fun append(step: Step, capturedOn: ScreenSpec) {
         if (screen == null) screen = capturedOn
+        snapshot()
         steps.value = steps.value + step
         markDirty()
     }
 
-    /** Drops the last step. Returns false when there was nothing to drop. */
+    /**
+     * Previous states, newest last. Undo pops one.
+     *
+     * Cheap enough to keep a real history rather than the tail-drop this used to be: [steps] holds an
+     * immutable list, so a snapshot is one reference and not a copy. The tail-drop version could only
+     * undo the most recent recording; it could not undo a drag, a delete, or an insert in the middle,
+     * which left editing with no way back at all.
+     */
+    private val history = ArrayDeque<List<Step>>()
+
+    /**
+     * True while a single user gesture is producing a run of updates.
+     *
+     * A drag calls [updateStep] on every touch sample. Snapshotting each one would fill the history
+     * with intermediate positions and make undo useless, so the run collapses to the one state it
+     * started from.
+     */
+    private var coalescing = false
+
+    val canUndo: Boolean get() = history.isNotEmpty()
+
+    /** Steps back one edit. Returns false when there is nothing left to undo. */
     fun undo(): Boolean {
-        val current = steps.value
-        if (current.isEmpty()) return false
-        steps.value = current.dropLast(1)
+        val previous = history.removeLastOrNull() ?: return false
+        steps.value = previous
+        coalescing = false
         markDirty()
         return true
+    }
+
+    private fun snapshot() {
+        history.addLast(steps.value)
+        while (history.size > HISTORY_LIMIT) history.removeFirst()
     }
 
     fun stepById(id: String?): Step? = id?.let { key -> steps.value.firstOrNull { it.id == key } }
@@ -78,6 +105,10 @@ object Workspace {
     fun updateStep(step: Step, persist: Boolean = true) {
         val current = steps.value
         if (current.none { it.id == step.id }) return
+        // One snapshot per gesture, not per sample: the first update of a drag records where it began
+        // and the rest fold into it. flush() closes the run.
+        if (!coalescing) snapshot()
+        coalescing = !persist
         steps.value = current.map { if (it.id == step.id) step else it }
         dirty.value = true
         if (persist) persist()
@@ -86,23 +117,39 @@ object Workspace {
     fun removeStep(id: String) {
         val current = steps.value
         if (current.none { it.id == id }) return
+        snapshot()
         steps.value = current.filterNot { it.id == id }
         markDirty()
     }
 
-    /** Inserts after [afterId], or at the end when it is null or unknown. */
-    fun insertAfter(afterId: String?, step: Step, capturedOn: ScreenSpec) {
+    /**
+     * Inserts immediately **before** [beforeId], or at the end when it is null or unknown.
+     *
+     * Before rather than after so that every position is reachable. Inserting after cannot express
+     * "make this the first step", whereas inserting before does not need to express "after the last
+     * one" — that is just appending, which is what a null selection already does. Recording never has
+     * a selection, so recorded steps keep landing at the end without a special case.
+     */
+    fun insertBefore(beforeId: String?, step: Step, capturedOn: ScreenSpec) {
         if (screen == null) screen = capturedOn
+        snapshot()
         val current = steps.value
-        val index = current.indexOfFirst { it.id == afterId }
-        steps.value = if (index < 0) current + step else current.toMutableList().apply { add(index + 1, step) }
+        val index = current.indexOfFirst { it.id == beforeId }
+        steps.value = if (index < 0) current + step else current.toMutableList().apply { add(index, step) }
         markDirty()
     }
 
-    /** Writes the draft after a run of non-persisting edits. */
-    fun flush() = persist()
+    /** Writes the draft after a run of non-persisting edits, and ends the coalescing window. */
+    fun flush() {
+        coalescing = false
+        persist()
+    }
 
     fun clear() {
+        // Undoing across a load or a clear would resurrect steps from a different clip, which reads as
+        // the app inventing content. Both are deliberate boundaries, so history stops at them.
+        history.clear()
+        coalescing = false
         steps.value = emptyList()
         sourceClipId = null
         screen = null
@@ -111,6 +158,8 @@ object Workspace {
     }
 
     fun load(clip: Clip) {
+        history.clear()
+        coalescing = false
         steps.value = clip.steps
         sourceClipId = clip.id
         screen = clip.screen
@@ -156,4 +205,7 @@ object Workspace {
 
     private fun persist() =
         Repo.writeWorkspace(WorkspaceSnapshot(steps.value, sourceClipId, screen, dirty.value))
+
+    /** Deep enough for any editing session; the entries are references, so the cost is negligible. */
+    private const val HISTORY_LIMIT = 60
 }

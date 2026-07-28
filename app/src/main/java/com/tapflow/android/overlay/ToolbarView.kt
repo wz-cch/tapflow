@@ -195,6 +195,8 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         editing: Boolean,
         hasSelection: Boolean,
         quickSettingsOpen: Boolean,
+        canUndo: Boolean,
+        isolateSelection: Boolean,
     ) {
         val hasSteps = workspaceSize > 0
         val recording = mode == Mode.RECORDING
@@ -235,7 +237,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         secondary.visibility = visibleWhen(!editing)
         insertPause.visibility = visibleWhen(recording)
         insertWait.visibility = visibleWhen(recording)
-        undo.visibility = visibleWhen(recording)
+        undo.visibility = visibleWhen(recording || editing)
         edit.visibility = visibleWhen(!recording)
         addTap.visibility = visibleWhen(editing)
         deleteStep.visibility = visibleWhen(editing)
@@ -277,19 +279,20 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         // left: something to act on, and something selected.
         setActionEnabled(insertPause, true)
         setActionEnabled(insertWait, true)
-        setActionEnabled(undo, hasSteps)
+        setActionEnabled(undo, canUndo)
         setActionEnabled(deleteStep, hasSelection)
         setActionEnabled(save, hasSteps)
         setActionEnabled(load, true)
         setActionEnabled(newClip, hasSteps)
         setActionEnabled(dismiss, true)
 
-        // The eye dims progressively as fewer markers are shown, so the current setting is readable
-        // without a label.
-        eye.alpha = when (density) {
-            MarkerDensity.ALL -> 1f
-            MarkerDensity.RECENT -> 0.7f
-            MarkerDensity.HIDDEN -> 0.35f
+        // The eye dims as fewer markers are shown, so the current setting is readable without a label.
+        // While editing it reports the isolate toggle instead, which is what it controls there.
+        eye.alpha = when {
+            editing -> if (isolateSelection) 0.35f else 1f
+            density == MarkerDensity.ALL -> 1f
+            density == MarkerDensity.RECENT -> 0.7f
+            else -> 0.35f
         }
     }
 

@@ -407,6 +407,7 @@ class TapFlowService : AccessibilityService() {
         scope.launch { EngineState.pickingCoordinate.collect { syncOverlay() } }
         scope.launch { EngineState.quickSettingsOpen.collect { syncOverlay() } }
         scope.launch { EngineState.waitPadOpen.collect { syncOverlay() } }
+        scope.launch { EngineState.isolateSelection.collect { syncOverlay() } }
         scope.launch {
             EngineState.progress.collect { progress ->
                 // Updated here rather than in syncOverlay so the highlight follows playback without
@@ -444,6 +445,8 @@ class TapFlowService : AccessibilityService() {
             editing = editing,
             hasSelection = selectedId != null,
             quickSettingsOpen = EngineState.quickSettingsOpen.value,
+            canUndo = Workspace.canUndo,
+            isolateSelection = EngineState.isolateSelection.value,
         )
         host.update(toolbar, toolbarParams)
 
@@ -453,9 +456,13 @@ class TapFlowService : AccessibilityService() {
             screen.y.toFloat(),
             resources.displayMetrics.density,
         )
-        // Editing something invisible is not possible, so density is forced open while editing and
-        // the user's own setting is left untouched underneath.
-        canvas.density = if (editing) MarkerDensity.ALL else current.markerDensity
+        // Editing shows only the selected step by default. With a hundred markers up, "show
+        // everything" is a hundred overlapping crosshairs and the other ninety-nine have no bearing on
+        // the one being changed. The eye button still widens it when the marker has to be found by
+        // sight — and until now that button did nothing at all while editing, because this line forced
+        // ALL over whatever it had just set.
+        canvas.density = current.markerDensity
+        canvas.isolateSelection = editing && EngineState.isolateSelection.value
         canvas.stepLines = stepLines(steps)
         canvas.highlightNumber = EngineState.progress.value?.step
         canvas.selectedStepId = selectedId
@@ -793,7 +800,7 @@ class TapFlowService : AccessibilityService() {
     /**
      * Selects a freshly inserted step, but only while editing.
      *
-     * While recording, nothing may be selected: insertAfter treats the selection as the anchor, and
+     * While recording, nothing may be selected: insertBefore treats the selection as the anchor, and
      * recorded steps have to keep appending to the end. While editing the opposite is wanted — the
      * parameter card opens on what was just created, which is where its note is typed.
      */
@@ -899,6 +906,8 @@ class TapFlowService : AccessibilityService() {
         if (EngineState.isRecording || EngineState.isReplaying) return
         if (Workspace.isEmpty) return
         EngineState.toolbarForm.value = ToolbarForm.EXPANDED
+        // Reset rather than remembered: coming back into editing, the useful default is the quiet one.
+        EngineState.isolateSelection.value = true
         // syncOverlay attaches the canvas and re-stacks everything above it.
         EngineState.editing.value = true
         syncOverlay()
@@ -947,7 +956,7 @@ class TapFlowService : AccessibilityService() {
             // Same call as the manual pause: appends while recording, lands after the selection while
             // editing. The two differ only in the duration they carry.
             val step = PauseStep(ms = value * 1000L)
-            Workspace.insertAfter(EngineState.selectedStepId.value, step, currentScreen())
+            Workspace.insertBefore(EngineState.selectedStepId.value, step, currentScreen())
             selectIfEditing(step.id)
             toast(getString(R.string.toast_wait_inserted, value))
         }
@@ -1062,7 +1071,7 @@ class TapFlowService : AccessibilityService() {
             // Nothing is ever selected while recording, so this appends then, and lands after the
             // selected marker when editing — one call covers both.
             val step = PauseStep()
-            Workspace.insertAfter(EngineState.selectedStepId.value, step, currentScreen())
+            Workspace.insertBefore(EngineState.selectedStepId.value, step, currentScreen())
             selectIfEditing(step.id)
             toast(getString(R.string.toast_pause_inserted))
             // Stopping is the point: the user is about to do this step by hand, so the canvas has to
@@ -1100,9 +1109,9 @@ class TapFlowService : AccessibilityService() {
                 holdMs = current.defaultTapMs,
                 delayBefore = current.defaultGapMs,
             )
-            // Inserted after the selection so building a sequence by hand goes in reading order,
-            // then selected so the parameter card is already open on the thing just created.
-            Workspace.insertAfter(EngineState.selectedStepId.value, step, currentScreen())
+            // Inserted before the selection, then selected, so the parameter card is already open on
+            // the thing just created — which is where its position gets set.
+            Workspace.insertBefore(EngineState.selectedStepId.value, step, currentScreen())
             select(step.id)
         }
 
@@ -1119,8 +1128,20 @@ class TapFlowService : AccessibilityService() {
 
         override fun onNewClip() = openWorkspaceDialog(WorkspaceDialogActivity.Mode.NEW)
 
-        override fun onCycleDensity() =
-            Repo.updateSettings { it.copy(markerDensity = it.markerDensity.next()) }
+        /**
+         * While editing this is the isolate toggle, not the density cycle.
+         *
+         * Editing draws only the selected marker, so the three-way density has nothing to act on —
+         * and it used to be worse than useless there, because the canvas forced ALL over whatever it
+         * set. What editing actually needs is a way to see the others in order to pick one by sight.
+         */
+        override fun onCycleDensity() {
+            if (EngineState.editing.value) {
+                EngineState.isolateSelection.value = !EngineState.isolateSelection.value
+            } else {
+                Repo.updateSettings { it.copy(markerDensity = it.markerDensity.next()) }
+            }
+        }
 
         override fun onToggleQuickSettings() {
             val opening = !EngineState.quickSettingsOpen.value
