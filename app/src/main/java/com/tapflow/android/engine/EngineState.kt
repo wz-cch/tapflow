@@ -63,16 +63,32 @@ object EngineState {
     /** True while the next canvas tap should be read as "put the selected step here". */
     val pickingCoordinate = MutableStateFlow(false)
 
+    /**
+     * Step whose gesture is being captured again, or null.
+     *
+     * Re-recording one step is the cheap alternative to re-recording a hundred: when one tap landed in
+     * the wrong place, redoing that tap should not cost the whole script.
+     */
+    val reRecordingStepId = MutableStateFlow<String?>(null)
+
     /** Whether the in-place settings panel is showing. */
     val quickSettingsOpen = MutableStateFlow(false)
 
     /**
-     * Whether the number pad is up, asking how many seconds a wait should last.
+     * Whether the number pad is up. What it is asking for is held by whoever opened it.
      *
-     * Transient like everything else here: if the service dies mid-entry the pad is simply gone, and
-     * nothing was inserted, which is the right outcome.
+     * Transient like everything else here: if the service dies mid-entry the pad is simply gone and
+     * nothing was applied, which is the right outcome.
      */
-    val waitPadOpen = MutableStateFlow(false)
+    val numberPadOpen = MutableStateFlow(false)
+
+    /**
+     * Whether the step list is up.
+     *
+     * Editing by marker cannot reach step 47 of 100 — the markers overlap and playback reports a
+     * number, not a position. The list is the other way in.
+     */
+    val stepListOpen = MutableStateFlow(false)
 
     /** Whether the accessibility service is connected. Drives the onboarding card. */
     val serviceRunning = MutableStateFlow(false)

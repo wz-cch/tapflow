@@ -23,17 +23,14 @@ import com.tapflow.android.R
  * an overlay is what lets a wait be inserted **without leaving the app being recorded**: an Activity
  * would background the target app mid-recording while the canvas was still intercepting.
  *
- * Deliberately holds no idea of what the number means. The caller supplies the title and unit and
- * decides what to do with the value.
+ * Deliberately holds no idea of what the number means. The caller supplies the title, the unit and
+ * what to do with the value, so the same pad serves both "how many seconds" and "jump to which step".
  */
 @SuppressLint("ViewConstructor")
-class NumberPadView(context: Context, private val actions: Actions) : LinearLayout(context) {
+class NumberPadView(context: Context, private val onCancel: () -> Unit) : LinearLayout(context) {
 
-    interface Actions {
-        /** The typed value, in whatever unit the caller set up. Never called with a blank entry. */
-        fun onConfirm(value: Int)
-        fun onCancel()
-    }
+    /** Set by [open]. Held here rather than in the constructor so one pad can serve several callers. */
+    private var onConfirm: (Int) -> Unit = {}
 
     private val displayDensity = context.resources.displayMetrics.density
 
@@ -70,7 +67,7 @@ class NumberPadView(context: Context, private val actions: Actions) : LinearLayo
                 orientation = HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 addView(title, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
-                addView(iconButton(R.drawable.ic_close) { actions.onCancel() })
+                addView(iconButton(R.drawable.ic_close) { onCancel() })
             },
             LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT),
         )
@@ -98,7 +95,8 @@ class NumberPadView(context: Context, private val actions: Actions) : LinearLayo
      * @param initialValue prefilled and replaced by the first digit typed, not appended to — the
      *   common case is entering a different number, not editing the existing one digit by digit.
      */
-    fun open(titleText: String, unit: String, initialValue: Int, max: Int) {
+    fun open(titleText: String, unit: String, initialValue: Int, max: Int, confirm: (Int) -> Unit) {
+        onConfirm = confirm
         title.text = titleText
         unitSuffix = unit
         maxValue = max
@@ -131,7 +129,7 @@ class NumberPadView(context: Context, private val actions: Actions) : LinearLayo
     private fun confirm() {
         val value = entry.toIntOrNull() ?: return
         if (value <= 0) return
-        actions.onConfirm(value.coerceAtMost(maxValue))
+        onConfirm(value.coerceAtMost(maxValue))
     }
 
     private fun refresh() {
