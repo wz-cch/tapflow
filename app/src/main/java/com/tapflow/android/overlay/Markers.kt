@@ -65,13 +65,21 @@ data class Marker(
     val anchorX: Float,
     val anchorY: Float,
     val paths: List<List<Pair<Float, Float>>> = emptyList(),
+    /**
+     * Whether this marker offers a second grab point at its end.
+     *
+     * Decided when the marker is built, not derived on demand, because it depends on how far apart the
+     * two points are *in dp* — and only [buildMarkers] knows the display density. `SWIPE_TRAVEL_PX` is
+     * 24 raw pixels, so on a 3x screen a travel of eight dp already counts as a swipe; two grab points
+     * eight dp apart are below what a finger can aim at, and offering both would just hand out one at
+     * random. Such a swipe is body-only, so it can at least be moved reliably; its shape is changed by
+     * re-recording it, which is what that button is for.
+     */
+    val hasEndHandle: Boolean = false,
 ) {
     /** End of the first stroke — the arrow tip, and the grab point for changing a swipe. */
     val endX: Float get() = paths.firstOrNull()?.lastOrNull()?.first ?: anchorX
     val endY: Float get() = paths.firstOrNull()?.lastOrNull()?.second ?: anchorY
-
-    /** Only a single-stroke swipe has a meaningful end to drag. */
-    val hasEndHandle: Boolean get() = kind == MarkerKind.SWIPE && paths.size == 1
 
     /**
      * Whether dragging this marker would mean anything.
@@ -105,14 +113,26 @@ fun buildMarkers(
 
     return steps.mapIndexedNotNull { index, step ->
         when (step) {
-            is GestureStep -> Marker(
-                stepId = step.id,
-                number = index + 1,
-                kind = step.kind.toMarkerKind(),
-                anchorX = step.anchor.x,
-                anchorY = step.anchor.y,
-                paths = step.strokes.map { stroke -> stroke.points.map { it.x to it.y } },
-            )
+            is GestureStep -> {
+                val single = step.strokes.singleOrNull()
+                val end = single?.end
+                val separation = if (end == null) {
+                    0f
+                } else {
+                    hypot(end.x - step.anchor.x, end.y - step.anchor.y)
+                }
+                Marker(
+                    stepId = step.id,
+                    number = index + 1,
+                    kind = step.kind.toMarkerKind(),
+                    anchorX = step.anchor.x,
+                    anchorY = step.anchor.y,
+                    paths = step.strokes.map { stroke -> stroke.points.map { it.x to it.y } },
+                    hasEndHandle = step.kind == GestureKind.SWIPE &&
+                        single != null &&
+                        separation >= END_HANDLE_MIN_DP * displayDensity,
+                )
+            }
 
             is PauseStep -> {
                 val (x, y) = derivedAnchor(gestures, index, spacing, screenWidth, screenHeight)
@@ -143,6 +163,14 @@ fun buildMarkers(
 
 /** Roughly a fingertip apart, so consecutive derived markers stay separately tappable. */
 private const val DERIVED_SPACING_DP = 46f
+
+/**
+ * How far a swipe's end must be from its start before both become grab points.
+ *
+ * Below this the two are closer together than a finger can distinguish, so the marker offers only its
+ * body — a predictable result beats a coin toss between "move it" and "reshape it".
+ */
+private const val END_HANDLE_MIN_DP = 32f
 
 /**
  * Where to draw a step that has no coordinates of its own.
@@ -346,7 +374,7 @@ class MarkerPainter(context: Context) {
         val radius = dp(if (highlighted) 13f else 10f) * scale
 
         if (marker.kind == MarkerKind.SWIPE || marker.kind == MarkerKind.MULTI_TOUCH) {
-            marker.paths.forEach { drawTrail(canvas, it) }
+            marker.paths.forEach { drawTrail(canvas, it, scale) }
         }
 
         // Crosshair, so the exact pixel is visible even under the numbered disc.
@@ -437,18 +465,26 @@ class MarkerPainter(context: Context) {
         )
     }
 
-    private fun drawTrail(canvas: Canvas, points: List<Pair<Float, Float>>) {
+    private fun drawTrail(canvas: Canvas, points: List<Pair<Float, Float>>, scale: Float) {
         if (points.size < 2) return
         reusablePath.reset()
         reusablePath.moveTo(points[0].first, points[0].second)
         for (index in 1 until points.size) {
             reusablePath.lineTo(points[index].first, points[index].second)
         }
+        trail.strokeWidth = dp(10f) * scale
         canvas.drawPath(reusablePath, trail)
-        drawArrowHead(canvas, points)
+        drawArrowHead(canvas, points, scale)
     }
 
-    private fun drawArrowHead(canvas: Canvas, points: List<Pair<Float, Float>>) {
+    /**
+     * The arrowhead at the end of a swipe.
+     *
+     * Scaled with everything else, because while editing this is not decoration — it marks the *other*
+     * grab point, the one that changes the swipe's direction and length rather than moving the whole
+     * gesture. If it stayed small while the numbered disc grew, the two would stop looking like a pair.
+     */
+    private fun drawArrowHead(canvas: Canvas, points: List<Pair<Float, Float>>, scale: Float) {
         val end = points.last()
         // Walk back until the points are far enough apart to give a stable direction; the last few
         // samples of a swipe are often almost identical.
@@ -461,7 +497,7 @@ class MarkerPainter(context: Context) {
             }
         }
         val angle = atan2(end.second - reference.second, end.first - reference.first)
-        val size = dp(11f)
+        val size = dp(11f) * scale
         val spread = 0.5f
 
         reusablePath.reset()
