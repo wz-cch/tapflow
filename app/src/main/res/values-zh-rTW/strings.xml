@@ -135,6 +135,7 @@
     <string name="param_type_multi_touch">多指手勢</string>
     <string name="param_type_pause">暫停點</string>
     <string name="param_type_wait">等待</string>
+    <string name="play_from_title">從第幾步開始</string>
     <string name="step_list_jump">跳到</string>
     <string name="step_list_position">%1$d / %2$d</string>
     <string name="step_list_count">%1$d 步</string>
@@ -148,7 +149,6 @@
     <string name="param_rerecord">重錄</string>
     <string name="toast_rerecord_prompt">再做一次這個手勢就會取代這一步</string>
     <string name="toast_step_rerecorded">已取代這一步</string>
-    <string name="param_play_from_here">從這裡播</string>
     <string name="param_edit_note">備註</string>
     <string name="param_note_empty">沒有備註</string>
     <string name="param_duration">時長</string>

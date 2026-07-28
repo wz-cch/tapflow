@@ -588,9 +588,11 @@ class TapFlowService : AccessibilityService() {
         )
         if (!host.isAttached(stepList)) {
             val size = host.displaySize()
-            // Low on the screen: the toolbar runs down one edge and the parameter card sits mid-screen.
+            // Bottom of the screen, with the parameter card moved to the top — the two used to be
+            // placed a tenth of the screen apart and simply covered each other. Draggable either way,
+            // because whatever the default, some marker ends up underneath it.
             stepListParams.x = (size.x * 0.5f - dpToPx(150f)).toInt().coerceAtLeast(0)
-            stepListParams.y = (size.y * 0.52f).toInt()
+            stepListParams.y = (size.y - dpToPx(215f)).toInt().coerceAtLeast(0)
             host.add(stepList, stepListParams)
         }
         host.update(stepList, stepListParams)
@@ -674,7 +676,7 @@ class TapFlowService : AccessibilityService() {
         if (!host.isAttached(paramCard)) {
             val size = host.displaySize()
             paramCardParams.x = (size.x * 0.18f).toInt()
-            paramCardParams.y = (size.y * 0.62f).toInt()
+            paramCardParams.y = (size.y * 0.08f).toInt()
             host.add(paramCard, paramCardParams)
         }
         host.update(paramCard, paramCardParams)
@@ -1105,6 +1107,14 @@ class TapFlowService : AccessibilityService() {
         override fun onClose() {
             EngineState.stepListOpen.value = false
         }
+
+        override fun onDrag(dx: Int, dy: Int) {
+            stepListParams.x += dx
+            stepListParams.y += dy
+            host.update(stepList, stepListParams)
+        }
+
+        override fun onDragEnd() = Unit
     }
 
     private inner class QuickSettingsActions : QuickSettingsView.Actions {
@@ -1185,13 +1195,6 @@ class TapFlowService : AccessibilityService() {
             toast(getString(R.string.toast_rerecord_prompt))
         }
 
-        override fun onPlayFromHere() {
-            val index = Workspace.steps.value.indexOfFirst { it.id == EngineState.selectedStepId.value }
-            if (index < 0) return
-            startFromIndex = index
-            startPlayback()
-        }
-
         override fun onEditNote() {
             val id = EngineState.selectedStepId.value ?: return
             openWorkspaceDialog(WorkspaceDialogActivity.Mode.NOTE, id)
@@ -1230,6 +1233,30 @@ class TapFlowService : AccessibilityService() {
                 Mode.RECORDING -> stopRecording(collapseForInput = false)
                 Mode.COUNTDOWN, Mode.PLAYING, Mode.PAUSED -> player.stop()
             }
+        }
+
+        /**
+         * Asks which step to start from, then plays.
+         *
+         * Lives with the play button rather than in the parameter card: choosing where a run begins is
+         * a property of starting, not of editing. It prefills from the selection, which survives leaving
+         * edit mode — so having just fixed step 47, the number is already there.
+         */
+        override fun onPlayFrom() {
+            val steps = Workspace.steps.value
+            if (steps.isEmpty()) return
+            val selected = steps.indexOfFirst { it.id == EngineState.selectedStepId.value }
+            openNumberPad(
+                PadRequest(
+                    title = getString(R.string.play_from_title),
+                    unit = getString(R.string.step_list_jump_unit),
+                    initialValue = if (selected >= 0) selected + 1 else 1,
+                    max = steps.size,
+                ) { number ->
+                    startFromIndex = (number - 1).coerceIn(0, steps.lastIndex)
+                    startPlayback()
+                }
+            )
         }
 
         override fun onInsertPausePoint() {

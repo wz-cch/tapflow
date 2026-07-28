@@ -6,6 +6,9 @@ import android.content.res.ColorStateList
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
+import android.view.MotionEvent
+import android.view.View
+import android.view.ViewConfiguration
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -40,7 +43,13 @@ class StepListView(context: Context, private val actions: Actions) : LinearLayou
         /** Opens the number pad to jump straight to a step by its number. */
         fun onJumpToStep()
         fun onClose()
+
+        /** Dragged by the header. The panel covers a strip of screen, so it has to be movable. */
+        fun onDrag(dx: Int, dy: Int)
+        fun onDragEnd()
     }
+
+    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
 
     private val displayDensity = context.resources.displayMetrics.density
 
@@ -82,7 +91,55 @@ class StepListView(context: Context, private val actions: Actions) : LinearLayou
         )
 
         scroller.addView(rows, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
-        addView(scroller, LayoutParams(LayoutParams.MATCH_PARENT, dp(220f)))
+        addView(scroller, LayoutParams(LayoutParams.MATCH_PARENT, dp(150f)))
+
+        // Dragged by the position label, which is the one part of the header that is not a button.
+        // Deliberately not the list itself: the ScrollView needs vertical drags, and letting the panel
+        // move on those would make scrolling impossible — the mistake already recorded for the
+        // toolbar's drag handle.
+        attachDrag(position)
+    }
+
+    private fun attachDrag(view: View) {
+        var lastX = 0f
+        var lastY = 0f
+        var totalX = 0f
+        var totalY = 0f
+        var dragging = false
+
+        view.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    lastX = event.rawX
+                    lastY = event.rawY
+                    totalX = 0f
+                    totalY = 0f
+                    dragging = false
+                    true
+                }
+
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = event.rawX - lastX
+                    val dy = event.rawY - lastY
+                    totalX += dx
+                    totalY += dy
+                    if (!dragging && kotlin.math.hypot(totalX, totalY) > touchSlop) dragging = true
+                    if (dragging) {
+                        actions.onDrag(dx.toInt(), dy.toInt())
+                        lastX = event.rawX
+                        lastY = event.rawY
+                    }
+                    true
+                }
+
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    if (dragging) actions.onDragEnd()
+                    true
+                }
+
+                else -> false
+            }
+        }
     }
 
     /**
