@@ -124,18 +124,6 @@ class CanvasView(context: Context) : View(context) {
             invalidate()
         }
 
-    /**
-     * Screen areas covered by the toolbar and transport windows.
-     *
-     * Touches there go to those windows, so they can neither be recorded nor replayed. Hatching
-     * them is the whole mitigation — there is no automatic dodging, by design.
-     */
-    var blockedAreas: List<RectF> = emptyList()
-        set(value) {
-            field = value
-            invalidate()
-        }
-
     private val painter = MarkerPainter(context)
     private val displayDensity = context.resources.displayMetrics.density
 
@@ -144,7 +132,6 @@ class CanvasView(context: Context) : View(context) {
     private val editSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
 
     private val scrimColor = ContextCompat.getColor(context, R.color.record_scrim)
-    private val hatchColor = ContextCompat.getColor(context, R.color.warn_hatch)
 
     private val panelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = ContextCompat.getColor(context, R.color.overlay_panel)
@@ -347,10 +334,6 @@ class CanvasView(context: Context) : View(context) {
 
         if (mode == CanvasMode.RECORDING || mode == CanvasMode.EDIT) {
             if (mode == CanvasMode.RECORDING) canvas.drawColor(scrimColor)
-            // Hatching only, no caption. A label naming the area was tried and removed: it takes a
-            // line of screen for something the stripes already say, and the area it describes is one
-            // the user cannot interact with anyway, so there is nothing to warn them off doing.
-            blockedAreas.forEach { painter.drawBlockedArea(canvas, it, hatchColor) }
         }
 
         // HIDDEN still shows the newest marker, it just stops showing the trail of older ones —

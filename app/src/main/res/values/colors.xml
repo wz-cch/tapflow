@@ -29,7 +29,6 @@
     <color name="marker_label">#FFFFFFFF</color>
     <color name="marker_highlight">#FFFFD24A</color>
 
-    <!-- Recording scrim and the hatched area the toolbar covers. -->
+    <!-- Recording scrim. -->
     <color name="record_scrim">#14E5484D</color>
-    <color name="warn_hatch">#4DE5484D</color>
 </resources>
