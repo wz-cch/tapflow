@@ -36,11 +36,11 @@ import com.tapflow.android.text.secondsText
  * Closing always returns to the canvas. One exit, so the panel needs to remember nothing about who
  * opened it; to get back to the list, press the list button again.
  *
- * Duplicate and insert-before are here as well as (or instead of) on the toolbar, but delete is not,
- * and the line between them is not taste. Both of the first two *create* a step, and the panel then
- * lands on the new one, so you carry straight on editing what you just made. Delete destroys the very
- * step the panel is showing, which would force it to jump somewhere or close itself — and that is a
- * second behaviour for one action, which is exactly what keeping it in one place avoids.
+ * Duplicate, insert-before and delete all act on the step being shown, and all three leave the panel
+ * open on whatever the act left behind: the copy, the new step ahead of this one, or — for delete — the
+ * step before it. Delete was held back at first precisely because "what does the panel do afterwards"
+ * had no answer; once stepping back one was settled, the objection went with it. Every one of them calls
+ * the same code as its toolbar counterpart, so a second entry point cannot become a second behaviour.
  *
  * It stays non-focusable like every other overlay here, so it never steals input from the app
  * underneath. That rules out a text field, which is why the note on a pause is typed in the main app
@@ -87,6 +87,15 @@ class StepPanelView(context: Context, private val actions: Actions) : LinearLayo
          * in; this is the named exception for the one thing inserting after cannot express.
          */
         fun onInsertBefore()
+
+        /**
+         * Deletes this step; the panel stays open on the one before it.
+         *
+         * Backwards rather than forwards, so deleting the last step leaves you looking at the one before
+         * it — the rule isolation is built on. From the first step there is nothing behind, so it goes
+         * forwards instead; emptying the workspace leaves editing altogether.
+         */
+        fun onDelete()
         fun onClose()
     }
 
@@ -127,6 +136,7 @@ class StepPanelView(context: Context, private val actions: Actions) : LinearLayo
     private val editWait = textButton(R.string.param_change) { actions.onEditWaitSeconds() }
     private val duplicate = textButton(R.string.param_duplicate) { actions.onDuplicate() }
     private val insertBefore = textButton(R.string.param_insert_before) { actions.onInsertBefore() }
+    private val delete = textButton(R.string.param_delete) { actions.onDelete() }
 
     private val coordinateRow = LinearLayout(context).apply {
         orientation = HORIZONTAL
@@ -222,12 +232,15 @@ class StepPanelView(context: Context, private val actions: Actions) : LinearLayo
         body.addView(waitRow, rowParams())
         body.addView(durationRow, rowParams())
         body.addView(delayRow, rowParams())
-        // Both of these create a step; they sit together, in the order of where the new step lands.
-        // There is no delete down here — see the class comment.
+        // Delete is pushed to the far side on its own. The other two create a step and sit together in
+        // the order of where the new one lands; putting the destructive one next to them is how you
+        // reach for duplicate and hit delete.
         body.addView(
             LinearLayout(context).apply {
                 orientation = HORIZONTAL
-                gravity = Gravity.END
+                gravity = Gravity.CENTER_VERTICAL
+                addView(delete)
+                addView(Space(context), LayoutParams(0, 1, 1f))
                 addView(insertBefore)
                 addView(Space(context), LayoutParams(dp(8f), 1))
                 addView(duplicate)
