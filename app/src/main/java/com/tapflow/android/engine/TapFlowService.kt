@@ -104,10 +104,6 @@ class TapFlowService : AccessibilityService() {
     private lateinit var recorder: Recorder
     private lateinit var player: Player
 
-    /** Toolbar shape to go back to once a pause is over. */
-    private var formBeforePause = ToolbarForm.EXPANDED
-    private var toolbarYBeforePause = 0
-
     private var volumeLongPressJob: Job? = null
 
     private var lastGestureWarningAt = 0L
@@ -339,7 +335,6 @@ class TapFlowService : AccessibilityService() {
             resources = resources,
             currentScreen = { currentScreen() },
             settings = { settings },
-            onPausedChanged = { paused -> onPausedChanged(paused) },
         )
 
         // Clamping in attachOverlay happens before either view has been measured, so a position
@@ -573,7 +568,8 @@ class TapFlowService : AccessibilityService() {
         val current = settings
         val mode = EngineState.mode.value
 
-        val visible = mode != Mode.IDLE
+        // Exactly the modes where the toolbar hides itself, so the two windows are never both up.
+        val visible = EngineState.isReplaying
         transport.visibility = if (visible) View.VISIBLE else View.GONE
         if (!visible) return
 
@@ -688,34 +684,24 @@ class TapFlowService : AccessibilityService() {
     // --- Pause handling ------------------------------------------------------
 
     /**
-     * Gets the toolbar out of the way of the on-screen keyboard while paused.
+     * Gets the toolbar out of the way of the on-screen keyboard after a pause point is inserted.
      *
      * TYPE_ACCESSIBILITY_OVERLAY sits above TYPE_INPUT_METHOD, so the expanded toolbar — roughly 40%
      * of the screen height hugging one edge — lands squarely on the keyboard's Q/A/Z column. Without
      * this, pressing A would hit a toolbar button and typing a verification code would be
      * impossible, which would make pause points useless.
+     *
+     * Only the recording side needs this. A pause during replay hides the whole toolbar instead, so
+     * there is nothing left over the keyboard to move. Resuming needs no counterpart either:
+     * [startRecording] puts the toolbar back to expanded on its way in.
      */
-    private fun onPausedChanged(paused: Boolean) {
-        if (paused) collapseToBall(BallIntent.RESUME_PLAYBACK) else restoreFromBall()
-    }
-
     private fun collapseToBall(intent: BallIntent) {
-        formBeforePause = EngineState.toolbarForm.value
-        toolbarYBeforePause = toolbarParams.y
-
         toolbar.ballIntent = intent
         EngineState.toolbarForm.value = ToolbarForm.BALL
 
         // Keyboards occupy the lower half, so park the ball in the upper quarter.
         val limit = host.displaySize().y / 4
         toolbarParams.y = min(toolbarParams.y, limit)
-        host.update(toolbar, toolbarParams)
-    }
-
-    private fun restoreFromBall() {
-        toolbar.ballIntent = BallIntent.EXPAND
-        EngineState.toolbarForm.value = formBeforePause
-        toolbarParams.y = toolbarYBeforePause
         host.update(toolbar, toolbarParams)
     }
 
