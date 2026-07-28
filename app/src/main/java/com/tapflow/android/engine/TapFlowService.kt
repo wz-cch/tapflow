@@ -345,7 +345,6 @@ class TapFlowService : AccessibilityService() {
                 host.update(toolbar, toolbarParams)
                 host.update(transport, transportParams)
             }
-            syncBlockedAreas()
         }
         toolbar.addOnLayoutChangeListener(onMeasured)
         transport.addOnLayoutChangeListener(onMeasured)
@@ -458,7 +457,6 @@ class TapFlowService : AccessibilityService() {
         }
         updateCanvasFlags()
         syncCanvasAttachment()
-        syncBlockedAreas()
 
         syncParamCard()
         syncQuickSettings()
@@ -589,33 +587,6 @@ class TapFlowService : AccessibilityService() {
     private fun stepLines(steps: List<Step>): List<String> =
         steps.mapIndexed { index, step -> "${index + 1}  ${step.label(resources)}" }
 
-    /**
-     * Tells the canvas which areas the other two windows cover.
-     *
-     * Those areas can be neither recorded nor replayed, because Android hands a touch to the topmost
-     * window only. Hatching them is the entire mitigation — dodging automatically was considered and
-     * rejected as more moving parts than it is worth.
-     */
-    private fun syncBlockedAreas() {
-        val areas = mutableListOf<RectF>()
-        val windows = listOf(
-            toolbar to toolbarParams,
-            transport to transportParams,
-            paramCard to paramCardParams,
-            quickSettings to quickSettingsParams,
-        )
-        windows.forEach { (view, params) ->
-            if (!host.isAttached(view) || view.visibility != View.VISIBLE) return@forEach
-            if (view.width == 0 || view.height == 0) return@forEach
-            areas += RectF(
-                params.x.toFloat(),
-                params.y.toFloat(),
-                (params.x + view.width).toFloat(),
-                (params.y + view.height).toFloat(),
-            )
-        }
-        canvas.blockedAreas = areas
-    }
 
     private fun updateCanvasFlags() {
         var flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
@@ -712,7 +683,6 @@ class TapFlowService : AccessibilityService() {
         toolbarParams.y += dy
         clampWindows()
         host.update(toolbar, toolbarParams)
-        syncBlockedAreas()
     }
 
     private fun moveTransport(dx: Int, dy: Int) {
@@ -720,7 +690,6 @@ class TapFlowService : AccessibilityService() {
         transportParams.y += dy
         clampWindows()
         host.update(transport, transportParams)
-        syncBlockedAreas()
     }
 
     /** @return true when a position actually had to move, so callers can skip a pointless update. */
@@ -748,13 +717,11 @@ class TapFlowService : AccessibilityService() {
         host.update(toolbar, toolbarParams)
         Repo.writeInt(PREF_TOOLBAR_X, toolbarParams.x)
         Repo.writeInt(PREF_TOOLBAR_Y, toolbarParams.y)
-        syncBlockedAreas()
     }
 
     private fun settleTransport() {
         Repo.writeInt(PREF_TRANSPORT_X, transportParams.x)
         Repo.writeInt(PREF_TRANSPORT_Y, transportParams.y)
-        syncBlockedAreas()
     }
 
     // --- Actions -------------------------------------------------------------

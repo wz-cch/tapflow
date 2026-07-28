@@ -129,5 +129,4 @@ Shizuku 提供一個 ADB 權限等級的行程,可以繞過 `AccessibilityServic
 這些不是使用者回饋,是 [HANDOFF](HANDOFF.md) 第四節記的既有缺口,**不需要實機就能做**:
 
 - **[SPEC §8] 解析度 / 方向不符時的提示與暫停** —— 目前只做線性座標縮放,方向對不上不會警告
-- **[SPEC §1.3] 編輯時落在警示區內的標記畫成黃色** —— 斜線區與文字說明有了,個別標記的警示色沒有
 - **M3 的流程清單 UI** —— `home_tab_flows` / `home_no_flows` 兩個 string 刻意留著

@@ -455,20 +455,6 @@ class MarkerPainter(context: Context) {
         canvas.drawPath(reusablePath, fill)
     }
 
-    /** Diagonal hatching over an area the toolbar covers, which cannot be recorded or replayed. */
-    fun drawBlockedArea(canvas: Canvas, rect: RectF, hatchColor: Int) {
-        stroke.color = hatchColor
-        stroke.strokeWidth = dp(2f)
-        val step = dp(12f)
-        canvas.save()
-        canvas.clipRect(rect)
-        var x = rect.left - rect.height()
-        while (x < rect.right) {
-            canvas.drawLine(x, rect.bottom, x + rect.height(), rect.top, stroke)
-            x += step
-        }
-        canvas.restore()
-    }
 
     private fun color(context: Context, id: Int): Int =
         runCatching { ContextCompat.getColor(context, id) }.getOrDefault(Color.WHITE)
