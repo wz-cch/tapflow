@@ -138,9 +138,11 @@ Overlay 全部用**原生 View 而非 Compose**:在 `WindowManager` 上跑 Compo
 
 ---
 
-## 三、三個懸浮視窗
+## 三、懸浮視窗
 
-只用三個 window,每個承擔多種形態,避免 window 數量爆炸。
+**五個 window。** 三個是常駐主體 —— 工具列(§3.1)、播放面板(§3.2)、標記畫布(§3.3);另外兩個是按需掛上、用完就 `remove` 的浮動面板 —— 快捷設定(§3.1)與參數卡(§9)。
+
+原則仍是**每個 window 承擔多種形態,而不是一個形態開一個 window**:畫布一個 View 撐三種模式,工具列一個 View 撐展開與摺疊球。那兩個浮動面板之所以沒有併進畫布,是因為它們是十來個控制項的表單 —— 畫在畫布上就得自己做 hit-test,而且會跟標記的 hit-test 打結(§9)。
 
 ### 3.1 `ToolbarWindow` — 左側垂直工具列
 
@@ -165,7 +167,7 @@ Overlay 全部用**原生 View 而非 Compose**:在 `WindowManager` 上跑 Compo
 | ✕ | 關閉懸浮工具列 | — | — | 隱藏 |
 | ∧ | 摺疊成 56dp 圓球 | 摺疊 | 摺疊 | 摺疊 |
 
-**按鍵區可捲動。** 14 排按鍵在橫向螢幕放不下,所以按鍵區包在一個高度上限夾在螢幕內的 ScrollView 裡。**拖曳把手刻意留在捲動區外面** —— 放在裡面 ScrollView 會攔走垂直拖曳,工具列就再也拖不動,等於把一個摸不到的控制換成另一個。
+**按鍵區可捲動。** 上表宣告 14 顆鍵,編輯模式外實際顯示 12 顆(`＋` `−` 不出現),橫向螢幕放不下,所以按鍵區包在一個高度上限夾在螢幕內的 ScrollView 裡。**拖曳把手刻意留在捲動區外面** —— 放在裡面 ScrollView 會攔走垂直拖曳,工具列就再也拖不動,等於把一個摸不到的控制換成另一個。
 
 **編輯模式換一整組按鍵**,不是把不相關的按鍵變灰 —— `＋` `−` 只在編輯模式出現,`▶` `⊙` `⏸+` `↩` `✕` 只在編輯模式外出現。詳見 §9。
 
@@ -181,7 +183,7 @@ Overlay 全部用**原生 View 而非 Compose**:在 `WindowManager` 上跑 Compo
 
 **摺疊態** — 56dp 圓球,顏色示意狀態(灰 待機 / 紅 錄製 / 綠 播放 / 黃 暫停),球面顯示當下唯一有意義的動作(`▶ 繼續` 或 `⊙ 繼續錄製`)。可拖曳,點一下展開。
 
-除了手動按 `∧`,進入暫停態時會**自動**摺疊並移到螢幕上半部,把鍵盤區讓出來 —— 見 §10.3,這是人工介入能不能真的用的關鍵。
+除了手動按 `∧`,進入暫停態時會**自動**摺疊並移到螢幕上半部,把鍵盤區讓出來 —— 見 §10.2(2),這是人工介入能不能真的用的關鍵。
 
 **`✕` 是關閉,不是縮小。** 按下去會把懸浮開關關掉,並 toast 告知回主 app 重新開啟。
 
@@ -214,10 +216,10 @@ Overlay 全部用**原生 View 而非 Compose**:在 `WindowManager` 上跑 Compo
 | 模式 | 觸控 | 畫什麼 |
 |---|---|---|
 | **唯讀**(待機 / 播放) | `FLAG_NOT_TOUCHABLE` 完全穿透 | 所有步驟的標記;播放中高亮當前步驟;可選亞光黑幕 |
-| **編輯**(按 `✎`) | 整螢幕攔截 | 標記 + 選取框 + 參數卡 + 警示斜線區 |
+| **編輯**(按 `✎`) | 整螢幕攔截 | 標記 + 選取框 + 警示斜線區(參數卡是另一個 window) |
 | **錄製**(按 `⊙`) | 整螢幕攔截 + 逐手勢補發 | 半透明底色 + 即時新增的標記 + 警示斜線區 |
 
-亞光黑幕、參數卡、警示區都畫在這個 View 上,不需要額外 window。
+亞光黑幕與警示區都畫在這個 View 上,不需要額外 window。**參數卡不是** —— 它是自己的 window,理由見 §9。
 
 ---
 
@@ -521,9 +523,9 @@ enum class MarkerDensity { ALL, RECENT, HIDDEN }
 - **參數卡是獨立的 window,不是畫在畫布上的圖。** 十來個控制項若要自己做 hit-test,geometry 的量遠超過收益,而且會跟標記的 hit-test 打結。代價是它跟其他 overlay 一樣 non-focusable,所以**暫停點的備註只能在主 app 編輯** —— overlay 拿焦點會搶掉下層 app 的輸入法。
 - **編輯模式下不畫步驟文字清單。** 位置會跟參數卡重疊,而且此時要看的是標記本身。
 - **編輯模式強制把顯示密度開到「全部」**,使用者自己的設定不動。看不到的東西沒辦法編輯。
-- **工具列在編輯模式換一整組按鍵**,不是把不相關的按鍵變灰。播放與錄製在拖曳標記時沒有意義,`＋`/`−` 在編輯模式外也沒有意義,所以沒有任何一顆按鍵是「明明可以直接不顯示卻只變灰」。這讓工具列維持 10 排以內,而不是長到 13 排。
+- **工具列在編輯模式換一整組按鍵**,不是把不相關的按鍵變灰。播放與錄製在拖曳標記時沒有意義,`＋`/`−` 在編輯模式外也沒有意義,所以沒有任何一顆按鍵是「明明可以直接不顯示卻只變灰」。編輯模式因此只有 7 顆鍵,而不是把宣告的 14 顆全列出來。
 
-**參數卡**(畫在畫布上,不另開 window):
+**參數卡**(自己的 window,理由見上一點):
 
 ```
 ┌─ 步驟 7 ─────────────────┐
@@ -604,11 +606,11 @@ ACTION_CANCEL        丟棄該手勢
 
 **(1) 觸控必須真的放行。** 暫停時 `CanvasWindow` 設 `FLAG_NOT_TOUCHABLE`。這個 flag 的語意是「這個 window 永遠收不到觸控」,所以觸控**穿透下去**給下層 app 與輸入法 —— 名字容易誤讀成「鎖住觸控」,實際是相反的。提示條也畫在這個畫布上,所以它純粹是視覺的,不攔任何東西。
 
-**(2) 工具列必須把鍵盤區讓出來。** 畫布穿透只解決全螢幕那一層,真正會擋住你打字的是工具列:11 顆鍵約佔螢幕 40% 高度、貼著左緣往下延伸,**必然壓在鍵盤的 Q / A / Z 那一整排上面**。而且 `TYPE_ACCESSIBILITY_OVERLAY` 的層級**高於 `TYPE_INPUT_METHOD`**,是工具列蓋住鍵盤,不是反過來。你按 A,按到的是工具列的某顆鍵。
+**(2) 工具列必須把鍵盤區讓出來。** 畫布穿透只解決全螢幕那一層,真正會擋住你打字的是工具列:12 顆鍵約佔螢幕 40% 高度、貼著左緣往下延伸,**必然壓在鍵盤的 Q / A / Z 那一整排上面**。而且 `TYPE_ACCESSIBILITY_OVERLAY` 的層級**高於 `TYPE_INPUT_METHOD`**,是工具列蓋住鍵盤,不是反過來。你按 A,按到的是工具列的某顆鍵。
 
 所以進入暫停時,工具列**自動**摺疊成一顆 56dp 小球並移到螢幕上半部(y < 40% 高),球面只顯示「繼續」。仍可拖曳,萬一它還是擋到。按繼續後自動回復原本的展開形態與位置。
 
-暫停時你只需要「繼續」這一個功能,11 顆鍵全都沒意義,摺疊成球是最合理的形態,順便把鍵盤區清空。
+暫停時你只需要「繼續」這一個功能,12 顆鍵全都沒意義,摺疊成球是最合理的形態,順便把鍵盤區清空。
 
 例外:按 `■` 單純停止錄製時**維持展開** —— 你可能是要存檔、進編輯模式、加點,需要整排按鍵。要讓位自己按 `∧`。
 
@@ -618,7 +620,7 @@ ACTION_CANCEL        丟棄該手勢
 
 **M4 可選優化**:用 `AccessibilityService.getWindows()` 找到 `TYPE_INPUT_METHOD` 的實際 `boundsInScreen`,精準閃避而不是固定移到上半部。要多開 `FLAG_RETRIEVE_INTERACTIVE_WINDOWS`,收益不大,先不做。
 
-### 10.4 錄製時的限制(UI 上要提示)
+### 10.3 錄製時的限制(UI 上要提示)
 
 - 工具列、播放面板、步驟清單覆蓋的區域無法錄製 —— 拖走它們
 - 錄製中轉螢幕方向 → 中止錄製並提示(座標系會亂掉)
@@ -648,55 +650,65 @@ ACTION_CANCEL        丟棄該手勢
 
 ## 十二、檔案結構
 
+`(M3)` / `(M4)` 標記的是規劃中、**尚未存在**的檔案。其餘都是現況。
+
 ```
-D:\touch\
-├─ .github\workflows\android.yml        GitHub Actions:編譯 debug APK 為 artifact
-├─ docs\SPEC.md                          本規格書
+tapflow/
+├─ .github/workflows/android.yml         GitHub Actions:編譯 debug APK 為 artifact
+├─ docs/SPEC.md                          本規格書
+├─ docs/HANDOFF.md                       交接筆記:驗證狀態、待決事項、踩過的坑
 ├─ README.md  CONTRIBUTING.md  CHANGELOG.md
 ├─ .editorconfig  .gitattributes  .gitignore
 ├─ settings.gradle.kts  build.gradle.kts  gradle.properties
-├─ gradle\wrapper\gradle-wrapper.properties
-└─ app\
+├─ gradle/wrapper/gradle-wrapper.properties
+└─ app/
    ├─ build.gradle.kts   proguard-rules.pro
-   └─ src\main\
+   └─ src/main/
       ├─ AndroidManifest.xml
-      ├─ res\
-      │   ├─ values\strings.xml          英文,預設語系
-      │   ├─ values-zh-rTW\strings.xml   正體中文
-      │   ├─ values\themes.xml  colors.xml
-      │   ├─ xml\accessibility_service_config.xml
-      │   ├─ drawable\  mipmap\
-      └─ java\com\tapflow\android\
+      ├─ res/
+      │   ├─ values/strings.xml          英文,預設語系
+      │   ├─ values-zh-rTW/strings.xml   正體中文
+      │   ├─ values/themes.xml  colors.xml
+      │   ├─ xml/accessibility_service_config.xml
+      │   ├─ drawable/  mipmap/  mipmap-anydpi-v26/
+      └─ java/com/tapflow/android/
          ├─ App.kt                       Application:Repo.init
          ├─ MainActivity.kt
-         ├─ data\                        純 Kotlin,不得 import android.*,不得含使用者可見字串
+         ├─ WorkspaceDialogActivity.kt   存 / 讀 / 開新的三個對話框(§4.1)
+         ├─ data/                        純 Kotlin,不得 import android.*,不得含使用者可見字串
          │   ├─ Model.kt                 Pt / Stroke / Step / Clip / Flow / Node
          │   ├─ Settings.kt              全域設定
          │   ├─ Repo.kt                  StateFlow 狀態 + JSON 持久化
          │   └─ JsonConfig.kt            共用 Json(classDiscriminator = "type")
-         ├─ text\
+         ├─ text/
          │   └─ StepText.kt              使用者可見字串的格式化,吃 Resources
-         ├─ engine\
-         │   ├─ TapFlowService.kt        服務進出點、按鍵攔截、三個 window 的擁有者
+         ├─ engine/
+         │   ├─ TapFlowService.kt        服務進出點、按鍵攔截、五個 window 的擁有者
          │   ├─ Workspace.kt             工作區狀態 + 自動草稿
          │   ├─ Recorder.kt              錄製狀態、逐手勢補發
          │   ├─ Player.kt                跑工作區 / 單片段(M1)
-         │   ├─ FlowRunner.kt            流程狀態機 + 游標 + 暫停(M3)
          │   ├─ GestureDispatcher.kt     Step → GestureDescription、縮放、抖動
+         │   ├─ EngineState.kt           引擎暫態:模式、工具列形態、進度、選取(不持久化)
+         │   ├─ Timing.kt                抖動與速度倍率的時間換算,錄製與播放共用
+         │   ├─ Diag.kt                  診斷紀錄,有上限的 ArrayDeque(§14.3)
+         │   ├─ FlowRunner.kt            流程狀態機 + 游標 + 暫停(M3)
          │   └─ NodeFinder.kt            條件等待(M4)
-         ├─ overlay\
-         │   ├─ OverlayHost.kt           三個 window 的建立 / 層級 / fallback / 位置持久化
-         │   ├─ ToolbarView.kt           左側工具列(展開 / 摺疊球 / 邊緣把手)
+         ├─ overlay/                     原生 View,不用 Compose
+         │   ├─ OverlayHost.kt           window 的掛載 / 層級 / fallback / 位置持久化(不擁有 View)
+         │   ├─ ToolbarView.kt           左側工具列(展開 / 摺疊球)
          │   ├─ TransportView.kt         頂部播放面板(進度 / 迴圈 / 計時器)
          │   ├─ CanvasView.kt            標記繪製 + 錄製攔截 + 編輯拖曳 + 亞光
          │   ├─ Markers.kt               標記模型、hit-test、繪製
-         │   └─ ParamCard.kt             點選標記後的參數卡
-         └─ ui\
+         │   ├─ ParamCardView.kt         點選標記後的參數卡(獨立 window,見 §9)
+         │   └─ QuickSettingsView.kt     工具列 `⚙` 的快捷設定面板(§3.1)
+         └─ ui/                          Compose,只有主 app 畫面
              ├─ Theme.kt
              ├─ HomeScreen.kt            權限引導、工具列開關、片段清單
+             ├─ ServiceStatus.kt         分辨服務「沒開」與「開了但沒在跑」
              ├─ SettingsScreen.kt        全域設定(M2)
+             ├─ DiagnosticsScreen.kt     診斷紀錄(§14.3)
              ├─ FlowEditorScreen.kt      流程編排(M3)
-             └─ ClipDetailScreen.kt      片段詳情 / 改名 / 刪除 / 匯出
+             └─ ClipDetailScreen.kt      片段詳情 / 改名 / 刪除 / 匯出(M3)
 ```
 
 ---

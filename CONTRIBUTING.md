@@ -103,7 +103,7 @@ git push --all && git push --tags
 ```
 data      資料模型與持久化
 engine    無障礙服務、錄製、重播、手勢派送
-overlay   三個懸浮視窗、標記畫布
+overlay   懸浮視窗、標記畫布
 ui        Compose 主畫面與編輯器
 text      使用者可見字串的格式化
 i18n      語系資源

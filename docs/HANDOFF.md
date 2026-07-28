@@ -31,24 +31,31 @@ M3（流程層）、M4（條件等待、多指手勢、匯出匯入）未動工�
 
 ## 二、待決事項
 
-### 2.1 gitflow 已經被違反，還沒清理
+**目前沒有懸而未決的。** 下面兩項是前一輪留下的，都已處理，記在這裡是因為第一項**改寫了歷史**。
 
-`develop` 上有兩個 commit（`c3ebcd1`、`538ad83`）**直接推上去，沒走 feature branch**，違反 [CONTRIBUTING.md](../CONTRIBUTING.md) 定的分支模型。
+### 2.1 gitflow 的違規已清掉（歷史被改寫）
 
-清掉需要 force-push，**尚未取得同意，所以沒有做**。兩個選項：
+`develop` 上原本有兩個 commit（`c3ebcd1`、`538ad83`）**直接推上去，沒走 feature branch**，違反 [CONTRIBUTING.md](../CONTRIBUTING.md) 定的分支模型。
 
-- **就這樣往前走** —— 歷史留著違規紀錄，但沒有人需要重新 clone
-- **整理後 merge** —— 歷史乾淨，但任何已經 clone 的人都要 reset
+已補開 `feature/service-status` 收容那兩個 commit 並 `--no-ff` 併回，其後的 23 個 commit 因此全部換了 SHA。
 
-### 2.2 `fix/gesture-cancelled` 還沒併回 `develop`
+> **如果你手上有改寫之前的 clone，它跟遠端已經對不起來了 —— 重新 clone，不要 merge。**
+>
+> 改寫只動 commit 物件。三個節點（原 `538ad83`、原 `c09d790`、原分支尖端）的工作樹都逐一 `git diff` 比對過，與原本 byte-identical；`git log --first-parent --no-merges` 也確認 develop 上沒有任何裸 commit。
 
-7 個 commit，CI 全綠，實機驗過。內容是診斷紀錄畫面 + 手勢注入器辨識 + 幾個 overlay 效能修正。
+### 2.2 `fix/gesture-cancelled` 已併回 `develop`
+
+8 個 commit，CI 全綠，實機驗過。內容是診斷紀錄畫面 + 手勢注入器辨識 + 幾個 overlay 效能修正。
 
 ---
 
 ## 三、踩過的坑（每一個都花掉至少一輪 build）
 
-這一節的價值最高。**沒有本機 Android SDK，每個編譯錯誤都要等一輪 CI**，所以這些坑重踩一次的成本是實際的分鐘數。
+這一節的價值最高。
+
+> **這一節原本的前提「沒有本機 Android SDK，每個編譯錯誤都要等一輪 CI」已經不成立了** —— 見 §五，現在本機編得起來，增量建置 2 秒。
+>
+> 但只有 3.4 與 3.5 是編譯期的坑，本機建置確實讓它們變便宜了。**其餘每一個都是執行期或行為上的**，本機 SDK 幫不上忙 —— 它們仍然要裝到手機上、重新綁定服務、實際操作才看得出來，一輪就是好幾分鐘。所以這些坑重踩一次的成本仍然是實際的分鐘數。
 
 ### 3.1 診斷紀錄是除錯的第一手段，不是最後手段
 
@@ -111,7 +118,15 @@ M3（流程層）、M4（條件等待、多指手勢、匯出匯入）未動工�
 
 ## 五、環境與流程
 
-- **沒有本機 Android SDK，也沒有 `gradle-wrapper.jar`**（二進位檔無法從純文字環境產生）。編譯靠 GitHub Actions，用系統的 `gradle` 而不是 `./gradlew`
+- **本機編得起來了。** SDK 在 `/opt/android-sdk`（platform-tools + `platforms;android-35` + `build-tools;35.0.0`），Gradle 8.11.1 在 `/usr/local/bin/gradle`，JDK 17。`local.properties` 指到 SDK，本來就在 `.gitignore` 裡，不會進版控
+
+  ```bash
+  ANDROID_HOME=/opt/android-sdk gradle assembleDebug
+  ```
+
+  冷啟（含抓完所有依賴）約 2 分 49 秒，之後增量 2 秒。**推之前先在本機編一次**，CI 一輪要 3 分鐘，而編譯錯誤在這裡 2 秒就知道了
+- **仍然沒有 `gradle-wrapper.jar`**（二進位檔無法從純文字環境產生），所以用系統的 `gradle` 而不是 `./gradlew`。CI 也是。用 Android Studio 開過一次專案它就會補上
+- **CI 仍然是產 APK 的地方**，也是唯一會被記錄下來的建置
 - **版本識別**：CI 傳 `-PbuildId=${GITHUB_SHA}` → `versionName` → `BuildConfig.VERSION_NAME`，主畫面與診斷紀錄的複製內容都會顯示。**回報問題時一定要附這個**，否則分不清測的是哪一版
 - **讀 CI 失敗的方法**：check-run annotation 不需要認證就能讀，raw Actions log 需要（會 403）。CI 有一個 failure-to-annotation 步驟就是為了這件事
 - **未認證的 GitHub API 是 60 次/小時**，查 CI 狀態很容易用完
