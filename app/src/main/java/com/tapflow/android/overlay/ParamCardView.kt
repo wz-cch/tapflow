@@ -126,7 +126,7 @@ class ParamCardView(context: Context, private val actions: Actions) : LinearLayo
 
     private fun typeLabel(step: Step): String = context.getString(
         when (step) {
-            is PauseStep -> R.string.param_type_pause
+            is PauseStep -> if (step.isTimed) R.string.param_type_wait else R.string.param_type_pause
             is GestureStep -> when (step.kind) {
                 GestureKind.TAP -> R.string.param_type_tap
                 GestureKind.LONG_PRESS -> R.string.param_type_long_press

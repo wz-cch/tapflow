@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Tinted programmatically by the overlay views, so no tint attribute here.
+     A clock with a plus, matching ic_pause_add: same glyph-plus-plus construction, so the two
+     insert buttons read as a pair in the toolbar. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M9.5,3A6.5,6.5 0,1 0,9.5 16A6.5,6.5 0,1 0,9.5 3zM9.5,5A4.5,4.5 0,1 1,9.5 14A4.5,4.5 0,1 1,9.5 5z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M8.7,6h1.6v3.2h2.4v1.6h-4z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M16,13h2v3h3v2h-3v3h-2v-3h-3v-2h3z" />
+</vector>

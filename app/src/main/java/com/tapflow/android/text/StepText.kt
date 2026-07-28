@@ -16,7 +16,6 @@ import com.tapflow.android.data.Node
 import com.tapflow.android.data.PauseStep
 import com.tapflow.android.data.Step
 import com.tapflow.android.data.WaitNode
-import com.tapflow.android.data.WaitStep
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -34,12 +33,26 @@ fun Step.label(res: Resources): String = when (this) {
     // supertype invite the compiler to resolve the wrong one and recurse forever.
     is GestureStep -> gestureLabel(res)
     is GlobalStep -> res.getString(R.string.step_global, kind.label(res))
-    is WaitStep -> res.getString(R.string.step_wait, ms)
-    is PauseStep -> if (note.isBlank()) {
-        res.getString(R.string.step_pause)
-    } else {
-        res.getString(R.string.step_pause_with_note, note)
-    }
+    is PauseStep -> pauseLabel(res)
+}
+
+private fun PauseStep.pauseLabel(res: Resources): String = when {
+    isTimed && note.isBlank() -> res.getString(R.string.step_wait, secondsText(ms))
+    isTimed -> res.getString(R.string.step_wait_with_note, secondsText(ms), note)
+    note.isBlank() -> res.getString(R.string.step_pause)
+    else -> res.getString(R.string.step_pause_with_note, note)
+}
+
+/**
+ * Milliseconds as seconds, dropping a trailing ".0".
+ *
+ * Stored in milliseconds like every other duration in the model, but entered and read in seconds —
+ * "3" is what the user typed and "3000 ms" is not what they want to read back.
+ */
+fun secondsText(ms: Long): String {
+    val whole = ms / 1000
+    val tenths = (ms % 1000) / 100
+    return if (tenths == 0L) whole.toString() else "$whole.$tenths"
 }
 
 fun GestureStep.gestureLabel(res: Resources): String {
@@ -103,7 +116,7 @@ fun Node.label(res: Resources, clips: List<Clip>): String = when (this) {
         if (repeat > 1) res.getString(R.string.node_clip_repeat, name, repeat) else name
     }
 
-    is WaitNode -> res.getString(R.string.step_wait, ms)
+    is WaitNode -> res.getString(R.string.step_wait, secondsText(ms))
     is AwaitTextNode -> res.getString(R.string.node_await_text, text)
     is GlobalNode -> res.getString(R.string.step_global, kind.label(res))
 }

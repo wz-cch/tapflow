@@ -16,7 +16,8 @@
     <string name="step_long_press">長按 (%1$d, %2$d) · %3$d ms</string>
     <string name="step_swipe">滑動 (%1$d, %2$d) → (%3$d, %4$d) · %5$d ms</string>
     <string name="step_multi_touch">%1$d 指手勢 · %2$d ms</string>
-    <string name="step_wait">等待 %1$d ms</string>
+    <string name="step_wait">⏱ 等待 %1$s 秒</string>
+    <string name="step_wait_with_note">⏱ 等待 %1$s 秒:%2$s</string>
     <string name="step_global">系統動作:%1$s</string>
     <string name="step_pause">⏸ 暫停點</string>
     <string name="step_pause_with_note">⏸ 暫停點:%1$s</string>
@@ -103,6 +104,7 @@
     <string name="toast_saved">已存成「%1$s」</string>
     <string name="toast_nothing_to_save">還沒有錄到任何動作</string>
     <string name="toast_pause_inserted">已插入暫停點 — 請手動完成這一步,再按錄製接續</string>
+    <string name="toast_wait_inserted">已插入等待 %1$d 秒</string>
     <string name="toast_undone">已移除最後一步</string>
     <string name="toast_loaded">已把「%1$s」載入工作區</string>
     <string name="toast_toolbar_hidden">已收起工具列。回到觸控流 app 重新開啟。</string>
@@ -132,6 +134,9 @@
     <string name="param_type_swipe">滑動</string>
     <string name="param_type_multi_touch">多指手勢</string>
     <string name="param_type_pause">暫停點</string>
+    <string name="param_type_wait">等待</string>
+    <string name="wait_pad_title">等待秒數</string>
+    <string name="wait_pad_unit">秒</string>
     <string name="param_type_other">動作</string>
     <string name="param_coordinates">%1$d, %2$d</string>
     <string name="param_repick">重新指定</string>

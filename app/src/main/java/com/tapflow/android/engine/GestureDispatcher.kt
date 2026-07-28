@@ -13,7 +13,6 @@ import com.tapflow.android.data.ScreenSpec
 import com.tapflow.android.data.Settings
 import com.tapflow.android.data.Step
 import com.tapflow.android.data.Stroke
-import com.tapflow.android.data.WaitStep
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
@@ -96,7 +95,7 @@ class GestureDispatcher(
                 }
             // Waits are handled by the caller so it can honour pause requests mid-wait, and pause
             // points are not something to dispatch at all.
-            is WaitStep, is PauseStep -> GestureOutcome.SKIPPED
+            is PauseStep -> GestureOutcome.SKIPPED
         }
         if (outcome != GestureOutcome.SKIPPED) report(outcome)
         return outcome
