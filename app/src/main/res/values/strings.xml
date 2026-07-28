@@ -60,8 +60,11 @@
     <string name="action_record_stop">Stop recording</string>
     <string name="action_insert_pause">Insert pause point</string>
     <string name="action_undo">Undo last step</string>
-    <string name="action_add_tap">Add tap</string>
+    <string name="action_insert_step">Insert step after</string>
+    <string name="action_duplicate_step">Duplicate step</string>
     <string name="action_delete">Delete selected</string>
+    <string name="action_step_panel">Step settings</string>
+    <string name="action_step_list">Step list</string>
     <string name="action_edit_mode">Edit mode</string>
     <string name="action_save">Save clip</string>
     <string name="action_load">Load clip</string>
@@ -129,15 +132,14 @@
     <string name="dialog_cancel">Cancel</string>
 
     <!-- Editing -->
-    <string name="toast_edit_mode_on">Editing. The whole screen is captured — drag a numbered marker to move it, tap one to change it.</string>
-    <string name="toast_pick_coordinate">Tap where this step should go</string>
-    <string name="param_title">Step %1$d · %2$s</string>
+    <string name="toast_edit_mode_on">Editing. The whole screen is captured — drag a numbered marker to move it. Open step settings to change its numbers.</string>
     <string name="param_type_tap">Tap</string>
     <string name="param_type_long_press">Long press</string>
     <string name="param_type_swipe">Swipe</string>
     <string name="param_type_multi_touch">Multi-finger</string>
     <string name="param_type_pause">Pause point</string>
     <string name="param_type_wait">Wait</string>
+    <string name="param_type_other">Action</string>
     <string name="play_from_title">Start from step</string>
     <string name="step_list_jump">Jump</string>
     <string name="step_list_position">%1$d / %2$d</string>
@@ -146,18 +148,22 @@
     <string name="step_list_jump_unit">#</string>
     <string name="wait_pad_title">Wait for</string>
     <string name="wait_pad_unit">s</string>
-    <string name="param_type_other">Action</string>
     <string name="param_coordinates">%1$d, %2$d</string>
-    <string name="param_repick">Re-pick</string>
     <string name="param_rerecord">Redo</string>
-    <string name="toast_rerecord_prompt">Make the gesture again to replace this step</string>
-    <string name="toast_step_rerecorded">Step replaced</string>
+    <string name="param_insert_before">Insert before</string>
     <string name="param_edit_note">Note</string>
     <string name="param_note_empty">No note</string>
+    <string name="param_wait_length">Wait</string>
+    <string name="param_change">Change</string>
+    <string name="param_seconds">%1$s s</string>
     <string name="param_duration">Duration</string>
     <string name="param_delay">Delay before</string>
     <string name="param_ms">%1$d ms</string>
-    <string name="param_done">Done</string>
+    <string name="toast_capture_prompt">Make the gesture to insert it here</string>
+    <string name="toast_step_inserted">Step inserted</string>
+    <string name="toast_step_duplicated">Step duplicated</string>
+    <string name="toast_rerecord_prompt">Make the gesture again to replace this step</string>
+    <string name="toast_step_rerecorded">Step replaced</string>
 
     <!-- Quick settings panel on the overlay -->
     <string name="quick_title">Quick settings</string>

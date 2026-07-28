@@ -123,12 +123,34 @@ object Workspace {
     }
 
     /**
+     * Inserts immediately **after** [afterId], or at the end when it is null or unknown.
+     *
+     * This is the direction the toolbar inserts in, because it is the direction recording grows in:
+     * every step you have ever added to a script landed after the previous one. Offering only
+     * insert-before there read backwards even though it is the more expressive primitive — and the
+     * expressiveness is not lost, because [insertBefore] is offered by name on the step settings panel,
+     * where a labelled button says which way it goes.
+     *
+     * Recording never has a selection, so recorded steps keep landing at the end without a special case.
+     */
+    fun insertAfter(afterId: String?, step: Step, capturedOn: ScreenSpec) {
+        if (screen == null) screen = capturedOn
+        snapshot()
+        val current = steps.value
+        val index = current.indexOfFirst { it.id == afterId }
+        steps.value = if (index < 0) {
+            current + step
+        } else {
+            current.toMutableList().apply { add(index + 1, step) }
+        }
+        markDirty()
+    }
+
+    /**
      * Inserts immediately **before** [beforeId], or at the end when it is null or unknown.
      *
-     * Before rather than after so that every position is reachable. Inserting after cannot express
-     * "make this the first step", whereas inserting before does not need to express "after the last
-     * one" — that is just appending, which is what a null selection already does. Recording never has
-     * a selection, so recorded steps keep landing at the end without a special case.
+     * The only way to express "make this the first step", which is why it survives alongside
+     * [insertAfter] rather than being replaced by it.
      */
     fun insertBefore(beforeId: String?, step: Step, capturedOn: ScreenSpec) {
         if (screen == null) screen = capturedOn

@@ -182,11 +182,10 @@ fun GestureStep.withEndAt(x: Float, y: Float): GestureStep {
 
 private const val MIN_DIRECTION_LENGTH_SQUARED = 1f
 
-/** A single tap at a position, used by the toolbar's add button. */
-fun tapStep(x: Float, y: Float, holdMs: Long, delayBefore: Long): GestureStep = GestureStep(
-    strokes = listOf(Stroke(points = listOf(Pt(x, y, 0), Pt(x, y, holdMs.coerceAtLeast(1L))))),
-    delayBefore = delayBefore,
-)
+// There is deliberately no synthesise-a-tap-at-a-position helper. The toolbar's add button used to
+// conjure one at the centre of the screen for the user to drag into place, which was two acts to get
+// one point and restricted a manually added step to a plain tap. It now captures a real gesture
+// through the same path as recording, so a step created by hand can be anything a recorded one can.
 
 @Serializable
 @SerialName("global")

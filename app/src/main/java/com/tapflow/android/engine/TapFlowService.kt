@@ -24,7 +24,7 @@ import com.tapflow.android.data.Settings
 import com.tapflow.android.data.Step
 import com.tapflow.android.data.Stroke
 import com.tapflow.android.data.movedTo
-import com.tapflow.android.data.tapStep
+import com.tapflow.android.data.newId
 import com.tapflow.android.data.withDuration
 import com.tapflow.android.data.withEndAt
 import com.tapflow.android.overlay.BallIntent
@@ -33,9 +33,9 @@ import com.tapflow.android.overlay.CanvasView
 import com.tapflow.android.overlay.Handle
 import com.tapflow.android.overlay.NumberPadView
 import com.tapflow.android.overlay.OverlayHost
-import com.tapflow.android.overlay.ParamCardView
 import com.tapflow.android.overlay.QuickSettingsView
 import com.tapflow.android.overlay.StepListView
+import com.tapflow.android.overlay.StepPanelView
 import com.tapflow.android.overlay.ToolbarView
 import com.tapflow.android.overlay.TransportView
 import com.tapflow.android.overlay.buildMarkers
@@ -81,6 +81,9 @@ class TapFlowService : AccessibilityService() {
 
         /** An hour. Long enough for any real use, short enough that a mistyped digit is obvious. */
         private const val MAX_WAIT_SECONDS = 3600
+
+        /** How much of the screen the settings panel may take before its rows start scrolling. */
+        private const val PANEL_MAX_HEIGHT_FRACTION = 0.8f
     }
 
     /**
@@ -96,7 +99,7 @@ class TapFlowService : AccessibilityService() {
     private lateinit var canvas: CanvasView
     private lateinit var toolbar: ToolbarView
     private lateinit var transport: TransportView
-    private lateinit var paramCard: ParamCardView
+    private lateinit var stepPanel: StepPanelView
     private lateinit var quickSettings: QuickSettingsView
     private lateinit var numberPad: NumberPadView
     private lateinit var stepList: StepListView
@@ -104,7 +107,7 @@ class TapFlowService : AccessibilityService() {
     private lateinit var canvasParams: WindowManager.LayoutParams
     private lateinit var toolbarParams: WindowManager.LayoutParams
     private lateinit var transportParams: WindowManager.LayoutParams
-    private lateinit var paramCardParams: WindowManager.LayoutParams
+    private lateinit var stepPanelParams: WindowManager.LayoutParams
     private lateinit var quickSettingsParams: WindowManager.LayoutParams
     private lateinit var numberPadParams: WindowManager.LayoutParams
     private lateinit var stepListParams: WindowManager.LayoutParams
@@ -294,12 +297,11 @@ class TapFlowService : AccessibilityService() {
             onSelect = { stepId -> select(stepId) }
             onDragStep = { stepId, handle, x, y -> dragStep(stepId, handle, x, y) }
             onDragEnd = { Workspace.flush() }
-            onPickCoordinate = { x, y -> pickCoordinate(x, y) }
             onReplayEcho = { onReplayEcho() }
         }
         toolbar = ToolbarView(this, ToolbarActions())
         transport = TransportView(this, TransportActions())
-        paramCard = ParamCardView(this, ParamCardActions())
+        stepPanel = StepPanelView(this, StepPanelActions())
         quickSettings = QuickSettingsView(this, QuickSettingsActions())
         numberPad = NumberPadView(this) { EngineState.numberPadOpen.value = false }
         stepList = StepListView(this, StepListActions())
@@ -316,7 +318,7 @@ class TapFlowService : AccessibilityService() {
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
         )
-        paramCardParams = host.params(
+        stepPanelParams = host.params(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
         )
@@ -394,8 +396,14 @@ class TapFlowService : AccessibilityService() {
         stopRecording(collapseForInput = false)
         player.stop()
         exitEditing()
+        // Every window explicitly, not just the ones a refresh would take down. Switching the overlay off
+        // detaches the toolbar, and syncOverlay returns early without it — so anything left attached here
+        // would stay on screen with nothing able to remove it.
+        EngineState.numberPadOpen.value = false
+        host.remove(numberPad)
         host.remove(quickSettings)
-        host.remove(paramCard)
+        host.remove(stepPanel)
+        host.remove(stepList)
         host.remove(toolbar)
         host.remove(transport)
         host.remove(canvas)
@@ -413,12 +421,12 @@ class TapFlowService : AccessibilityService() {
         scope.launch { EngineState.toolbarForm.collect { syncOverlay() } }
         scope.launch { EngineState.editing.collect { syncOverlay() } }
         scope.launch { EngineState.selectedStepId.collect { syncOverlay() } }
-        scope.launch { EngineState.pickingCoordinate.collect { syncOverlay() } }
         scope.launch { EngineState.quickSettingsOpen.collect { syncOverlay() } }
         scope.launch { EngineState.numberPadOpen.collect { syncOverlay() } }
         scope.launch { EngineState.isolateSelection.collect { syncOverlay() } }
         scope.launch { EngineState.stepListOpen.collect { syncOverlay() } }
-        scope.launch { EngineState.reRecordingStepId.collect { syncOverlay() } }
+        scope.launch { EngineState.paramPanelOpen.collect { syncOverlay() } }
+        scope.launch { EngineState.pendingCapture.collect { syncOverlay() } }
         scope.launch {
             EngineState.progress.collect { progress ->
                 // Updated here rather than in syncOverlay so the highlight follows playback without
@@ -436,6 +444,8 @@ class TapFlowService : AccessibilityService() {
 
     private fun syncOverlay() {
         if (!host.isAttached(toolbar)) return
+
+        resolveSelection()
 
         val current = settings
         val steps = Workspace.steps.value
@@ -459,6 +469,7 @@ class TapFlowService : AccessibilityService() {
             canUndo = Workspace.canUndo,
             isolateSelection = EngineState.isolateSelection.value,
             stepListOpen = EngineState.stepListOpen.value,
+            stepPanelOpen = EngineState.paramPanelOpen.value,
         )
         host.update(toolbar, toolbarParams)
 
@@ -478,24 +489,47 @@ class TapFlowService : AccessibilityService() {
         canvas.stepLines = stepLines(steps)
         canvas.highlightNumber = EngineState.progress.value?.step
         canvas.selectedStepId = selectedId
-        canvas.pickingCoordinate = EngineState.pickingCoordinate.value
         canvas.dimAlpha = if (current.dimOverlay && mode == Mode.PLAYING) current.dimAlpha else 0f
         canvas.mode = when {
             mode == Mode.RECORDING -> CanvasMode.RECORDING
-            // Capturing a replacement gesture needs the same full-screen interception as recording, and
+            // Capturing a gesture for an edit needs the same full-screen interception as recording, and
             // the recording tint is honest about what the next touch will do.
-            EngineState.reRecordingStepId.value != null -> CanvasMode.RECORDING
+            EngineState.pendingCapture.value != null -> CanvasMode.RECORDING
             editing -> CanvasMode.EDIT
             else -> CanvasMode.READ_ONLY
         }
         updateCanvasFlags()
         syncCanvasAttachment()
 
-        syncParamCard()
+        syncStepPanel()
         syncQuickSettings()
         syncStepList()
         syncNumberPad()
         syncTransport()
+    }
+
+    /**
+     * Editing always has exactly one step selected.
+     *
+     * Defaults to the last step and follows a deletion backwards, so the selection is valid whenever the
+     * workspace is non-empty. That removes "nothing is selected" as a state rather than handling it:
+     * isolation always has a marker to show, insert and delete always have an anchor, and the settings
+     * panel always has something to open on.
+     *
+     * Called at the top of every refresh rather than at each mutation site. Setting the flow here starts
+     * one more pass, which finds the selection already resolved and stops — cheaper to reason about than
+     * remembering to do it in the eight places that change the step list.
+     */
+    private fun resolveSelection() {
+        if (!EngineState.editing.value) return
+        val steps = Workspace.steps.value
+        if (steps.isEmpty()) {
+            EngineState.selectedStepId.value = null
+            return
+        }
+        if (steps.none { it.id == EngineState.selectedStepId.value }) {
+            EngineState.selectedStepId.value = steps.last().id
+        }
     }
 
     private fun syncQuickSettings() {
@@ -568,13 +602,17 @@ class TapFlowService : AccessibilityService() {
     }
 
     /**
-     * The step list.
+     * The step list: a large centred window, up only while editing and only when asked for.
      *
-     * Only up while editing, and only when asked for — it covers a strip of the screen, which is in
-     * the way of dragging a marker underneath it.
+     * Sized and positioned on every refresh rather than once on attach, so a rotation re-centres it.
+     * Nothing here is remembered between openings, which is the point — it is not a floating panel to
+     * be parked somewhere, it is a page you open, pick from, and leave.
      */
     private fun syncStepList() {
-        val wanted = EngineState.editing.value && EngineState.stepListOpen.value
+        // Down while a gesture is being captured, for the same reason the settings panel is: the capture
+        // takes the whole screen, and a window over it is in the way of the gesture it asked for.
+        val wanted = EngineState.editing.value && EngineState.stepListOpen.value &&
+            EngineState.pendingCapture.value == null
         if (!wanted) {
             host.remove(stepList)
             return
@@ -586,16 +624,37 @@ class TapFlowService : AccessibilityService() {
             lines = stepLines(steps),
             selected = steps.indexOfFirst { it.id == EngineState.selectedStepId.value },
         )
-        if (!host.isAttached(stepList)) {
-            val size = host.displaySize()
-            // Bottom of the screen, with the parameter card moved to the top — the two used to be
-            // placed a tenth of the screen apart and simply covered each other. Draggable either way,
-            // because whatever the default, some marker ends up underneath it.
-            stepListParams.x = (size.x * 0.5f - dpToPx(150f)).toInt().coerceAtLeast(0)
-            stepListParams.y = (size.y - dpToPx(215f)).toInt().coerceAtLeast(0)
-            host.add(stepList, stepListParams)
-        }
+        centreLargeWindow(stepListParams, heightFraction = 0.66f)
+        if (!host.isAttached(stepList)) host.add(stepList, stepListParams)
         host.update(stepList, stepListParams)
+    }
+
+    /**
+     * Centres one of the two large editing windows.
+     *
+     * Both are wide, centred and mutually exclusive, which is what stopped them covering each other.
+     * Capped in dp as well as by the screen, so a tablet gets a readable column rather than one stretched
+     * across ten inches.
+     *
+     * Centred by window gravity rather than by computing a top-left corner. A wrap-content window's
+     * height is not known until it has been measured, so working out its y would mean either guessing or
+     * re-clamping after layout — and `Gravity.CENTER` lets the window manager do it exactly.
+     *
+     * @param heightFraction fraction of the screen height to take, or null to wrap the content. The
+     *   wrapping case relies on the view capping its own height; see StepPanelView.setAvailableHeight.
+     */
+    private fun centreLargeWindow(
+        params: WindowManager.LayoutParams,
+        heightFraction: Float? = null,
+    ) {
+        val size = host.displaySize()
+        params.gravity = android.view.Gravity.CENTER
+        params.x = 0
+        params.y = 0
+        params.width = min(size.x - dpToPx(24f).toInt(), dpToPx(400f).toInt())
+        params.height = heightFraction
+            ?.let { (size.y * it).toInt() }
+            ?: WindowManager.LayoutParams.WRAP_CONTENT
     }
 
     /**
@@ -635,7 +694,7 @@ class TapFlowService : AccessibilityService() {
 
     private fun restackAboveCanvas() {
         host.bringToFront(transport, transportParams)
-        if (host.isAttached(paramCard)) host.bringToFront(paramCard, paramCardParams)
+        if (host.isAttached(stepPanel)) host.bringToFront(stepPanel, stepPanelParams)
         if (host.isAttached(quickSettings)) host.bringToFront(quickSettings, quickSettingsParams)
         if (host.isAttached(stepList)) host.bringToFront(stepList, stepListParams)
         if (host.isAttached(numberPad)) host.bringToFront(numberPad, numberPadParams)
@@ -656,30 +715,33 @@ class TapFlowService : AccessibilityService() {
     }
 
     /**
-     * The card is only attached while a step is selected and its coordinate is not being re-picked.
-     * Detaching rather than hiding keeps it out of the blocked-area list, which is computed from
-     * attached windows.
+     * The step settings panel: up only when explicitly opened, and never while a gesture is being
+     * captured for it — the capture takes the whole screen, and the panel would be in the way of the
+     * very gesture it asked for.
+     *
+     * Detaching rather than hiding also keeps it from counting as an obscuring window while it is down.
      */
-    private fun syncParamCard() {
+    private fun syncStepPanel() {
+        val steps = Workspace.steps.value
         val step = Workspace.stepById(EngineState.selectedStepId.value)
-        val wanted = EngineState.editing.value && step != null &&
-            !EngineState.pickingCoordinate.value && EngineState.reRecordingStepId.value == null
+        val wanted = EngineState.editing.value && EngineState.paramPanelOpen.value &&
+            step != null && EngineState.pendingCapture.value == null
 
         if (!wanted) {
-            host.remove(paramCard)
+            host.remove(stepPanel)
             return
         }
 
-        val number = Workspace.steps.value.indexOfFirst { it.id == step!!.id } + 1
-        paramCard.render(step!!, number)
-
-        if (!host.isAttached(paramCard)) {
-            val size = host.displaySize()
-            paramCardParams.x = (size.x * 0.18f).toInt()
-            paramCardParams.y = (size.y * 0.08f).toInt()
-            host.add(paramCard, paramCardParams)
-        }
-        host.update(paramCard, paramCardParams)
+        stepPanel.applyAppearance(settings.uiScale, settings.uiOpacity)
+        stepPanel.setAvailableHeight((host.displaySize().y * PANEL_MAX_HEIGHT_FRACTION).toInt())
+        stepPanel.render(
+            step = step!!,
+            number = steps.indexOfFirst { it.id == step.id } + 1,
+            total = steps.size,
+        )
+        centreLargeWindow(stepPanelParams)
+        if (!host.isAttached(stepPanel)) host.add(stepPanel, stepPanelParams)
+        host.update(stepPanel, stepPanelParams)
     }
 
     private fun syncTransport() {
@@ -881,9 +943,9 @@ class TapFlowService : AccessibilityService() {
     /**
      * Selects a freshly inserted step, but only while editing.
      *
-     * While recording, nothing may be selected: insertBefore treats the selection as the anchor, and
-     * recorded steps have to keep appending to the end. While editing the opposite is wanted — the
-     * parameter card opens on what was just created, which is where its note is typed.
+     * While recording, nothing may be selected: insertion treats the selection as its anchor, and
+     * recorded steps have to keep appending to the end. While editing the opposite is wanted — carry on
+     * from what was just created, so a run of inserts goes forwards rather than piling up in one place.
      */
     private fun selectIfEditing(id: String) {
         if (EngineState.editing.value) EngineState.selectedStepId.value = id
@@ -956,28 +1018,56 @@ class TapFlowService : AccessibilityService() {
     }
 
     /**
-     * Routes a captured gesture: normally it becomes a new step, but a re-record replaces one.
+     * Routes a captured gesture to whichever of the three things asked for it.
      *
-     * The replacement keeps the step's id and its lead delay and swaps only the strokes. The delay is
-     * the rhythm around the step, measured against its neighbour, and redoing the movement is no
-     * reason to lose it — it stays separately editable.
+     * Recording, adding a step and re-recording one are the same act — put a finger on the screen and
+     * have it become a step — differing only in where the result lands. So there is one capture path and
+     * this one branch, rather than three ways of getting a gesture.
      *
-     * No per-gesture replay either. That exists so the app under a recording moves forward with you;
-     * while editing there is no such walk to keep in step with, and dispatching would poke the app for
-     * no reason.
+     * The two editing dispositions share two properties. A replacement keeps the step's id and its lead
+     * delay and swaps only the strokes: the delay is the rhythm around the step, measured against its
+     * neighbour, and redoing the movement is no reason to lose it. And neither replays the gesture
+     * downwards — per-gesture replay exists so the app under a recording moves forward with you, and
+     * while editing there is no such walk to keep in step with.
      */
     private fun onGestureCaptured(strokes: List<Stroke>, downUptime: Long, upUptime: Long) {
-        val id = EngineState.reRecordingStepId.value
-        if (id == null) {
+        val pending = EngineState.pendingCapture.value
+        if (pending == null) {
             recorder.onGesture(strokes, downUptime, upUptime)
             return
         }
 
-        EngineState.reRecordingStepId.value = null
-        val existing = Workspace.stepById(id) as? GestureStep ?: return
-        Workspace.updateStep(existing.copy(strokes = strokes))
-        Diag.log("re-record: step ${existing.id} replaced with ${strokes.size} stroke(s)")
-        toast(getString(R.string.toast_step_rerecorded))
+        EngineState.pendingCapture.value = null
+        when (pending) {
+            is Capture.Replace -> {
+                val existing = Workspace.stepById(pending.stepId) as? GestureStep ?: return
+                Workspace.updateStep(existing.copy(strokes = strokes))
+                Diag.log("re-record: step ${existing.id} replaced with ${strokes.size} stroke(s)")
+                toast(getString(R.string.toast_step_rerecorded))
+            }
+
+            is Capture.InsertAfter -> insertCaptured(strokes) { step ->
+                Workspace.insertAfter(pending.afterId, step, currentScreen())
+            }
+
+            is Capture.InsertBefore -> insertCaptured(strokes) { step ->
+                Workspace.insertBefore(pending.beforeId, step, currentScreen())
+            }
+        }
+    }
+
+    /**
+     * Turns captured strokes into a step and hands it to [place].
+     *
+     * The lead delay is the configured default rather than anything measured: the clock was running
+     * while the user found the toolbar button, and charging that to the step would insert a pause of
+     * however long the decision took.
+     */
+    private inline fun insertCaptured(strokes: List<Stroke>, place: (GestureStep) -> Unit) {
+        val step = GestureStep(strokes = strokes, delayBefore = settings.defaultGapMs)
+        place(step)
+        select(step.id)
+        toast(getString(R.string.toast_step_inserted))
     }
 
     private fun onGestureOutcome(outcome: GestureOutcome) {
@@ -1014,7 +1104,15 @@ class TapFlowService : AccessibilityService() {
         EngineState.toolbarForm.value = ToolbarForm.EXPANDED
         // Reset rather than remembered: coming back into editing, the useful default is the quiet one.
         EngineState.isolateSelection.value = true
-        // syncOverlay attaches the canvas and re-stacks everything above it.
+        // Editing is its own toolbar, and the quick settings are not part of it. Left open they would
+        // sit over the canvas with no button left to close them.
+        EngineState.quickSettingsOpen.value = false
+        // Both large windows start down. Editing opens on a clean canvas showing the step you left off
+        // at, which is the state dragging needs.
+        EngineState.paramPanelOpen.value = false
+        EngineState.stepListOpen.value = false
+        // resolveSelection puts the selection on the last step; syncOverlay attaches the canvas and
+        // re-stacks everything above it.
         EngineState.editing.value = true
         syncOverlay()
         toast(getString(R.string.toast_edit_mode_on))
@@ -1022,17 +1120,40 @@ class TapFlowService : AccessibilityService() {
 
     private fun exitEditing() {
         EngineState.stepListOpen.value = false
-        EngineState.reRecordingStepId.value = null
+        EngineState.paramPanelOpen.value = false
+        EngineState.pendingCapture.value = null
         EngineState.editing.value = false
         EngineState.selectedStepId.value = null
-        EngineState.pickingCoordinate.value = false
     }
 
+    /**
+     * Moves the selection.
+     *
+     * A miss — tapping bare canvas — deliberately changes nothing while editing, because there is no
+     * "nothing selected" state to move to. Clearing it and letting [resolveSelection] snap back to the
+     * last step would read as the app jumping somewhere on its own.
+     */
     private fun select(stepId: String?) {
+        if (stepId == null && EngineState.editing.value) return
         EngineState.selectedStepId.value = stepId
-        // Re-attaching the card puts it above the canvas; without this it would be underneath and
-        // its buttons unreachable.
-        if (stepId != null) scope.launch { host.bringToFront(paramCard, paramCardParams) }
+    }
+
+    /**
+     * Opens the settings panel on the current selection.
+     *
+     * Two callers — the toolbar button and a row in the list — and one behaviour, so the panel needs to
+     * remember nothing about who opened it. Its close button always returns to the canvas; to get back
+     * to the list, press the list button again.
+     *
+     * The re-stack is not optional. Same-type overlay windows sit in the order they were added, and the
+     * canvas covers the whole screen while editing, so without this the panel would be underneath it and
+     * every button on it unreachable.
+     */
+    private fun openStepPanel() {
+        if (EngineState.selectedStepId.value == null) return
+        EngineState.stepListOpen.value = false
+        EngineState.paramPanelOpen.value = true
+        scope.launch { host.bringToFront(stepPanel, stepPanelParams) }
     }
 
     private fun dragStep(stepId: String, handle: Handle, x: Float, y: Float) {
@@ -1046,48 +1167,54 @@ class TapFlowService : AccessibilityService() {
         Workspace.updateStep(updated, persist = false)
     }
 
-    private fun pickCoordinate(x: Float, y: Float) {
-        val step = Workspace.stepById(EngineState.selectedStepId.value) as? GestureStep
-        EngineState.pickingCoordinate.value = false
-        if (step == null) return
-        Workspace.updateStep(step.movedTo(x, y))
-    }
-
     private fun adjustSelected(transform: (Step) -> Step?) {
         val step = Workspace.stepById(EngineState.selectedStepId.value) ?: return
         transform(step)?.let { Workspace.updateStep(it) }
     }
 
     private inner class StepListActions : StepListView.Actions {
-        override fun onSelectIndex(index: Int) {
-            Workspace.steps.value.getOrNull(index)?.let { select(it.id) }
-        }
-
-        override fun onPrevious() = step(-1)
-
-        override fun onNext() = step(1)
-
         /**
-         * Moves the selection one step, starting from the end nearest the direction travelled when
-         * nothing is selected yet.
-         */
-        private fun step(delta: Int) {
-            val steps = Workspace.steps.value
-            if (steps.isEmpty()) return
-            val current = steps.indexOfFirst { it.id == EngineState.selectedStepId.value }
-            val next = when {
-                current < 0 && delta > 0 -> 0
-                current < 0 -> steps.lastIndex
-                else -> (current + delta).coerceIn(0, steps.lastIndex)
-            }
-            select(steps[next].id)
-        }
-
-        /**
-         * Jumping by number is the point of this list.
+         * Picking a row is the list's whole job, so it hands straight over to the settings panel.
          *
-         * Playback reports the failing step as "47 / 100". Finding marker 47 among a hundred
-         * overlapping crosshairs is the problem; typing 47 is not.
+         * The list closes on the way. They are the same size in the same place, and leaving one behind
+         * the other is the overlap this arrangement exists to avoid. To go back, press the list button
+         * again — the panel has one exit, and it is the canvas.
+         */
+        override fun onSelectIndex(index: Int) {
+            val step = Workspace.steps.value.getOrNull(index) ?: return
+            select(step.id)
+            openStepPanel()
+        }
+
+        override fun onClose() {
+            EngineState.stepListOpen.value = false
+        }
+    }
+
+    private inner class StepPanelActions : StepPanelView.Actions {
+        override fun onPrevious() = moveSelection(-1)
+
+        override fun onNext() = moveSelection(1)
+
+        /**
+         * Walks the selection, clamped at both ends.
+         *
+         * No wrap-around: at step 1 of 100, "previous" landing on 100 is a jump, not a step back. And no
+         * empty case to cover, because the panel is only ever open on a step.
+         */
+        private fun moveSelection(delta: Int) {
+            val steps = Workspace.steps.value
+            val current = steps.indexOfFirst { it.id == EngineState.selectedStepId.value }
+            if (current < 0) return
+            select(steps[(current + delta).coerceIn(0, steps.lastIndex)].id)
+        }
+
+        /**
+         * Reaching a step by number, which is what playback gives you.
+         *
+         * It reports the failing step as "47 / 100". Finding marker 47 among a hundred overlapping
+         * crosshairs is the problem; typing 47 is not — and it is why the list is for the other case,
+         * where the number is not known and the step has to be recognised by reading.
          */
         override fun onJumpToStep() {
             val steps = Workspace.steps.value
@@ -1104,17 +1231,73 @@ class TapFlowService : AccessibilityService() {
             )
         }
 
+        override fun onAdjustDuration(deltaMs: Long) = adjustSelected { step ->
+            (step as? GestureStep)?.let { it.withDuration(it.duration + deltaMs) }
+        }
+
+        override fun onAdjustDelay(deltaMs: Long) = adjustSelected { step ->
+            val next = (step.delayBefore + deltaMs).coerceIn(0L, Timing.MAX_RECORDED_GAP_MS)
+            when (step) {
+                is GestureStep -> step.copy(delayBefore = next)
+                is PauseStep -> step.copy(delayBefore = next)
+                is GlobalStep -> step.copy(delayBefore = next)
+            }
+        }
+
+        /**
+         * Changes how long a timed wait lasts.
+         *
+         * Until this existed the length could be set once, when the wait was inserted, and never again —
+         * the panel showed no rows at all for a step without coordinates, which is exactly what a wait
+         * is. Floored at one second, because zero is how a wait and a manual pause are told apart and
+         * typing 0 here would silently change the step's type.
+         */
+        override fun onEditWaitSeconds() {
+            val step = Workspace.stepById(EngineState.selectedStepId.value) as? PauseStep ?: return
+            openNumberPad(
+                PadRequest(
+                    title = getString(R.string.wait_pad_title),
+                    unit = getString(R.string.wait_pad_unit),
+                    initialValue = (step.ms / 1000L).toInt(),
+                    max = MAX_WAIT_SECONDS,
+                ) { seconds ->
+                    Workspace.updateStep(step.copy(ms = seconds.coerceAtLeast(1) * 1000L))
+                }
+            )
+        }
+
+        override fun onEditNote() {
+            val id = EngineState.selectedStepId.value ?: return
+            openWorkspaceDialog(WorkspaceDialogActivity.Mode.NOTE, id)
+        }
+
+        /**
+         * Captures this step's gesture again.
+         *
+         * Starts immediately, with no countdown, for the same reason resuming a recording does: undo is
+         * cheaper than making everyone wait three seconds every time.
+         */
+        override fun onReRecord() {
+            val step = Workspace.stepById(EngineState.selectedStepId.value) as? GestureStep ?: return
+            EngineState.pendingCapture.value = Capture.Replace(step.id)
+            toast(getString(R.string.toast_rerecord_prompt))
+        }
+
+        /**
+         * The one place insertion goes backwards, and it says so on the button.
+         *
+         * The toolbar inserts after, because that is the direction recording grows in. Inserting before
+         * is still needed — it is the only way to put something ahead of step 1 — so it lives here, named.
+         */
+        override fun onInsertBefore() {
+            val id = EngineState.selectedStepId.value ?: return
+            EngineState.pendingCapture.value = Capture.InsertBefore(id)
+            toast(getString(R.string.toast_capture_prompt))
+        }
+
         override fun onClose() {
-            EngineState.stepListOpen.value = false
+            EngineState.paramPanelOpen.value = false
         }
-
-        override fun onDrag(dx: Int, dy: Int) {
-            stepListParams.x += dx
-            stepListParams.y += dy
-            host.update(stepList, stepListParams)
-        }
-
-        override fun onDragEnd() = Unit
     }
 
     private inner class QuickSettingsActions : QuickSettingsView.Actions {
@@ -1160,60 +1343,6 @@ class TapFlowService : AccessibilityService() {
 
         override fun onClose() {
             EngineState.quickSettingsOpen.value = false
-        }
-    }
-
-    private inner class ParamCardActions : ParamCardView.Actions {
-        override fun onAdjustDuration(deltaMs: Long) = adjustSelected { step ->
-            (step as? GestureStep)?.let { it.withDuration(it.duration + deltaMs) }
-        }
-
-        override fun onAdjustDelay(deltaMs: Long) = adjustSelected { step ->
-            val next = (step.delayBefore + deltaMs).coerceIn(0L, Timing.MAX_RECORDED_GAP_MS)
-            when (step) {
-                is GestureStep -> step.copy(delayBefore = next)
-                is PauseStep -> step.copy(delayBefore = next)
-                is GlobalStep -> step.copy(delayBefore = next)
-            }
-        }
-
-        /**
-         * Plays from the selected step.
-         *
-         * The other half of finding a broken step by number: having fixed step 47, checking it should
-         * not mean sitting through 1–46 again.
-         */
-        /**
-         * Captures this step's gesture again.
-         *
-         * Starts immediately, with no countdown, for the same reason resuming a recording does: undo
-         * is cheaper than making everyone wait three seconds every time.
-         */
-        override fun onReRecord() {
-            val step = Workspace.stepById(EngineState.selectedStepId.value) as? GestureStep ?: return
-            EngineState.reRecordingStepId.value = step.id
-            toast(getString(R.string.toast_rerecord_prompt))
-        }
-
-        override fun onEditNote() {
-            val id = EngineState.selectedStepId.value ?: return
-            openWorkspaceDialog(WorkspaceDialogActivity.Mode.NOTE, id)
-        }
-
-        override fun onPickCoordinate() {
-            EngineState.pickingCoordinate.value = true
-            toast(getString(R.string.toast_pick_coordinate))
-        }
-
-        override fun onDelete() {
-            val id = EngineState.selectedStepId.value ?: return
-            EngineState.selectedStepId.value = null
-            Workspace.removeStep(id)
-            if (Workspace.isEmpty) exitEditing()
-        }
-
-        override fun onDone() {
-            EngineState.selectedStepId.value = null
         }
     }
 
@@ -1264,7 +1393,7 @@ class TapFlowService : AccessibilityService() {
             // Nothing is ever selected while recording, so this appends then, and lands after the
             // selected marker when editing — one call covers both.
             val step = PauseStep()
-            Workspace.insertBefore(EngineState.selectedStepId.value, step, currentScreen())
+            Workspace.insertAfter(EngineState.selectedStepId.value, step, currentScreen())
             selectIfEditing(step.id)
             toast(getString(R.string.toast_pause_inserted))
             // Stopping is the point: the user is about to do this step by hand, so the canvas has to
@@ -1290,16 +1419,36 @@ class TapFlowService : AccessibilityService() {
                     max = MAX_WAIT_SECONDS,
                 ) { seconds ->
                     val step = PauseStep(ms = seconds * 1000L)
-                    Workspace.insertBefore(EngineState.selectedStepId.value, step, currentScreen())
+                    Workspace.insertAfter(EngineState.selectedStepId.value, step, currentScreen())
                     selectIfEditing(step.id)
                     toast(getString(R.string.toast_wait_inserted, seconds))
                 }
             )
         }
 
-        /** Shows or hides the step list. Only meaningful while editing, which is where it is offered. */
+        /**
+         * Shows or hides the step list.
+         *
+         * It and the settings panel are the same size in the same place, so opening either closes the
+         * other. Two large windows over each other is the thing that made the first attempt at editing
+         * unusable, and keeping them exclusive is cheaper than teaching them to dodge.
+         */
         override fun onToggleStepList() {
-            EngineState.stepListOpen.value = !EngineState.stepListOpen.value
+            if (EngineState.stepListOpen.value) {
+                EngineState.stepListOpen.value = false
+                return
+            }
+            EngineState.paramPanelOpen.value = false
+            EngineState.stepListOpen.value = true
+            scope.launch { host.bringToFront(stepList, stepListParams) }
+        }
+
+        override fun onToggleStepPanel() {
+            if (EngineState.paramPanelOpen.value) {
+                EngineState.paramPanelOpen.value = false
+                return
+            }
+            openStepPanel()
         }
 
         override fun onUndo() {
@@ -1310,26 +1459,65 @@ class TapFlowService : AccessibilityService() {
             if (EngineState.editing.value) exitEditing() else enterEditing()
         }
 
-        override fun onAddTap() {
-            val size = host.displaySize()
-            val current = settings
-            val step = tapStep(
-                x = size.x / 2f,
-                y = size.y / 2f,
-                holdMs = current.defaultTapMs,
-                delayBefore = current.defaultGapMs,
-            )
-            // Inserted before the selection, then selected, so the parameter card is already open on
-            // the thing just created — which is where its position gets set.
-            Workspace.insertBefore(EngineState.selectedStepId.value, step, currentScreen())
-            select(step.id)
+        /**
+         * Adds a step by capturing one, and puts it after the selection.
+         *
+         * It used to conjure a tap at the centre of the screen for the user to then drag into place,
+         * which is two acts to get one point and neither of them the act they already know. Making the
+         * gesture is how every other step in the script was created; the only difference here is where
+         * the result lands. So this is the same capture path, aimed at a different slot — and it is also
+         * what lifts the old limitation that a manually added step could only ever be a plain tap.
+         *
+         * After the selection, not before, because that is the direction recording grows in: select 47
+         * and the new step is 48. With nothing selected it appends, which is the same rule.
+         */
+        override fun onInsertStep() {
+            EngineState.pendingCapture.value = Capture.InsertAfter(EngineState.selectedStepId.value)
+            EngineState.paramPanelOpen.value = false
+            EngineState.stepListOpen.value = false
+            toast(getString(R.string.toast_capture_prompt))
         }
 
+        /**
+         * Copies the selected step and puts the copy straight after it.
+         *
+         * A new id, so the two are separate steps rather than one aliased twice — everything on screen
+         * keys off the id. Cheaper than re-capturing when what you want is the same tap again, or a
+         * near-identical one to nudge.
+         */
+        override fun onDuplicateStep() {
+            val step = Workspace.stepById(EngineState.selectedStepId.value) ?: return
+            val copy = when (step) {
+                is GestureStep -> step.copy(id = newId())
+                is PauseStep -> step.copy(id = newId())
+                is GlobalStep -> step.copy(id = newId())
+            }
+            Workspace.insertAfter(step.id, copy, currentScreen())
+            select(copy.id)
+            toast(getString(R.string.toast_step_duplicated))
+        }
+
+        /**
+         * Deletes the selected step and selects whatever took its place.
+         *
+         * Not cleared, and not left to [resolveSelection] either. That would fall back to the *last*
+         * step, so deleting step 47 of 100 would leave you looking at 100 — and with isolation on, the
+         * only marker on screen would jump to the far end of the script. Taking the neighbour keeps you
+         * where you were working, and for the last step it is the same thing: delete 100 and 99 is what
+         * you are looking at, which is the rule isolation is built on.
+         */
         override fun onDeleteSelected() {
-            val id = EngineState.selectedStepId.value ?: return
-            EngineState.selectedStepId.value = null
-            Workspace.removeStep(id)
-            if (Workspace.isEmpty) exitEditing()
+            val before = Workspace.steps.value
+            val index = before.indexOfFirst { it.id == EngineState.selectedStepId.value }
+            if (index < 0) return
+
+            Workspace.removeStep(before[index].id)
+            val after = Workspace.steps.value
+            if (after.isEmpty()) {
+                exitEditing()
+                return
+            }
+            select(after[index.coerceAtMost(after.lastIndex)].id)
         }
 
         override fun onSave() = openWorkspaceDialog(WorkspaceDialogActivity.Mode.SAVE)
