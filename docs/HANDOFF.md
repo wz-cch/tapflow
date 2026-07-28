@@ -35,17 +35,24 @@ M3（流程層）、M4（條件等待、多指手勢、匯出匯入）未動工�
 
 ### 2.1 gitflow 的違規已清掉（歷史被改寫）
 
-`develop` 上原本有兩個 commit（`c3ebcd1`、`538ad83`）**直接推上去，沒走 feature branch**，違反 [CONTRIBUTING.md](../CONTRIBUTING.md) 定的分支模型。
+兩件事一起修掉：
 
-已補開 `feature/service-status` 收容那兩個 commit 並 `--no-ff` 併回，其後的 23 個 commit 因此全部換了 SHA。
+1. `develop` 上原本有兩個 commit（`c3ebcd1`、`538ad83`）**直接推上去，沒走 feature branch**
+2. 有兩支分支叫 `fix/*`，而 **gitflow 只定義五種分支** —— `main` / `develop` / `feature/*` / `release/*` / `hotfix/*`。從 `develop` 來、回 `develop` 的，定義上就是 feature；`hotfix/*` 專指從 `main` 來的正式版緊急修補
+
+補開 `feature/service-status` 收容那兩個裸 commit，`fix/*` 只改前綴改成 `feature/*`，全部 `--no-ff` 併回。
+
+**原本已發佈的 23 個 commit 裡，21 個換了 SHA。** 例外是 `c3ebcd1` 與 `538ad83` —— 它們原封不動變成 `feature/service-status`，SHA 沒變。
 
 > **如果你手上有改寫之前的 clone，它跟遠端已經對不起來了 —— 重新 clone，不要 merge。**
 >
-> 改寫只動 commit 物件。三個節點（原 `538ad83`、原 `c09d790`、原分支尖端）的工作樹都逐一 `git diff` 比對過，與原本 byte-identical；`git log --first-parent --no-merges` 也確認 develop 上沒有任何裸 commit。
+> 改寫只動 commit 物件。原 `538ad83`、原 `c09d790`、原分支尖端三個節點的工作樹都逐一 `git diff` 比對過，與原本 byte-identical；`git log --first-parent --no-merges f3caad1..develop` 也確認 develop 上沒有任何裸 commit。
 
-### 2.2 `fix/gesture-cancelled` 已併回 `develop`
+**往後開分支就這五種，不要再自創前綴。** 這一輪清理處理的就是自創前綴。
 
-8 個 commit，CI 全綠，實機驗過。內容是診斷紀錄畫面 + 手勢注入器辨識 + 幾個 overlay 效能修正。
+### 2.2 `feature/gesture-cancelled` 已併回 `develop`
+
+8 個 commit，CI 全綠，實機驗過。內容是診斷紀錄畫面 + 手勢注入器辨識 + 幾個 overlay 效能修正。（改寫之前這支叫 `fix/gesture-cancelled`，遠端可能還看得到那個舊名字。）
 
 ---
 
