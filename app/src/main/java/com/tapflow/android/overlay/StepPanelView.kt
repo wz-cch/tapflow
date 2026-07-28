@@ -9,6 +9,7 @@ import android.view.Gravity
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.Space
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import com.tapflow.android.R
@@ -35,6 +36,12 @@ import com.tapflow.android.text.secondsText
  * Closing always returns to the canvas. One exit, so the panel needs to remember nothing about who
  * opened it; to get back to the list, press the list button again.
  *
+ * Duplicate and insert-before are here as well as (or instead of) on the toolbar, but delete is not,
+ * and the line between them is not taste. Both of the first two *create* a step, and the panel then
+ * lands on the new one, so you carry straight on editing what you just made. Delete destroys the very
+ * step the panel is showing, which would force it to jump somewhere or close itself — and that is a
+ * second behaviour for one action, which is exactly what keeping it in one place avoids.
+ *
  * It stays non-focusable like every other overlay here, so it never steals input from the app
  * underneath. That rules out a text field, which is why the note on a pause is typed in the main app
  * and the seconds on a wait go through the number pad.
@@ -59,6 +66,19 @@ class StepPanelView(context: Context, private val actions: Actions) : LinearLayo
 
         /** Captures this step's gesture again, keeping its lead delay. */
         fun onReRecord()
+
+        /**
+         * Copies this step, puts the copy straight after it, and moves to the copy.
+         *
+         * Also on the toolbar, and deliberately the same call underneath. Two entry points for one
+         * behaviour is fine — what is not fine is two implementations, which is how the delete button
+         * ended up living in one place only.
+         *
+         * Worth having here because this panel is somewhere you work *in*: on step 5, wanting another
+         * one like it, closing the panel to press the toolbar and reopening it is three acts for one.
+         * And landing on the copy means you are already looking at the numbers you came to change.
+         */
+        fun onDuplicate()
 
         /**
          * Captures a gesture and inserts it *before* this step.
@@ -105,6 +125,7 @@ class StepPanelView(context: Context, private val actions: Actions) : LinearLayo
     private val reRecord = textButton(R.string.param_rerecord) { actions.onReRecord() }
     private val editNote = textButton(R.string.param_edit_note) { actions.onEditNote() }
     private val editWait = textButton(R.string.param_change) { actions.onEditWaitSeconds() }
+    private val duplicate = textButton(R.string.param_duplicate) { actions.onDuplicate() }
     private val insertBefore = textButton(R.string.param_insert_before) { actions.onInsertBefore() }
 
     private val coordinateRow = LinearLayout(context).apply {
@@ -201,11 +222,15 @@ class StepPanelView(context: Context, private val actions: Actions) : LinearLayo
         body.addView(waitRow, rowParams())
         body.addView(durationRow, rowParams())
         body.addView(delayRow, rowParams())
+        // Both of these create a step; they sit together, in the order of where the new step lands.
+        // There is no delete down here — see the class comment.
         body.addView(
             LinearLayout(context).apply {
                 orientation = HORIZONTAL
                 gravity = Gravity.END
                 addView(insertBefore)
+                addView(Space(context), LayoutParams(dp(8f), 1))
+                addView(duplicate)
             },
             rowParams(),
         )
