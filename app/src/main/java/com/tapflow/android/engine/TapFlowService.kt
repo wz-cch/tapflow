@@ -18,6 +18,7 @@ import com.tapflow.android.data.GestureStep
 import com.tapflow.android.data.GlobalStep
 import com.tapflow.android.data.MarkerDensity
 import com.tapflow.android.data.PauseStep
+import com.tapflow.android.data.RepeatableStep
 import com.tapflow.android.data.Repo
 import com.tapflow.android.data.ScreenSpec
 import com.tapflow.android.data.Settings
@@ -26,6 +27,7 @@ import com.tapflow.android.data.Stroke
 import com.tapflow.android.data.movedTo
 import com.tapflow.android.data.newId
 import com.tapflow.android.data.withDuration
+import com.tapflow.android.data.withRepeat
 import com.tapflow.android.data.withEndAt
 import com.tapflow.android.overlay.BallIntent
 import com.tapflow.android.overlay.CanvasMode
@@ -84,6 +86,9 @@ class TapFlowService : AccessibilityService() {
 
         /** How much of the screen the settings panel may take before its rows start scrolling. */
         private const val PANEL_MAX_HEIGHT_FRACTION = 0.8f
+
+        /** Enough for any real use, and low enough that a stray extra digit does not mean 1000 taps. */
+        private const val MAX_REPEAT = 999
     }
 
     /**
@@ -1299,6 +1304,49 @@ class TapFlowService : AccessibilityService() {
                     max = MAX_WAIT_SECONDS,
                 ) { seconds ->
                     Workspace.updateStep(step.copy(ms = seconds.coerceAtLeast(1) * 1000L))
+                }
+            )
+        }
+
+        /**
+         * Sets how many times this step runs in place.
+         *
+         * Raising it above one also stamps an interval when there is none. A repeat with a zero gap fires
+         * every pass back to back, and the app underneath then reads ten taps as one multi-tap or drops
+         * them outright — so a fresh repeat has to arrive with a usable gap already in it. Stamped rather
+         * than defaulted at replay time, because the panel would otherwise show "0 ms" for a step that
+         * does not behave that way.
+         */
+        override fun onEditRepeat() {
+            val step = Workspace.stepById(EngineState.selectedStepId.value) as? RepeatableStep ?: return
+            openNumberPad(
+                PadRequest(
+                    title = getString(R.string.repeat_pad_title),
+                    unit = getString(R.string.repeat_pad_unit),
+                    initialValue = step.repeat,
+                    max = MAX_REPEAT,
+                ) { times ->
+                    val repeat = times.coerceAtLeast(1)
+                    val interval = if (repeat > 1 && step.repeatIntervalMs <= 0) {
+                        settings.defaultGapMs
+                    } else {
+                        step.repeatIntervalMs
+                    }
+                    Workspace.updateStep(step.withRepeat(repeat, interval))
+                }
+            )
+        }
+
+        override fun onEditRepeatInterval() {
+            val step = Workspace.stepById(EngineState.selectedStepId.value) as? RepeatableStep ?: return
+            openNumberPad(
+                PadRequest(
+                    title = getString(R.string.repeat_interval_pad_title),
+                    unit = getString(R.string.repeat_interval_pad_unit),
+                    initialValue = step.repeatIntervalMs.toInt(),
+                    max = Timing.MAX_RECORDED_GAP_MS.toInt(),
+                ) { ms ->
+                    Workspace.updateStep(step.withRepeat(step.repeat, ms.toLong()))
                 }
             )
         }

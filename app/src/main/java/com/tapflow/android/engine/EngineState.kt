@@ -25,7 +25,20 @@ enum class Mode { IDLE, RECORDING, COUNTDOWN, PLAYING, PAUSED }
  */
 enum class ToolbarForm { EXPANDED, BALL }
 
-data class Progress(val loop: Int, val totalLoops: Int, val step: Int, val totalSteps: Int)
+/**
+ * @param repeatPass which repetition of the current step is running, 1-based.
+ * @param repeatTotal how many repetitions that step has. 1 for an ordinary step, which is why the
+ *   transport only shows this pair when it is above 1 — a step repeated ten times with a gap between
+ *   each otherwise sits on the same number for ten seconds and reads as frozen.
+ */
+data class Progress(
+    val loop: Int,
+    val totalLoops: Int,
+    val step: Int,
+    val totalSteps: Int,
+    val repeatPass: Int = 1,
+    val repeatTotal: Int = 1,
+)
 
 /**
  * What the next captured gesture is for, when it is not simply being recorded.

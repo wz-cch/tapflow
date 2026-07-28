@@ -16,6 +16,7 @@ import com.tapflow.android.R
 import com.tapflow.android.data.GestureKind
 import com.tapflow.android.data.GestureStep
 import com.tapflow.android.data.PauseStep
+import com.tapflow.android.data.RepeatableStep
 import com.tapflow.android.data.Step
 import com.tapflow.android.text.secondsText
 
@@ -61,6 +62,19 @@ class StepPanelView(context: Context, private val actions: Actions) : LinearLayo
 
         /** Opens the number pad for how long a timed wait should last. */
         fun onEditWaitSeconds()
+
+        /**
+         * Opens the number pad for how many times this step runs in place.
+         *
+         * Ten taps as one step rather than ten duplicated ones. It is the rare editing feature that makes
+         * the script *shorter*, which is the only thing that helps at a hundred steps — and unlike
+         * reordering it needs no understanding of the script: when you set it, you know exactly what you
+         * want pressed ten times.
+         */
+        fun onEditRepeat()
+
+        /** Opens the number pad for the gap between repetitions. Only offered when there are any. */
+        fun onEditRepeatInterval()
 
         /** Opens somewhere focusable to type the pause note. An overlay cannot raise a keyboard. */
         fun onEditNote()
@@ -136,6 +150,8 @@ class StepPanelView(context: Context, private val actions: Actions) : LinearLayo
     private val waitValue = valueLabel()
     private val durationValue = valueLabel()
     private val delayValue = valueLabel()
+    private val repeatValue = valueLabel()
+    private val intervalValue = valueLabel()
 
     private val reRecord = textButton(R.string.param_rerecord) { actions.onReRecord() }
     private val editNote = textButton(R.string.param_edit_note) { actions.onEditNote() }
@@ -181,6 +197,17 @@ class StepPanelView(context: Context, private val actions: Actions) : LinearLayo
         addView(waitValue)
         addView(editWait)
     }
+
+    /**
+     * How many times this step runs in place, and the gap between those runs.
+     *
+     * Two rows rather than one, and the interval is deliberately not [R.string.param_delay]. The lead
+     * delay is the rhythm between two *different* actions; this is the gap between repetitions of the
+     * *same* one. Reusing one field for both would give it two meanings depending on the repeat count.
+     */
+    private val repeatRow = pickerRow(R.string.param_repeat, repeatValue) { actions.onEditRepeat() }
+    private val intervalRow =
+        pickerRow(R.string.param_repeat_interval, intervalValue) { actions.onEditRepeatInterval() }
 
     private val durationRow = stepperRow(R.string.param_duration, durationValue, DURATION_STEP_MS) {
         actions.onAdjustDuration(it)
@@ -246,6 +273,8 @@ class StepPanelView(context: Context, private val actions: Actions) : LinearLayo
         body.addView(waitRow, rowParams())
         body.addView(durationRow, rowParams())
         body.addView(delayRow, rowParams())
+        body.addView(repeatRow, rowParams())
+        body.addView(intervalRow, rowParams())
         // The move buttons sit at the two ends, so each one is on the side it points to. That leaves the
         // middle for the other two, and the gap between them puts duplicate and delete as far apart as
         // the row allows — reaching for one and hitting the other is the mistake worth designing out,
@@ -321,6 +350,16 @@ class StepPanelView(context: Context, private val actions: Actions) : LinearLayo
         }
 
         delayValue.text = context.getString(R.string.param_ms, step.delayBefore)
+
+        // Only the kinds that do something can repeat; a wait repeated is just a longer wait. The
+        // interval row waits for a repeat to exist, because until then it controls nothing.
+        val repeatable = step as? RepeatableStep
+        repeatRow.visibility = if (repeatable != null) VISIBLE else GONE
+        intervalRow.visibility = if (repeatable != null && repeatable.repeat > 1) VISIBLE else GONE
+        if (repeatable != null) {
+            repeatValue.text = context.getString(R.string.param_times, repeatable.repeat)
+            intervalValue.text = context.getString(R.string.param_ms, repeatable.repeatIntervalMs)
+        }
     }
 
     private fun typeLabel(step: Step): String = context.getString(
@@ -360,6 +399,19 @@ class StepPanelView(context: Context, private val actions: Actions) : LinearLayo
         addView(value)
         addView(iconButton(R.drawable.ic_remove) { onAdjust(-stepMs) })
         addView(iconButton(R.drawable.ic_add) { onAdjust(stepMs) })
+    }
+
+    /** A labelled value with one button that opens the number pad, rather than a −/+ pair. */
+    private fun pickerRow(
+        labelRes: Int,
+        value: TextView,
+        onEdit: () -> Unit,
+    ): LinearLayout = LinearLayout(context).apply {
+        orientation = HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        addView(label(labelRes), LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+        addView(value)
+        addView(textButton(R.string.param_change) { onEdit() })
     }
 
     private fun label(labelRes: Int) = TextView(context).apply {

@@ -57,6 +57,34 @@ sealed interface Step {
     val delayBefore: Long
 }
 
+/**
+ * A step that can run more than once in place.
+ *
+ * Only the kinds that *do* something implement this. A timed wait repeated ten times is just a longer
+ * wait, and a manual pause repeated ten times is ten stops — neither is a thing anyone means, so
+ * [PauseStep] deliberately does not get these fields rather than getting them and ignoring them.
+ *
+ * [repeatIntervalMs] is separate from [Step.delayBefore] on purpose, and the distinction is worth
+ * keeping straight: `delayBefore` is the rhythm between two *different* actions, measured at record
+ * time; this is the gap between repetitions of the *same* action. Folding them into one field would
+ * make `delayBefore` mean one thing at [repeat] 1 and another above it — the same field with two
+ * meanings depending on a second field — and would make "wait 2s after the previous step, then tap ten
+ * times 200ms apart" inexpressible.
+ *
+ * Both default to the no-op values, so clips saved before these existed load unchanged and behave
+ * identically: at [repeat] 1 the interval is never read.
+ */
+sealed interface RepeatableStep : Step {
+    /** How many times to run in place. 1 is once. */
+    val repeat: Int
+
+    /** Gap between repetitions. Only read when [repeat] is above 1. */
+    val repeatIntervalMs: Long
+
+    /** Repetitions beyond the first, which is what the interval is paid for. */
+    val extraPasses: Int get() = (repeat - 1).coerceAtLeast(0)
+}
+
 /** What a [GestureStep] means to a human. Drives both the label and the on-screen marker style. */
 enum class GestureKind { TAP, LONG_PRESS, SWIPE, MULTI_TOUCH }
 
@@ -66,7 +94,9 @@ data class GestureStep(
     override val id: String = newId(),
     val strokes: List<Stroke>,
     override val delayBefore: Long = 0,
-) : Step {
+    override val repeat: Int = 1,
+    override val repeatIntervalMs: Long = 0,
+) : Step, RepeatableStep {
 
     /** From the first finger touching down to the last one lifting. */
     val duration: Long get() = strokes.maxOf { it.startOffset + it.duration }
@@ -180,6 +210,18 @@ fun GestureStep.withEndAt(x: Float, y: Float): GestureStep {
     )
 }
 
+/**
+ * Sets the repeat count and its interval.
+ *
+ * An extension rather than a member because `copy` is generated per data class and cannot be declared
+ * on the interface. Exhaustive over the sealed hierarchy, so a third repeatable kind would not compile
+ * until it was handled here.
+ */
+fun RepeatableStep.withRepeat(repeat: Int, intervalMs: Long): Step = when (this) {
+    is GestureStep -> copy(repeat = repeat, repeatIntervalMs = intervalMs)
+    is GlobalStep -> copy(repeat = repeat, repeatIntervalMs = intervalMs)
+}
+
 private const val MIN_DIRECTION_LENGTH_SQUARED = 1f
 
 // There is deliberately no synthesise-a-tap-at-a-position helper. The toolbar's add button used to
@@ -187,13 +229,21 @@ private const val MIN_DIRECTION_LENGTH_SQUARED = 1f
 // one point and restricted a manually added step to a plain tap. It now captures a real gesture
 // through the same path as recording, so a step created by hand can be anything a recorded one can.
 
+/**
+ * A system-level action: back, home, recents, notifications.
+ *
+ * Repeatable like a gesture, and one of the better uses for it — "press back three times" to unwind a
+ * few screens is a single step rather than three identical ones.
+ */
 @Serializable
 @SerialName("global")
 data class GlobalStep(
     override val id: String = newId(),
     val kind: GlobalKind,
     override val delayBefore: Long = 0,
-) : Step
+    override val repeat: Int = 1,
+    override val repeatIntervalMs: Long = 0,
+) : Step, RepeatableStep
 
 /**
  * A step that waits. Either for a stretch of time, or for the user.
@@ -262,11 +312,17 @@ data class Clip(
      */
     val estimatedDurationMs: Long
         get() = steps.sumOf { step ->
-            step.delayBefore + when (step) {
+            val once = when (step) {
                 is GestureStep -> step.duration
                 is GlobalStep -> GLOBAL_ACTION_COST_MS
                 is PauseStep -> step.ms
             }
+            // A repeated step pays for its action every pass and for the interval between them, but for
+            // its lead delay only once — which is exactly the split that keeps the two fields distinct.
+            val repeatable = step as? RepeatableStep
+            val passes = repeatable?.repeat?.coerceAtLeast(1) ?: 1
+            val gaps = (repeatable?.extraPasses ?: 0) * (repeatable?.repeatIntervalMs ?: 0)
+            step.delayBefore + once * passes + gaps
         }
 
     private companion object {

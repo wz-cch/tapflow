@@ -155,6 +155,15 @@
     <string name="param_note_empty">沒有備註</string>
     <string name="param_wait_length">等待</string>
     <string name="param_change">變更</string>
+    <string name="param_repeat">重複</string>
+    <string name="param_repeat_interval">重複間隔</string>
+    <string name="param_times">×%1$d</string>
+    <string name="repeat_pad_title">這一步執行幾次</string>
+    <string name="repeat_pad_unit">次</string>
+    <string name="repeat_interval_pad_title">每次之間隔多久</string>
+    <string name="repeat_interval_pad_unit">ms</string>
+    <string name="step_repeat_suffix">%1$s ×%2$d</string>
+    <string name="transport_repeat">(%1$d/%2$d)</string>
     <string name="param_seconds">%1$s 秒</string>
     <string name="param_duration">時長</string>
     <string name="param_delay">前置延遲</string>
