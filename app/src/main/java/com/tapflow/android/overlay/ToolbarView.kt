@@ -47,8 +47,11 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         /** Start/stop recording when idle or recording; stop playback otherwise. */
         fun onSecondary()
 
-        /** Shows or hides the scrollable step list, the way into a step by its number. */
+        /** Shows or hides the step list, the way into a step you cannot pick by sight. */
         fun onToggleStepList()
+
+        /** Shows or hides the settings panel for the selected step. */
+        fun onToggleStepPanel()
 
         /** Insert a pause that waits for the user, and stop recording so they can act. */
         fun onInsertPausePoint()
@@ -57,7 +60,17 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         fun onInsertWait()
         fun onUndo()
         fun onToggleEdit()
-        fun onAddTap()
+
+        /**
+         * Captures a gesture and inserts it after the selection.
+         *
+         * The same act as recording a step, aimed somewhere else — not a point conjured at the centre
+         * of the screen for the user to then drag into place.
+         */
+        fun onInsertStep()
+
+        /** Copies the selected step and puts the copy straight after it. */
+        fun onDuplicateStep()
         fun onDeleteSelected()
         fun onSave()
         fun onLoad()
@@ -118,9 +131,11 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
     private val insertPause = icon(R.drawable.ic_pause_add)
     private val insertWait = icon(R.drawable.ic_wait_add)
     private val stepListToggle = icon(R.drawable.ic_step_list)
+    private val stepPanelToggle = icon(R.drawable.ic_step_params)
     private val undo = icon(R.drawable.ic_undo)
     private val edit = icon(R.drawable.ic_edit)
-    private val addTap = icon(R.drawable.ic_add)
+    private val insertStep = icon(R.drawable.ic_add)
+    private val duplicateStep = icon(R.drawable.ic_duplicate)
     private val deleteStep = icon(R.drawable.ic_remove)
     private val newClip = icon(R.drawable.ic_new_clip)
     private val save = icon(R.drawable.ic_save)
@@ -130,10 +145,17 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
     private val dismiss = icon(R.drawable.ic_close)
     private val collapse = icon(R.drawable.ic_collapse)
 
-    /** Everything inside the scroller, in display order. The grip sits outside it. */
+    /**
+     * Everything inside the scroller, in display order. The grip sits outside it.
+     *
+     * Ordered so that each mode's own subset reads sensibly, since a mode simply hides the rest: leave
+     * first, then the things that create steps, then the one that destroys them, then undo, then the
+     * two ways of looking at the script.
+     */
     private val scrollingButtons = listOf(
-        primary, playFrom, secondary, insertPause, insertWait, undo, edit, stepListToggle, addTap,
-        deleteStep, newClip, save, load, eye, quickSettings, dismiss, collapse,
+        primary, playFrom, secondary, edit, insertStep, duplicateStep, insertPause, insertWait,
+        deleteStep, undo, stepPanelToggle, stepListToggle, newClip, save, load, eye, quickSettings,
+        dismiss, collapse,
     )
 
     private val allButtons = listOf(grip) + scrollingButtons
@@ -163,9 +185,11 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         insertPause.setOnClickListener { actions.onInsertPausePoint() }
         insertWait.setOnClickListener { actions.onInsertWait() }
         stepListToggle.setOnClickListener { actions.onToggleStepList() }
+        stepPanelToggle.setOnClickListener { actions.onToggleStepPanel() }
         undo.setOnClickListener { actions.onUndo() }
         edit.setOnClickListener { actions.onToggleEdit() }
-        addTap.setOnClickListener { actions.onAddTap() }
+        insertStep.setOnClickListener { actions.onInsertStep() }
+        duplicateStep.setOnClickListener { actions.onDuplicateStep() }
         deleteStep.setOnClickListener { actions.onDeleteSelected() }
         eye.setOnClickListener { actions.onCycleDensity() }
         quickSettings.setOnClickListener { actions.onToggleQuickSettings() }
@@ -195,7 +219,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
     /**
      * @param workspaceSize step count, used to disable actions that need a non-empty workspace.
      * @param editing whether the canvas is in editing mode, which swaps the button set.
-     * @param hasSelection whether a step is selected, which is what delete acts on.
+     * @param hasSelection whether a step is selected, which is what the editing actions act on.
      */
     fun render(
         mode: Mode,
@@ -208,6 +232,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         canUndo: Boolean,
         isolateSelection: Boolean,
         stepListOpen: Boolean,
+        stepPanelOpen: Boolean,
     ) {
         val hasSteps = workspaceSize > 0
         val recording = mode == Mode.RECORDING
@@ -238,9 +263,14 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         )
         ball.imageTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
 
-        // Each mode shows the buttons that do something in it and hides the rest. SPEC 9 rules out
-        // greying out a button that could simply be absent, but until now that only applied to
-        // editing — recording still showed all twelve with five of them dead.
+        // The toolbar is a container for whatever this screen can actually do: a button that does not
+        // apply is absent, not greyed. So each mode shows its own set and hides the rest, and the total
+        // length is not a problem — the column scrolls.
+        //
+        // Editing is a mode of its own by this rule, not the idle set plus a few extras. Saving,
+        // loading, starting a new clip, playing and the settings all belong to having a script, not to
+        // changing one, so none of them appear here. Undo is the reverse: it exists only where steps
+        // can be mutated, which is recording and editing — idle can play and save but not alter.
         //
         // The eye and the collapse handle are missing from this list on purpose: both are useful in
         // every mode, so they are simply always visible.
@@ -252,12 +282,14 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         undo.visibility = visibleWhen(recording || editing)
         edit.visibility = visibleWhen(!recording)
         stepListToggle.visibility = visibleWhen(editing)
-        addTap.visibility = visibleWhen(editing)
+        stepPanelToggle.visibility = visibleWhen(editing)
+        insertStep.visibility = visibleWhen(editing)
+        duplicateStep.visibility = visibleWhen(editing)
         deleteStep.visibility = visibleWhen(editing)
         newClip.visibility = visibleWhen(!editing && !recording)
-        save.visibility = visibleWhen(!recording)
+        save.visibility = visibleWhen(!editing && !recording)
         load.visibility = visibleWhen(!editing && !recording)
-        quickSettings.visibility = visibleWhen(!recording)
+        quickSettings.visibility = visibleWhen(!editing && !recording)
         dismiss.visibility = visibleWhen(!editing && !recording)
 
         primary.setImageResource(R.drawable.ic_play)
@@ -290,6 +322,9 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         stepListToggle.imageTintList = android.content.res.ColorStateList.valueOf(
             if (stepListOpen) ContextCompat.getColor(context, R.color.marker_highlight) else iconIdle
         )
+        stepPanelToggle.imageTintList = android.content.res.ColorStateList.valueOf(
+            if (stepPanelOpen) ContextCompat.getColor(context, R.color.marker_highlight) else iconIdle
+        )
 
         // What used to be "and not replaying" is now covered by not drawing the toolbar at all then,
         // and "and not recording" by the visibility block above. Only the genuine preconditions are
@@ -297,7 +332,9 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         setActionEnabled(insertPause, true)
         setActionEnabled(insertWait, true)
         setActionEnabled(undo, canUndo)
+        setActionEnabled(duplicateStep, hasSelection)
         setActionEnabled(deleteStep, hasSelection)
+        setActionEnabled(stepPanelToggle, hasSelection)
         setActionEnabled(save, hasSteps)
         setActionEnabled(load, true)
         setActionEnabled(newClip, hasSteps)
@@ -450,8 +487,11 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         insertPause.contentDescription = context.getString(R.string.action_insert_pause)
         undo.contentDescription = context.getString(R.string.action_undo)
         edit.contentDescription = context.getString(R.string.action_edit_mode)
-        addTap.contentDescription = context.getString(R.string.action_add_tap)
+        insertStep.contentDescription = context.getString(R.string.action_insert_step)
+        duplicateStep.contentDescription = context.getString(R.string.action_duplicate_step)
         deleteStep.contentDescription = context.getString(R.string.action_delete)
+        stepPanelToggle.contentDescription = context.getString(R.string.action_step_panel)
+        stepListToggle.contentDescription = context.getString(R.string.action_step_list)
         save.contentDescription = context.getString(R.string.action_save)
         load.contentDescription = context.getString(R.string.action_load)
         newClip.contentDescription = context.getString(R.string.action_new_clip)

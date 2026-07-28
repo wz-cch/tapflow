@@ -6,9 +6,6 @@ import android.content.res.ColorStateList
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
-import android.view.MotionEvent
-import android.view.View
-import android.view.ViewConfiguration
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -17,39 +14,34 @@ import androidx.core.content.ContextCompat
 import com.tapflow.android.R
 
 /**
- * The step list, as a window you can scroll and tap.
+ * The step list: one large centred window whose only job is reaching a step you cannot pick by sight.
  *
- * Selecting by marker breaks down long before a hundred steps: the markers overlap, and playback
- * reports which step failed as a *number* — "47 / 100" — with no way to turn that number back into a
- * marker. This is the surface that closes that gap.
+ * Selecting by marker breaks down long before a hundred steps, because the markers overlap. Typing a
+ * number solves that when you know the number, and the settings panel offers exactly that — so what is
+ * left for a list is the other case: finding the wrong step by *reading*, when all you know is that
+ * something looks off. Walking there one step at a time is no use for that, so this is a whole page of
+ * rows rather than a strip.
  *
- * Its own window rather than painted on the canvas, for two reasons. The painted list can only show
- * the tail that fits and cannot scroll, and a scrollable region inside the canvas would fight the
- * canvas for vertical drags — the same conflict that keeps the toolbar's drag handle outside its
- * ScrollView.
+ * Tapping a row selects that step and opens its settings panel. There is deliberately nothing else on
+ * a row: no duplicate, no delete. Those act on the selection and live on the toolbar, so putting them
+ * here as well would be a second place for the same act to drift in.
  *
- * Rows are rebuilt only when the text actually changes. This view is refreshed from the same sync
- * pass as everything else, which runs several times a second during playback, and rebuilding a hundred
+ * Not draggable, and it does not need to be. It was a small floating strip once, and the drag handle
+ * existed only to get it off whatever it was covering — a problem it had because it shared the screen
+ * with the parameter card. Only one of the two is ever up now, so there is nothing to dodge.
+ *
+ * Rows are rebuilt only when the text actually changes. This view is refreshed from the same sync pass
+ * as everything else, which runs several times a second during playback, and rebuilding a hundred
  * TextViews at that rate is exactly the kind of waste the panels here have been bitten by before.
  */
 @SuppressLint("ViewConstructor")
 class StepListView(context: Context, private val actions: Actions) : LinearLayout(context) {
 
     interface Actions {
+        /** Selects this step and opens its settings panel. */
         fun onSelectIndex(index: Int)
-        fun onPrevious()
-        fun onNext()
-
-        /** Opens the number pad to jump straight to a step by its number. */
-        fun onJumpToStep()
         fun onClose()
-
-        /** Dragged by the header. The panel covers a strip of screen, so it has to be movable. */
-        fun onDrag(dx: Int, dy: Int)
-        fun onDragEnd()
     }
-
-    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
 
     private val displayDensity = context.resources.displayMetrics.density
 
@@ -66,80 +58,29 @@ class StepListView(context: Context, private val actions: Actions) : LinearLayou
         overScrollMode = OVER_SCROLL_NEVER
     }
 
-    private val jump = textButton(R.string.step_list_jump) { actions.onJumpToStep() }
-
     /** Last rendered text, so an unchanged list does not rebuild its rows. */
     private var renderedLines: List<String> = emptyList()
     private var selectedIndex = -1
 
     init {
         orientation = VERTICAL
-        background = panelBackground(dp(14f))
-        setPadding(dp(10f), dp(8f), dp(10f), dp(10f))
+        background = panelBackground()
+        setPadding(dp(12f), dp(10f), dp(12f), dp(12f))
 
         addView(
             LinearLayout(context).apply {
                 orientation = HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 addView(position, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
-                addView(jump)
-                addView(iconButton(R.drawable.ic_undo) { actions.onPrevious() })
-                addView(iconButton(R.drawable.ic_add) { actions.onNext() })
                 addView(iconButton(R.drawable.ic_close) { actions.onClose() })
             },
             LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT),
         )
 
         scroller.addView(rows, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
-        addView(scroller, LayoutParams(LayoutParams.MATCH_PARENT, dp(150f)))
-
-        // Dragged by the position label, which is the one part of the header that is not a button.
-        // Deliberately not the list itself: the ScrollView needs vertical drags, and letting the panel
-        // move on those would make scrolling impossible — the mistake already recorded for the
-        // toolbar's drag handle.
-        attachDrag(position)
-    }
-
-    private fun attachDrag(view: View) {
-        var lastX = 0f
-        var lastY = 0f
-        var totalX = 0f
-        var totalY = 0f
-        var dragging = false
-
-        view.setOnTouchListener { _, event ->
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    lastX = event.rawX
-                    lastY = event.rawY
-                    totalX = 0f
-                    totalY = 0f
-                    dragging = false
-                    true
-                }
-
-                MotionEvent.ACTION_MOVE -> {
-                    val dx = event.rawX - lastX
-                    val dy = event.rawY - lastY
-                    totalX += dx
-                    totalY += dy
-                    if (!dragging && kotlin.math.hypot(totalX, totalY) > touchSlop) dragging = true
-                    if (dragging) {
-                        actions.onDrag(dx.toInt(), dy.toInt())
-                        lastX = event.rawX
-                        lastY = event.rawY
-                    }
-                    true
-                }
-
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    if (dragging) actions.onDragEnd()
-                    true
-                }
-
-                else -> false
-            }
-        }
+        // Weighted rather than a fixed height: the window itself is sized by the service, and the rows
+        // should take whatever is left after the header.
+        addView(scroller, LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
     }
 
     /**
@@ -170,11 +111,11 @@ class StepListView(context: Context, private val actions: Actions) : LinearLayou
                 TextView(context).apply {
                     text = line
                     setTextColor(ContextCompat.getColor(context, R.color.overlay_text_dim))
-                    textSize = 12f
+                    textSize = 13f
                     typeface = Typeface.MONOSPACE
                     maxLines = 1
                     ellipsize = android.text.TextUtils.TruncateAt.END
-                    setPadding(dp(8f), dp(6f), dp(8f), dp(6f))
+                    setPadding(dp(8f), dp(9f), dp(8f), dp(9f))
                     isClickable = true
                     setOnClickListener { actions.onSelectIndex(index) }
                 },
@@ -204,6 +145,8 @@ class StepListView(context: Context, private val actions: Actions) : LinearLayou
         post { scroller.smoothScrollTo(0, row.top - scroller.height / 2 + row.height / 2) }
     }
 
+    private var appliedScale = Float.NaN
+
     fun applyAppearance(scale: Float, opacity: Float) {
         alpha = opacity.coerceIn(0.3f, 1f)
         val clamped = scale.coerceIn(0.7f, 1.5f)
@@ -212,25 +155,12 @@ class StepListView(context: Context, private val actions: Actions) : LinearLayou
         position.textSize = 13f * clamped
     }
 
-    private var appliedScale = Float.NaN
-
-    private fun textButton(labelRes: Int, onClick: () -> Unit) = TextView(context).apply {
-        setText(labelRes)
-        setTextColor(ContextCompat.getColor(context, R.color.overlay_text))
-        textSize = 12f
-        gravity = Gravity.CENTER
-        background = rowHighlight()
-        setPadding(dp(10f), dp(5f), dp(10f), dp(5f))
-        isClickable = true
-        setOnClickListener { onClick() }
-    }
-
     private fun iconButton(resId: Int, onClick: () -> Unit) = ImageView(context).apply {
         setImageResource(resId)
         imageTintList = ColorStateList.valueOf(ContextCompat.getColor(context, R.color.overlay_icon))
         scaleType = ImageView.ScaleType.CENTER_INSIDE
-        setPadding(dp(6f), dp(6f), dp(6f), dp(6f))
-        layoutParams = LayoutParams(dp(32f), dp(32f)).apply { setMargins(dp(2f), 0, dp(2f), 0) }
+        setPadding(dp(8f), dp(8f), dp(8f), dp(8f))
+        layoutParams = LayoutParams(dp(40f), dp(40f))
         isClickable = true
         setOnClickListener { onClick() }
     }
@@ -241,9 +171,9 @@ class StepListView(context: Context, private val actions: Actions) : LinearLayou
         setColor(ContextCompat.getColor(context, R.color.overlay_panel_pressed))
     }
 
-    private fun panelBackground(radius: Int) = GradientDrawable().apply {
+    private fun panelBackground() = GradientDrawable().apply {
         shape = GradientDrawable.RECTANGLE
-        cornerRadius = radius.toFloat()
+        cornerRadius = dp(16f).toFloat()
         setColor(ContextCompat.getColor(context, R.color.overlay_panel))
     }
 

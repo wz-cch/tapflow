@@ -52,9 +52,6 @@ class CanvasView(context: Context) : View(context) {
     /** Editing: the drag finished, so transient edits can be committed to the draft. */
     var onDragEnd: (() -> Unit)? = null
 
-    /** Editing: a position was picked for the step whose coordinate is being re-specified. */
-    var onPickCoordinate: ((x: Float, y: Float) -> Unit)? = null
-
     /**
      * A touch arrived while a gesture was being replayed.
      *
@@ -105,13 +102,6 @@ class CanvasView(context: Context) : View(context) {
 
     /** Step being edited, drawn with a corner frame and grab handles. */
     var selectedStepId: String? = null
-        set(value) {
-            field = value
-            invalidate()
-        }
-
-    /** When true the next tap reports a position instead of selecting anything. */
-    var pickingCoordinate: Boolean = false
         set(value) {
             field = value
             invalidate()
@@ -278,7 +268,7 @@ class CanvasView(context: Context) : View(context) {
                 // A derived marker still hit-tests, so ACTION_UP can select it, but it never becomes
                 // a grab: its anchor is computed from its neighbours, so dragging would move nothing
                 // and the next rebuild would put it straight back.
-                grab = if (pickingCoordinate) null else hitTest(x, y)
+                grab = hitTest(x, y)
                     ?.takeIf { (marker, _) -> marker.isDraggable }
                     ?.let { (marker, handle) ->
                         val anchorX = if (handle == Handle.END) marker.endX else marker.anchorX
@@ -296,7 +286,6 @@ class CanvasView(context: Context) : View(context) {
             MotionEvent.ACTION_UP -> {
                 val moved = movedPastSlop(x, y)
                 when {
-                    pickingCoordinate -> onPickCoordinate?.invoke(x, y)
                     // Same rule as the toolbar: decided from net displacement at release, so a tap
                     // that wobbles is still a tap.
                     !moved -> onSelect?.invoke(hitTest(x, y)?.first?.stepId)
@@ -339,15 +328,15 @@ class CanvasView(context: Context) : View(context) {
     /**
      * What is on screen, and therefore what can be hit.
      *
-     * HIDDEN still keeps the newest marker rather than none — it drops the trail of older ones, which
-     * forDensity handles, so only isolation needs branching here.
+     * Isolation is exactly one marker — the selected one — with no fallback. It needs none: editing
+     * always has a step selected, defaulting to the last one, so the isolated marker exists whenever
+     * the workspace does and deleting it just moves the selection back one. An earlier version fell
+     * back to showing everything when nothing was selected, which made "isolate" occasionally mean
+     * "show all hundred" — the one thing it is for turning off.
      */
     private fun visibleMarkers(): List<Marker> {
         if (!isolateSelection) return markers.forDensity(density)
-        // Nothing selected means nothing to isolate to. Hiding everything would leave editing with a
-        // blank canvas and no marker to tap — the selection has to come from somewhere.
-        val selected = markers.firstOrNull { it.stepId == selectedStepId } ?: return markers.forDensity(density)
-        return listOf(selected)
+        return markers.filter { it.stepId == selectedStepId }
     }
 
     // --- Drawing -------------------------------------------------------------

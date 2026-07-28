@@ -28,6 +28,29 @@ enum class ToolbarForm { EXPANDED, BALL }
 data class Progress(val loop: Int, val totalLoops: Int, val step: Int, val totalSteps: Int)
 
 /**
+ * What the next captured gesture is for, when it is not simply being recorded.
+ *
+ * There is one capture path — the canvas intercepts the screen and reports strokes — and three things
+ * worth doing with the result. Recording appends with the gap measured off the clock. The two editing
+ * dispositions take the default gap or keep the existing one, and neither replays the gesture
+ * downwards: per-gesture replay exists so the app under a recording walks forward with you, and while
+ * editing there is no such walk to keep in step with.
+ *
+ * Adding a step, re-recording one, and recording are therefore the same act with three destinations,
+ * which is why they share [com.tapflow.android.overlay.CanvasView]'s capture wholesale.
+ */
+sealed interface Capture {
+    /** Insert a new step immediately after [afterId], or at the end when it is null. */
+    data class InsertAfter(val afterId: String?) : Capture
+
+    /** Insert a new step immediately before [beforeId]. */
+    data class InsertBefore(val beforeId: String) : Capture
+
+    /** Replace [stepId]'s strokes, keeping its id and its lead delay. */
+    data class Replace(val stepId: String) : Capture
+}
+
+/**
  * Runtime engine state, shared between the accessibility service and the Compose UI.
  *
  * Persisted data lives in Repo; this object holds only what is true for the current run and is
@@ -54,22 +77,33 @@ object EngineState {
      * overlapping crosshairs, and the ninety-nine that are not being changed have no bearing on the
      * one that is. The eye button turns it off for the case where the marker has to be found by sight,
      * because a marker that is not drawn cannot be tapped either.
+     *
+     * Isolation means exactly one marker, with no exceptions: the selected one. It needs no fallback
+     * because [selectedStepId] has none either — see there.
      */
     val isolateSelection = MutableStateFlow(true)
 
-    /** Step selected for editing, by id. Null when nothing is selected. */
+    /**
+     * Step selected for editing, by id.
+     *
+     * While editing this is never null for a non-empty workspace: it defaults to the last step, and a
+     * deletion moves it to whatever is last afterwards. "Nothing selected" was a state that only ever
+     * produced special cases — isolation had nothing to isolate to, insert and delete had no anchor,
+     * and the settings panel had nothing to show — and the last step exists whenever the workspace
+     * does, so the case is simply gone. The service resolves it on every refresh.
+     *
+     * Null outside editing, and while recording in particular: recorded steps append to the end, and
+     * insertion keys off the selection.
+     */
     val selectedStepId = MutableStateFlow<String?>(null)
 
-    /** True while the next canvas tap should be read as "put the selected step here". */
-    val pickingCoordinate = MutableStateFlow(false)
-
     /**
-     * Step whose gesture is being captured again, or null.
+     * What the next captured gesture should become, or null while it should just be recorded.
      *
-     * Re-recording one step is the cheap alternative to re-recording a hundred: when one tap landed in
-     * the wrong place, redoing that tap should not cost the whole script.
+     * Non-null puts the canvas into full-screen interception with the recording tint, because that is
+     * honestly what the next touch does.
      */
-    val reRecordingStepId = MutableStateFlow<String?>(null)
+    val pendingCapture = MutableStateFlow<Capture?>(null)
 
     /** Whether the in-place settings panel is showing. */
     val quickSettingsOpen = MutableStateFlow(false)
@@ -89,6 +123,18 @@ object EngineState {
      * number, not a position. The list is the other way in.
      */
     val stepListOpen = MutableStateFlow(false)
+
+    /**
+     * Whether the step settings panel is up.
+     *
+     * Explicitly asked for rather than implied by the selection. The panel used to appear on every
+     * selection, which meant it was in the way for the most common editing act there is — dragging a
+     * marker — and now that a selection always exists it would simply never be down.
+     *
+     * Mutually exclusive with [stepListOpen]: both are large centred windows, and two of them at once
+     * is the overlap that made the first attempt at this unusable.
+     */
+    val paramPanelOpen = MutableStateFlow(false)
 
     /** Whether the accessibility service is connected. Drives the onboarding card. */
     val serviceRunning = MutableStateFlow(false)
@@ -129,7 +175,9 @@ object EngineState {
         elapsedMs.value = 0
         editing.value = false
         selectedStepId.value = null
-        pickingCoordinate.value = false
+        pendingCapture.value = null
         quickSettingsOpen.value = false
+        paramPanelOpen.value = false
+        stepListOpen.value = false
     }
 }
