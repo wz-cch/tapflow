@@ -59,7 +59,7 @@
     <string name="action_record_resume">Resume recording</string>
     <string name="action_record_stop">Stop recording</string>
     <string name="action_insert_pause">Insert pause point</string>
-    <string name="action_undo">Undo last step</string>
+    <string name="action_undo">Undo</string>
     <string name="action_insert_step">Insert step after</string>
     <string name="action_duplicate_step">Duplicate step</string>
     <string name="action_delete">Delete selected</string>
@@ -111,7 +111,7 @@
     <string name="toast_nothing_to_save">Nothing recorded yet</string>
     <string name="toast_pause_inserted">Pause point inserted — do this step by hand, then press record again</string>
     <string name="toast_wait_inserted">Wait of %1$d s inserted</string>
-    <string name="toast_undone">Last step removed</string>
+    <string name="toast_undone">Undone</string>
     <string name="toast_loaded">Loaded “%1$s” into the workspace</string>
     <string name="toast_toolbar_hidden">Toolbar hidden. Turn it back on in the TapFlow app.</string>
     <string name="toast_overlay_failed">Could not show the toolbar. This device may need the display-over-other-apps permission.</string>
