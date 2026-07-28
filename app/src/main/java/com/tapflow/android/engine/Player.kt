@@ -5,7 +5,6 @@ import com.tapflow.android.data.PauseStep
 import com.tapflow.android.data.ScreenSpec
 import com.tapflow.android.data.Settings
 import com.tapflow.android.data.Step
-import com.tapflow.android.data.WaitStep
 import com.tapflow.android.text.prompt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -57,19 +56,22 @@ class Player(
                         EngineState.progress.value = Progress(loop, loops, index + 1, steps.size)
                         Diag.log("player: loop $loop step ${index + 1}/${steps.size} ${step::class.java.simpleName}")
 
-                        if (step is PauseStep) {
+                        // Only the manual form asks for a pause. A timed one is just a delay, so it
+                        // stays in RUNNING and the progress readout keeps moving — PAUSED continues
+                        // to mean exactly one thing: something needs a human.
+                        if (step is PauseStep && !step.isTimed) {
                             EngineState.pausePrompt.value = step.prompt(resources)
                             pauseRequested.value = true
                         }
 
                         gate()
-                        if (step is PauseStep) continue
+                        if (step is PauseStep && !step.isTimed) continue
 
                         val current = settings()
                         delay(Timing.replayDelay(step.delayBefore, current))
                         gate()
 
-                        if (step is WaitStep) {
+                        if (step is PauseStep) {
                             delay(Timing.replayDelay(step.ms, current))
                             continue
                         }

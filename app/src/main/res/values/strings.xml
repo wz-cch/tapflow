@@ -19,7 +19,8 @@
     <string name="step_long_press">Long press (%1$d, %2$d) · %3$d ms</string>
     <string name="step_swipe">Swipe (%1$d, %2$d) → (%3$d, %4$d) · %5$d ms</string>
     <string name="step_multi_touch">%1$d-finger gesture · %2$d ms</string>
-    <string name="step_wait">Wait %1$d ms</string>
+    <string name="step_wait">⏱ Wait %1$s s</string>
+    <string name="step_wait_with_note">⏱ Wait %1$s s: %2$s</string>
     <string name="step_global">System action: %1$s</string>
     <string name="step_pause">⏸ Pause point</string>
     <string name="step_pause_with_note">⏸ Pause point: %1$s</string>
@@ -106,6 +107,7 @@
     <string name="toast_saved">Saved as “%1$s”</string>
     <string name="toast_nothing_to_save">Nothing recorded yet</string>
     <string name="toast_pause_inserted">Pause point inserted — do this step by hand, then press record again</string>
+    <string name="toast_wait_inserted">Wait of %1$d s inserted</string>
     <string name="toast_undone">Last step removed</string>
     <string name="toast_loaded">Loaded “%1$s” into the workspace</string>
     <string name="toast_toolbar_hidden">Toolbar hidden. Turn it back on in the TapFlow app.</string>
@@ -135,6 +137,9 @@
     <string name="param_type_swipe">Swipe</string>
     <string name="param_type_multi_touch">Multi-finger</string>
     <string name="param_type_pause">Pause point</string>
+    <string name="param_type_wait">Wait</string>
+    <string name="wait_pad_title">Wait for</string>
+    <string name="wait_pad_unit">s</string>
     <string name="param_type_other">Action</string>
     <string name="param_coordinates">%1$d, %2$d</string>
     <string name="param_repick">Re-pick</string>

@@ -14,7 +14,6 @@ import com.tapflow.android.data.GlobalStep
 import com.tapflow.android.data.MarkerDensity
 import com.tapflow.android.data.PauseStep
 import com.tapflow.android.data.Step
-import com.tapflow.android.data.WaitStep
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.hypot
@@ -113,12 +112,12 @@ fun buildMarkers(
                 paths = step.strokes.map { stroke -> stroke.points.map { it.x to it.y } },
             )
 
-            is PauseStep, is WaitStep -> {
+            is PauseStep -> {
                 val (x, y) = derivedAnchor(gestures, index, spacing, screenWidth, screenHeight)
                 Marker(
                     stepId = step.id,
                     number = index + 1,
-                    kind = if (step is WaitStep) MarkerKind.WAIT else MarkerKind.PAUSE,
+                    kind = if (step.isTimed) MarkerKind.WAIT else MarkerKind.PAUSE,
                     anchorX = clamp(x, screenWidth, spacing),
                     anchorY = clamp(y, screenHeight, spacing),
                 )

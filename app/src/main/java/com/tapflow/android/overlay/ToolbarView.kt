@@ -44,7 +44,11 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         /** Start/stop recording when idle or recording; stop playback otherwise. */
         fun onSecondary()
 
+        /** Insert a pause that waits for the user, and stop recording so they can act. */
         fun onInsertPausePoint()
+
+        /** Ask for a number of seconds, then insert a pause that releases itself. */
+        fun onInsertWait()
         fun onUndo()
         fun onToggleEdit()
         fun onAddTap()
@@ -105,6 +109,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
     private val primary = icon(R.drawable.ic_play)
     private val secondary = icon(R.drawable.ic_record)
     private val insertPause = icon(R.drawable.ic_pause_add)
+    private val insertWait = icon(R.drawable.ic_wait_add)
     private val undo = icon(R.drawable.ic_undo)
     private val edit = icon(R.drawable.ic_edit)
     private val addTap = icon(R.drawable.ic_add)
@@ -119,8 +124,8 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
 
     /** Everything inside the scroller, in display order. The grip sits outside it. */
     private val scrollingButtons = listOf(
-        primary, secondary, insertPause, undo, edit, addTap, deleteStep, newClip, save, load, eye,
-        quickSettings, dismiss, collapse,
+        primary, secondary, insertPause, insertWait, undo, edit, addTap, deleteStep, newClip, save,
+        load, eye, quickSettings, dismiss, collapse,
     )
 
     private val allButtons = listOf(grip) + scrollingButtons
@@ -147,6 +152,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         primary.setOnClickListener { actions.onPrimary() }
         secondary.setOnClickListener { actions.onSecondary() }
         insertPause.setOnClickListener { actions.onInsertPausePoint() }
+        insertWait.setOnClickListener { actions.onInsertWait() }
         undo.setOnClickListener { actions.onUndo() }
         edit.setOnClickListener { actions.onToggleEdit() }
         addTap.setOnClickListener { actions.onAddTap() }
@@ -228,6 +234,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         primary.visibility = visibleWhen(!editing && !recording)
         secondary.visibility = visibleWhen(!editing)
         insertPause.visibility = visibleWhen(recording)
+        insertWait.visibility = visibleWhen(recording)
         undo.visibility = visibleWhen(recording)
         edit.visibility = visibleWhen(!recording)
         addTap.visibility = visibleWhen(editing)
@@ -269,6 +276,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         // and "and not recording" by the visibility block above. Only the genuine preconditions are
         // left: something to act on, and something selected.
         setActionEnabled(insertPause, true)
+        setActionEnabled(insertWait, true)
         setActionEnabled(undo, hasSteps)
         setActionEnabled(deleteStep, hasSelection)
         setActionEnabled(save, hasSteps)

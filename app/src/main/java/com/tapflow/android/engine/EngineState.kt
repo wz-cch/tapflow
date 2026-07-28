@@ -56,6 +56,14 @@ object EngineState {
     /** Whether the in-place settings panel is showing. */
     val quickSettingsOpen = MutableStateFlow(false)
 
+    /**
+     * Whether the number pad is up, asking how many seconds a wait should last.
+     *
+     * Transient like everything else here: if the service dies mid-entry the pad is simply gone, and
+     * nothing was inserted, which is the right outcome.
+     */
+    val waitPadOpen = MutableStateFlow(false)
+
     /** Whether the accessibility service is connected. Drives the onboarding card. */
     val serviceRunning = MutableStateFlow(false)
 

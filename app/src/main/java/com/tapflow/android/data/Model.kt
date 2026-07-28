@@ -196,34 +196,36 @@ data class GlobalStep(
     override val delayBefore: Long = 0,
 ) : Step
 
-@Serializable
-@SerialName("wait")
-data class WaitStep(
-    override val id: String = newId(),
-    val ms: Long,
-    override val delayBefore: Long = 0,
-) : Step
-
 /**
- * Pause point: execution stops here until the user finishes something by hand and presses resume.
+ * A step that waits. Either for a stretch of time, or for the user.
  *
- * This is the only pause mechanism in the app. Whether replay reaches this step, the user hits the
- * pause button, or a [AwaitTextNode] times out, they all enter the same PAUSED state.
+ * One type covers both because they are the same idea — stop here for a moment — differing only in
+ * what releases it: a timer, or a finger. A separate WaitStep existed and was folded in here; two
+ * types meant two of everything (marker, list text, execution branch) for one concept, which cuts
+ * against the rule in §1.4 that there is exactly one pause mechanism.
  *
- * Recording and replay pauses are two sides of the same thing: while recording you do the step by
- * hand (so inserting this also stops recording and lets touches through, otherwise you could never
- * type the verification code), and while replaying you do it by hand again.
+ * [ms] of zero means wait for the user, and is the default so that clips saved before this field
+ * existed keep loading unchanged. A non-zero value just delays and never enters PAUSED, so PAUSED
+ * still means only one thing: something needs a human.
+ *
+ * The manual form is also why inserting one stops a recording — you are about to do that step by
+ * hand, and the canvas has to let your touches through. A timed one does not stop recording, because
+ * there is nothing for you to do.
  *
  * [note] defaults to blank and is not prompted for on insert. It exists because a script with
- * several pause points makes it easy to forget what each one is for — fill it in later if you want.
+ * several of these makes it easy to forget what each one is for — fill it in later if you want.
  */
 @Serializable
 @SerialName("pause")
 data class PauseStep(
     override val id: String = newId(),
     val note: String = "",
+    val ms: Long = 0,
     override val delayBefore: Long = 0,
-) : Step
+) : Step {
+    /** Whether this one releases itself, rather than waiting for the user. */
+    val isTimed: Boolean get() = ms > 0
+}
 
 @Serializable
 enum class GlobalKind {
@@ -252,19 +254,19 @@ data class Clip(
 ) {
     val stepCount: Int get() = steps.size
 
-    val pauseCount: Int get() = steps.count { it is PauseStep }
+    /** Only the ones that wait for a human — a timed one needs no attention. */
+    val pauseCount: Int get() = steps.count { it is PauseStep && !it.isTimed }
 
     /**
      * Roughly how long one pass takes at normal speed. Display only.
-     * Pause points count as zero because their duration depends on the user.
+     * A pause waiting for the user counts as zero, because its length is up to them.
      */
     val estimatedDurationMs: Long
         get() = steps.sumOf { step ->
             step.delayBefore + when (step) {
                 is GestureStep -> step.duration
-                is WaitStep -> step.ms
                 is GlobalStep -> GLOBAL_ACTION_COST_MS
-                is PauseStep -> 0L
+                is PauseStep -> step.ms
             }
         }
 

@@ -22,7 +22,6 @@ import com.tapflow.android.data.Repo
 import com.tapflow.android.data.ScreenSpec
 import com.tapflow.android.data.Settings
 import com.tapflow.android.data.Step
-import com.tapflow.android.data.WaitStep
 import com.tapflow.android.data.movedTo
 import com.tapflow.android.data.tapStep
 import com.tapflow.android.data.withDuration
@@ -31,6 +30,7 @@ import com.tapflow.android.overlay.BallIntent
 import com.tapflow.android.overlay.CanvasMode
 import com.tapflow.android.overlay.CanvasView
 import com.tapflow.android.overlay.Handle
+import com.tapflow.android.overlay.NumberPadView
 import com.tapflow.android.overlay.OverlayHost
 import com.tapflow.android.overlay.ParamCardView
 import com.tapflow.android.overlay.QuickSettingsView
@@ -76,6 +76,9 @@ class TapFlowService : AccessibilityService() {
 
         /** Minimum gap between "gesture rejected" toasts. */
         private const val GESTURE_WARNING_INTERVAL_MS = 4000L
+
+        /** An hour. Long enough for any real use, short enough that a mistyped digit is obvious. */
+        private const val MAX_WAIT_SECONDS = 3600
     }
 
     /**
@@ -93,12 +96,14 @@ class TapFlowService : AccessibilityService() {
     private lateinit var transport: TransportView
     private lateinit var paramCard: ParamCardView
     private lateinit var quickSettings: QuickSettingsView
+    private lateinit var waitPad: NumberPadView
 
     private lateinit var canvasParams: WindowManager.LayoutParams
     private lateinit var toolbarParams: WindowManager.LayoutParams
     private lateinit var transportParams: WindowManager.LayoutParams
     private lateinit var paramCardParams: WindowManager.LayoutParams
     private lateinit var quickSettingsParams: WindowManager.LayoutParams
+    private lateinit var waitPadParams: WindowManager.LayoutParams
 
     private lateinit var dispatcher: GestureDispatcher
     private lateinit var recorder: Recorder
@@ -292,6 +297,7 @@ class TapFlowService : AccessibilityService() {
         transport = TransportView(this, TransportActions())
         paramCard = ParamCardView(this, ParamCardActions())
         quickSettings = QuickSettingsView(this, QuickSettingsActions())
+        waitPad = NumberPadView(this, WaitPadActions())
 
         canvasParams = host.params(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -310,6 +316,10 @@ class TapFlowService : AccessibilityService() {
             WindowManager.LayoutParams.WRAP_CONTENT,
         )
         quickSettingsParams = host.params(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+        )
+        waitPadParams = host.params(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
         )
@@ -396,6 +406,7 @@ class TapFlowService : AccessibilityService() {
         scope.launch { EngineState.selectedStepId.collect { syncOverlay() } }
         scope.launch { EngineState.pickingCoordinate.collect { syncOverlay() } }
         scope.launch { EngineState.quickSettingsOpen.collect { syncOverlay() } }
+        scope.launch { EngineState.waitPadOpen.collect { syncOverlay() } }
         scope.launch {
             EngineState.progress.collect { progress ->
                 // Updated here rather than in syncOverlay so the highlight follows playback without
@@ -460,6 +471,7 @@ class TapFlowService : AccessibilityService() {
 
         syncParamCard()
         syncQuickSettings()
+        syncWaitPad()
         syncTransport()
     }
 
@@ -478,6 +490,36 @@ class TapFlowService : AccessibilityService() {
             host.add(quickSettings, quickSettingsParams)
         }
         host.update(quickSettings, quickSettingsParams)
+    }
+
+    /**
+     * The number pad for a timed wait.
+     *
+     * Attached and detached rather than hidden, like the parameter card, so it is only over the screen
+     * while it is actually being used.
+     */
+    private fun syncWaitPad() {
+        if (!EngineState.waitPadOpen.value) {
+            host.remove(waitPad)
+            return
+        }
+
+        waitPad.applyAppearance(settings.uiScale, settings.uiOpacity)
+        if (!host.isAttached(waitPad)) {
+            val size = host.displaySize()
+            // Centred horizontally, in the upper half. Recording is the usual caller, and the lower
+            // half is where the thing being recorded tends to be.
+            waitPadParams.x = (size.x * 0.5f - dpToPx(105f)).toInt().coerceAtLeast(0)
+            waitPadParams.y = (size.y * 0.16f).toInt()
+            waitPad.open(
+                titleText = getString(R.string.wait_pad_title),
+                unit = getString(R.string.wait_pad_unit),
+                initialValue = 0,
+                max = MAX_WAIT_SECONDS,
+            )
+            host.add(waitPad, waitPadParams)
+        }
+        host.update(waitPad, waitPadParams)
     }
 
     /**
@@ -519,6 +561,7 @@ class TapFlowService : AccessibilityService() {
         host.bringToFront(transport, transportParams)
         if (host.isAttached(paramCard)) host.bringToFront(paramCard, paramCardParams)
         if (host.isAttached(quickSettings)) host.bringToFront(quickSettings, quickSettingsParams)
+        if (host.isAttached(waitPad)) host.bringToFront(waitPad, waitPadParams)
         host.bringToFront(toolbar, toolbarParams)
     }
 
@@ -885,6 +928,24 @@ class TapFlowService : AccessibilityService() {
         transform(step)?.let { Workspace.updateStep(it) }
     }
 
+    private inner class WaitPadActions : NumberPadView.Actions {
+        override fun onConfirm(value: Int) {
+            EngineState.waitPadOpen.value = false
+            // Same call as the manual pause: appends while recording, lands after the selection while
+            // editing. The two differ only in the duration they carry.
+            Workspace.insertAfter(
+                EngineState.selectedStepId.value,
+                PauseStep(ms = value * 1000L),
+                currentScreen(),
+            )
+            toast(getString(R.string.toast_wait_inserted, value))
+        }
+
+        override fun onCancel() {
+            EngineState.waitPadOpen.value = false
+        }
+    }
+
     private inner class QuickSettingsActions : QuickSettingsView.Actions {
         override fun onAdjustLoopCount(delta: Int) = Repo.updateSettings { current ->
             // 0 means "until stopped" and simply sits at the bottom of the range, rather than being
@@ -941,7 +1002,6 @@ class TapFlowService : AccessibilityService() {
             when (step) {
                 is GestureStep -> step.copy(delayBefore = next)
                 is PauseStep -> step.copy(delayBefore = next)
-                is WaitStep -> step.copy(delayBefore = next)
                 is GlobalStep -> step.copy(delayBefore = next)
             }
         }
@@ -990,6 +1050,19 @@ class TapFlowService : AccessibilityService() {
             // Stopping is the point: the user is about to do this step by hand, so the canvas has to
             // let touches through and the toolbar has to clear the keyboard area.
             if (EngineState.isRecording) stopRecording(collapseForInput = true)
+        }
+
+        /**
+         * Asks for the length first, because a wait with no duration is not a wait.
+         *
+         * Unlike a manual pause this does **not** stop the recording. Stopping exists so the user can
+         * carry out the step by hand; a timed wait needs nothing from them, so stopping would only be
+         * in the way. The pad is an overlay rather than an Activity for the same reason — an Activity
+         * would background the app being recorded.
+         */
+        override fun onInsertWait() {
+            if (EngineState.isReplaying) return
+            EngineState.waitPadOpen.value = true
         }
 
         override fun onUndo() {
