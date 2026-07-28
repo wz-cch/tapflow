@@ -35,6 +35,9 @@ class ParamCardView(context: Context, private val actions: Actions) : LinearLayo
         fun onAdjustDuration(deltaMs: Long)
         fun onAdjustDelay(deltaMs: Long)
         fun onPickCoordinate()
+
+        /** Opens somewhere focusable to type the pause note. An overlay cannot raise a keyboard. */
+        fun onEditNote()
         fun onDelete()
         fun onDone()
     }
@@ -54,6 +57,14 @@ class ParamCardView(context: Context, private val actions: Actions) : LinearLayo
     }
 
     private val pick = textButton(R.string.param_repick)
+    private val editNote = textButton(R.string.param_edit_note)
+
+    private val noteValue = TextView(context).apply {
+        setTextColor(ContextCompat.getColor(context, R.color.overlay_text_dim))
+        textSize = 12f
+        maxLines = 2
+        ellipsize = android.text.TextUtils.TruncateAt.END
+    }
     private val durationValue = valueLabel()
     private val delayValue = valueLabel()
     private val delete = textButton(R.string.clip_action_delete)
@@ -71,6 +82,12 @@ class ParamCardView(context: Context, private val actions: Actions) : LinearLayo
         addView(coordinates, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
         addView(pick)
     }
+    private val noteRow = LinearLayout(context).apply {
+        orientation = HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        addView(noteValue, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+        addView(editNote)
+    }
 
     init {
         orientation = VERTICAL
@@ -83,6 +100,7 @@ class ParamCardView(context: Context, private val actions: Actions) : LinearLayo
 
         addView(title)
         addView(coordinateRow, rowParams())
+        addView(noteRow, rowParams())
         addView(durationRow, rowParams())
         addView(delayRow, rowParams())
 
@@ -98,6 +116,7 @@ class ParamCardView(context: Context, private val actions: Actions) : LinearLayo
         )
 
         pick.setOnClickListener { actions.onPickCoordinate() }
+        editNote.setOnClickListener { actions.onEditNote() }
         delete.setOnClickListener { actions.onDelete() }
         done.setOnClickListener { actions.onDone() }
     }
@@ -111,6 +130,13 @@ class ParamCardView(context: Context, private val actions: Actions) : LinearLayo
 
         coordinateRow.visibility = if (editable) VISIBLE else GONE
         durationRow.visibility = if (editable) VISIBLE else GONE
+
+        // Only a pause carries a note: it is there to remind you what this stop is for.
+        val pause = step as? PauseStep
+        noteRow.visibility = if (pause != null) VISIBLE else GONE
+        if (pause != null) {
+            noteValue.text = pause.note.ifBlank { context.getString(R.string.param_note_empty) }
+        }
 
         if (gesture != null) {
             coordinates.text = context.getString(

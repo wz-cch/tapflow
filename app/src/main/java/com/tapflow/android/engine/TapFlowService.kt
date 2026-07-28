@@ -790,15 +790,28 @@ class TapFlowService : AccessibilityService() {
      * a text field needs input focus, and every overlay here is deliberately FLAG_NOT_FOCUSABLE so it
      * never takes focus from the app underneath.
      */
-    private fun openWorkspaceDialog(mode: WorkspaceDialogActivity.Mode) {
+    /**
+     * Selects a freshly inserted step, but only while editing.
+     *
+     * While recording, nothing may be selected: insertAfter treats the selection as the anchor, and
+     * recorded steps have to keep appending to the end. While editing the opposite is wanted — the
+     * parameter card opens on what was just created, which is where its note is typed.
+     */
+    private fun selectIfEditing(id: String) {
+        if (EngineState.editing.value) EngineState.selectedStepId.value = id
+    }
+
+    private fun openWorkspaceDialog(mode: WorkspaceDialogActivity.Mode, stepId: String? = null) {
         if (mode != WorkspaceDialogActivity.Mode.LOAD && Workspace.isEmpty) {
             toast(getString(R.string.toast_nothing_to_save))
             return
         }
         EngineState.quickSettingsOpen.value = false
+        EngineState.waitPadOpen.value = false
         startActivity(
             Intent(this, WorkspaceDialogActivity::class.java)
                 .putExtra(WorkspaceDialogActivity.EXTRA_MODE, mode.name)
+                .putExtra(WorkspaceDialogActivity.EXTRA_STEP_ID, stepId)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         )
     }
@@ -933,11 +946,9 @@ class TapFlowService : AccessibilityService() {
             EngineState.waitPadOpen.value = false
             // Same call as the manual pause: appends while recording, lands after the selection while
             // editing. The two differ only in the duration they carry.
-            Workspace.insertAfter(
-                EngineState.selectedStepId.value,
-                PauseStep(ms = value * 1000L),
-                currentScreen(),
-            )
+            val step = PauseStep(ms = value * 1000L)
+            Workspace.insertAfter(EngineState.selectedStepId.value, step, currentScreen())
+            selectIfEditing(step.id)
             toast(getString(R.string.toast_wait_inserted, value))
         }
 
@@ -1006,6 +1017,11 @@ class TapFlowService : AccessibilityService() {
             }
         }
 
+        override fun onEditNote() {
+            val id = EngineState.selectedStepId.value ?: return
+            openWorkspaceDialog(WorkspaceDialogActivity.Mode.NOTE, id)
+        }
+
         override fun onPickCoordinate() {
             EngineState.pickingCoordinate.value = true
             toast(getString(R.string.toast_pick_coordinate))
@@ -1045,7 +1061,9 @@ class TapFlowService : AccessibilityService() {
             if (EngineState.isReplaying) return
             // Nothing is ever selected while recording, so this appends then, and lands after the
             // selected marker when editing — one call covers both.
-            Workspace.insertAfter(EngineState.selectedStepId.value, PauseStep(), currentScreen())
+            val step = PauseStep()
+            Workspace.insertAfter(EngineState.selectedStepId.value, step, currentScreen())
+            selectIfEditing(step.id)
             toast(getString(R.string.toast_pause_inserted))
             // Stopping is the point: the user is about to do this step by hand, so the canvas has to
             // let touches through and the toolbar has to clear the keyboard area.
