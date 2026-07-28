@@ -31,7 +31,6 @@ data class Marker(
     val anchorX: Float,
     val anchorY: Float,
     val paths: List<List<Pair<Float, Float>>>,
-    val durationMs: Long,
 ) {
     /** End of the first stroke — the arrow tip, and the grab point for changing a swipe. */
     val endX: Float get() = paths.firstOrNull()?.lastOrNull()?.first ?: anchorX
@@ -51,7 +50,6 @@ fun buildMarkers(steps: List<Step>): List<Marker> = steps.mapIndexedNotNull { in
         anchorX = step.anchor.x,
         anchorY = step.anchor.y,
         paths = step.strokes.map { stroke -> stroke.points.map { it.x to it.y } },
-        durationMs = step.duration,
     )
 }
 

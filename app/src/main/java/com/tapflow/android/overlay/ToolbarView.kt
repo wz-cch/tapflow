@@ -10,6 +10,7 @@ import android.view.ViewConfiguration
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import androidx.core.content.ContextCompat
 import com.tapflow.android.R
 import com.tapflow.android.data.MarkerDensity
@@ -43,7 +44,8 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         fun onAddTap()
         fun onDeleteSelected()
         fun onSave()
-        fun onSaveAsNew()
+        fun onLoad()
+        fun onNewClip()
         fun onCycleDensity()
         fun onToggleQuickSettings()
         fun onDismiss()
@@ -60,6 +62,33 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
 
     private val iconIdle = ContextCompat.getColor(context, R.color.overlay_icon)
 
+    /**
+     * A ScrollView that wraps its content but never grows past [maxHeightPx].
+     *
+     * The button column is around 480dp tall, which does not fit a phone in landscape — the collapse
+     * button ended up below the bottom edge and could not be reached at all.
+     */
+    private class CappedScrollView(context: Context) : ScrollView(context) {
+        var maxHeightPx: Int = 0
+
+        override fun onMeasure(widthSpec: Int, heightSpec: Int) {
+            val capped = if (maxHeightPx > 0) {
+                MeasureSpec.makeMeasureSpec(maxHeightPx, MeasureSpec.AT_MOST)
+            } else {
+                heightSpec
+            }
+            super.onMeasure(widthSpec, capped)
+        }
+    }
+
+    /** The buttons, scrollable when they do not fit. */
+    private val column = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+
+    private val scroller = CappedScrollView(context).apply {
+        isVerticalScrollBarEnabled = false
+        overScrollMode = OVER_SCROLL_NEVER
+    }
+
     private val expanded = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         background = panelBackground(dp(14f))
@@ -74,16 +103,21 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
     private val edit = icon(R.drawable.ic_edit)
     private val addTap = icon(R.drawable.ic_add)
     private val deleteStep = icon(R.drawable.ic_remove)
+    private val newClip = icon(R.drawable.ic_new_clip)
     private val save = icon(R.drawable.ic_save)
+    private val load = icon(R.drawable.ic_folder_open)
     private val eye = icon(R.drawable.ic_eye)
     private val quickSettings = icon(R.drawable.ic_tune)
     private val dismiss = icon(R.drawable.ic_close)
     private val collapse = icon(R.drawable.ic_collapse)
 
-    private val allButtons = listOf(
-        grip, primary, secondary, insertPause, undo, edit, addTap, deleteStep, save, eye,
+    /** Everything inside the scroller, in display order. The grip sits outside it. */
+    private val scrollingButtons = listOf(
+        primary, secondary, insertPause, undo, edit, addTap, deleteStep, newClip, save, load, eye,
         quickSettings, dismiss, collapse,
     )
+
+    private val allButtons = listOf(grip) + scrollingButtons
 
     private val ball = ImageView(context).apply {
         scaleType = ImageView.ScaleType.CENTER_INSIDE
@@ -93,7 +127,13 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
     var ballIntent: BallIntent = BallIntent.EXPAND
 
     init {
-        allButtons.forEach { expanded.addView(it) }
+        scrollingButtons.forEach { column.addView(it) }
+        scroller.addView(column, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
+
+        // The grip is deliberately outside the scroller. Inside it, ScrollView would intercept the
+        // vertical drag and the toolbar could no longer be moved.
+        expanded.addView(grip)
+        expanded.addView(scroller)
 
         addView(expanded, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
         addView(ball, LayoutParams(dp(BALL_DP), dp(BALL_DP)))
@@ -110,10 +150,11 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         dismiss.setOnClickListener { actions.onDismiss() }
         collapse.setOnClickListener { actions.onCollapse() }
 
-        // Tap saves over the source clip; long press always creates a new one. That avoids putting
-        // a text dialog on an overlay, which would need input focus and fight with the IME.
+        // Each of these opens one small screen that does one thing. Naming needs a text field, and
+        // a text field needs input focus, which no overlay here may take.
         save.setOnClickListener { actions.onSave() }
-        save.setOnLongClickListener { actions.onSaveAsNew(); true }
+        load.setOnClickListener { actions.onLoad() }
+        newClip.setOnClickListener { actions.onNewClip() }
 
         attachDrag(grip, onTap = null)
         attachDrag(ball) {
@@ -171,6 +212,8 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         dismiss.visibility = if (editing) GONE else VISIBLE
         addTap.visibility = if (editing) VISIBLE else GONE
         deleteStep.visibility = if (editing) VISIBLE else GONE
+        newClip.visibility = if (editing) GONE else VISIBLE
+        load.visibility = if (editing) GONE else VISIBLE
 
         primary.setImageResource(if (mode == Mode.PLAYING) R.drawable.ic_pause else R.drawable.ic_play)
         setActionEnabled(primary, hasSteps && !recording)
@@ -179,6 +222,21 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         // Recording tints red so it is obvious at a glance that touches are being intercepted.
         secondary.imageTintList = android.content.res.ColorStateList.valueOf(
             if (mode == Mode.IDLE) ContextCompat.getColor(context, R.color.state_recording) else iconIdle
+        )
+        secondary.contentDescription = context.getString(
+            when {
+                recording -> R.string.action_record_stop
+                replaying -> R.string.action_stop
+                workspaceSize > 0 -> R.string.action_record_resume
+                else -> R.string.action_record
+            }
+        )
+        primary.contentDescription = context.getString(
+            when (mode) {
+                Mode.PLAYING -> R.string.action_pause
+                Mode.PAUSED -> R.string.action_resume
+                else -> R.string.action_play
+            }
         )
         setActionEnabled(secondary, true)
 
@@ -195,6 +253,8 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         setActionEnabled(undo, hasSteps && !replaying)
         setActionEnabled(deleteStep, hasSelection)
         setActionEnabled(save, hasSteps && !replaying)
+        setActionEnabled(load, !recording && !replaying)
+        setActionEnabled(newClip, hasSteps && !recording && !replaying)
         setActionEnabled(dismiss, !recording && !replaying)
 
         // The eye dims progressively as fewer markers are shown, so the current setting is readable
@@ -204,6 +264,19 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
             MarkerDensity.RECENT -> 0.7f
             MarkerDensity.HIDDEN -> 0.35f
         }
+    }
+
+    /**
+     * @param availableHeightPx how tall the toolbar may be before its buttons start scrolling.
+     *   Landscape does not fit the whole column, and an unreachable collapse button is worse than
+     *   having to scroll for it.
+     */
+    fun setAvailableHeight(availableHeightPx: Int) {
+        val gripHeight = grip.layoutParams?.height?.takeIf { it > 0 } ?: dp(44f)
+        val forScroller = availableHeightPx - gripHeight - dp(12f)
+        if (scroller.maxHeightPx == forScroller) return
+        scroller.maxHeightPx = forScroller.coerceAtLeast(dp(88f))
+        scroller.requestLayout()
     }
 
     fun applyAppearance(scale: Float, opacity: Float) {
@@ -313,6 +386,8 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         addTap.contentDescription = context.getString(R.string.action_add_tap)
         deleteStep.contentDescription = context.getString(R.string.action_delete)
         save.contentDescription = context.getString(R.string.action_save)
+        load.contentDescription = context.getString(R.string.action_load)
+        newClip.contentDescription = context.getString(R.string.action_new_clip)
         eye.contentDescription = context.getString(R.string.action_density)
         quickSettings.contentDescription = context.getString(R.string.action_quick_settings)
         dismiss.contentDescription = context.getString(R.string.action_dismiss)

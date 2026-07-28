@@ -62,7 +62,9 @@
     <string name="action_add_tap">Add tap</string>
     <string name="action_delete">Delete selected</string>
     <string name="action_edit_mode">Edit mode</string>
-    <string name="action_save">Save as clip</string>
+    <string name="action_save">Save clip</string>
+    <string name="action_load">Load clip</string>
+    <string name="action_new_clip">Start a new clip</string>
     <string name="action_density">Marker density</string>
     <string name="action_quick_settings">Quick settings</string>
     <string name="action_collapse">Collapse</string>
@@ -91,7 +93,9 @@
     <string name="onboarding_overlay_action">Open overlay settings</string>
     <string name="onboarding_service_ready">Accessibility service is running</string>
     <string name="onboarding_service_stalled_title">Accessibility service is not running</string>
-    <string name="onboarding_service_stalled_body">TapFlow is switched on in accessibility settings, but Android has not restarted the service. This usually happens after the app is swiped off the recents list or force stopped. Switch TapFlow off and back on in accessibility settings to bring it back.\n\nYou can turn the toolbar on below already — it will appear as soon as the service reconnects.</string>
+    <string name="onboarding_service_error_title">The service failed to start</string>
+    <string name="onboarding_service_error_body">TapFlow is switched on in accessibility settings, but the service threw an error while starting up, so turning it off and on again will not help. Please send the line below — it says exactly what failed.</string>
+    <string name="onboarding_service_stalled_body">TapFlow is switched on in accessibility settings, but Android has not restarted the service. This usually happens after the app is swiped off the recents list or force stopped.\n\nTry switching TapFlow off and back on in accessibility settings. If that does not help, this device is holding the app in a stopped state: exclude TapFlow from battery optimisation and allow it to auto-start, or reinstall it. Nothing inside the app can force Android to bind the service.\n\nYou can turn the toolbar on below already — it will appear as soon as the service reconnects.</string>
 
     <!-- Home screen -->
     <string name="home_show_toolbar">Show floating toolbar</string>
@@ -110,6 +114,10 @@
     <string name="toast_loaded">Loaded “%1$s” into the workspace</string>
     <string name="toast_toolbar_hidden">Toolbar hidden. Turn it back on in the TapFlow app.</string>
     <string name="toast_overlay_failed">Could not show the toolbar. This device may need the display-over-other-apps permission.</string>
+    <string name="toast_gesture_refused">The system would not accept the gesture. The coordinates may be off screen, or another gesture is still running.</string>
+    <string name="toast_gesture_cancelled">The gesture was cancelled part way. This usually means the app on screen rejects injected or obscured touches, which cannot be worked around without root.</string>
+    <string name="toast_replay_echo">The overlay did not release the touch in time, so this gesture was not passed on. Try again, or turn off “Replay each gesture” to record blind.</string>
+    <string name="home_version">version %1$s</string>
 
     <!-- Clip actions -->
     <string name="clip_action_load">Load into workspace</string>
@@ -144,6 +152,19 @@
     <string name="quick_off">OFF</string>
     <string name="quick_full_settings">All settings in the app →</string>
 
+    <!-- Workspace dialogs -->
+    <string name="save_title">Save clip</string>
+    <string name="save_name_label">Name</string>
+    <string name="save_as_new">Save as a new clip instead of replacing it</string>
+    <string name="load_title">Load clip</string>
+    <string name="load_empty">No clips saved yet.</string>
+    <string name="load_unsaved_warning">The workspace has %1$d unsaved actions. Loading replaces them.</string>
+    <string name="new_title">Start a new clip</string>
+    <string name="new_body">This clears the %1$d actions on screen. Anything unsaved is lost.</string>
+    <string name="new_body_empty">The workspace is already empty.</string>
+    <string name="new_confirm">Clear</string>
+    <string name="toast_workspace_cleared">Workspace cleared</string>
+
     <!-- Settings -->
     <string name="settings_title">Settings</string>
     <string name="settings_reset">Restore defaults</string>
@@ -168,11 +189,13 @@
     <string name="settings_ui_scale">Toolbar size</string>
     <string name="settings_ui_opacity">Toolbar opacity</string>
     <string name="settings_show_timer">Show timer</string>
+    <string name="settings_show_markers_idle">Keep markers on screen</string>
+    <string name="settings_show_markers_idle_body">Shows the numbered markers while idle and during playback, not just while recording or editing. Leave this off unless you need it: painting them requires a full-screen overlay, and some apps discard every touch that arrives through one — they stop responding to your own finger too.</string>
     <string name="settings_section_screen">Screen</string>
     <string name="settings_keep_screen_on">Keep screen on</string>
     <string name="settings_keep_screen_on_body">Injected gestures do nothing once the screen turns off.</string>
     <string name="settings_dim">Black out while replaying</string>
-    <string name="settings_dim_body">The screen stays on, it just shows nothing. Only useful for leaving something running.</string>
+    <string name="settings_dim_body">The screen stays on, it just shows nothing. Only useful for leaving something running. Needs a full-screen overlay, so apps that discard obscured touches will ignore the replay while this is on.</string>
     <string name="settings_dim_alpha">Blackout strength</string>
     <string name="value_ms">%1$d ms</string>
     <string name="value_px">%1$d px</string>

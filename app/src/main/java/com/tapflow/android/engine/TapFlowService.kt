@@ -5,6 +5,7 @@ import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.RectF
+import android.os.SystemClock
 import android.util.Log
 import android.view.KeyEvent
 import android.view.View
@@ -12,6 +13,7 @@ import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.widget.Toast
 import com.tapflow.android.MainActivity
+import com.tapflow.android.WorkspaceDialogActivity
 import com.tapflow.android.R
 import com.tapflow.android.data.GestureStep
 import com.tapflow.android.data.GlobalStep
@@ -36,7 +38,6 @@ import com.tapflow.android.overlay.QuickSettingsView
 import com.tapflow.android.overlay.ToolbarView
 import com.tapflow.android.overlay.TransportView
 import com.tapflow.android.overlay.buildMarkers
-import com.tapflow.android.text.defaultClipName
 import com.tapflow.android.text.label
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -73,6 +74,9 @@ class TapFlowService : AccessibilityService() {
         private const val VOLUME_LONG_PRESS_MS = 1000L
 
         private const val TAG = "TapFlowService"
+
+        /** Minimum gap between "gesture rejected" toasts. */
+        private const val GESTURE_WARNING_INTERVAL_MS = 4000L
     }
 
     /**
@@ -107,6 +111,8 @@ class TapFlowService : AccessibilityService() {
 
     private var volumeLongPressJob: Job? = null
 
+    private var lastGestureWarningAt = 0L
+
     private val settings: Settings get() = Repo.settings.value
 
     // --- Lifecycle -----------------------------------------------------------
@@ -123,7 +129,11 @@ class TapFlowService : AccessibilityService() {
      */
     override fun onServiceConnected() {
         super.onServiceConnected()
-        runCatching { connect() }.onFailure { Log.e(TAG, "onServiceConnected failed", it) }
+        EngineState.serviceError.value = null
+        runCatching { connect() }.onFailure { failure ->
+            Log.e(TAG, "onServiceConnected failed", failure)
+            EngineState.serviceError.value = summarise(failure)
+        }
     }
 
     private fun connect() {
@@ -133,20 +143,52 @@ class TapFlowService : AccessibilityService() {
         scope = createScope()
 
         Repo.init(this)
-        Workspace.restore()
+
+        // Each step is isolated so one bad piece of saved state cannot stop the service coming up.
+        // Whatever fails is reported in the app rather than only in logcat.
+        step("restore workspace") { Workspace.restore() }
 
         // Needed for the volume-key fallback. Declared in the config XML too, but setting it here
         // as well keeps it working if the XML is ever trimmed.
-        serviceInfo = (serviceInfo ?: AccessibilityServiceInfo()).apply {
-            flags = flags or AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
+        step("apply service info") {
+            serviceInfo = (serviceInfo ?: AccessibilityServiceInfo()).apply {
+                flags = flags or AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
+            }
         }
 
         buildOverlay()
+
         EngineState.serviceRunning.value = true
 
         // The collector fires with the current value straight away, so a toolbar that was on last
         // session comes back without a second explicit attach call.
         observe()
+    }
+
+    /**
+     * Runs a startup step, recording rather than propagating a failure.
+     *
+     * Used for the parts that are not worth aborting for. Restoring a draft that will not parse, for
+     * instance, should cost the draft and not the whole service.
+     */
+    private inline fun step(what: String, block: () -> Unit) {
+        runCatching(block).onFailure {
+            Log.e(TAG, "Startup step failed: $what", it)
+            EngineState.serviceError.value = "$what — ${summarise(it)}"
+        }
+    }
+
+    /** Exception class, message and the first frame in our own code. Enough to act on. */
+    private fun summarise(failure: Throwable): String {
+        val frame = failure.stackTrace.firstOrNull { it.className.startsWith("com.tapflow") }
+        return buildString {
+            append(failure.javaClass.simpleName)
+            failure.message?.let { append(": ").append(it) }
+            if (frame != null) {
+                append(" @ ").append(frame.className.substringAfterLast('.'))
+                append('.').append(frame.methodName).append(':').append(frame.lineNumber)
+            }
+        }
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
@@ -230,7 +272,7 @@ class TapFlowService : AccessibilityService() {
 
     private fun buildOverlay() {
         host = OverlayHost(this)
-        dispatcher = GestureDispatcher(this)
+        dispatcher = GestureDispatcher(this) { outcome -> onGestureOutcome(outcome) }
 
         canvas = CanvasView(this).apply {
             onGesture = { strokes, down, up -> recorder.onGesture(strokes, down, up) }
@@ -238,6 +280,7 @@ class TapFlowService : AccessibilityService() {
             onDragStep = { stepId, handle, x, y -> dragStep(stepId, handle, x, y) }
             onDragEnd = { Workspace.flush() }
             onPickCoordinate = { x, y -> pickCoordinate(x, y) }
+            onReplayEcho = { onReplayEcho() }
         }
         toolbar = ToolbarView(this, ToolbarActions())
         transport = TransportView(this, TransportActions())
@@ -309,10 +352,7 @@ class TapFlowService : AccessibilityService() {
         EngineState.toolbarForm.value = ToolbarForm.EXPANDED
         toolbar.ballIntent = BallIntent.EXPAND
 
-        // Order matters: same-type overlays stack in the order they are added, so the canvas has to
-        // go on first or it would swallow every toolbar press while recording.
-        updateCanvasFlags()
-        host.add(canvas, canvasParams)
+        // The canvas is attached on demand, not here — see syncCanvasAttachment.
         host.add(transport, transportParams)
 
         if (!host.add(toolbar, toolbarParams)) {
@@ -377,6 +417,8 @@ class TapFlowService : AccessibilityService() {
         val selectedId = EngineState.selectedStepId.value
 
         toolbar.applyAppearance(current.uiScale, current.uiOpacity)
+        // Recomputed here so a rotation, or a change of scale, re-caps the scrolling area.
+        toolbar.setAvailableHeight(host.displaySize().y - dpToPx(32f).toInt())
         toolbar.render(
             mode = mode,
             form = EngineState.toolbarForm.value,
@@ -403,6 +445,7 @@ class TapFlowService : AccessibilityService() {
             else -> CanvasMode.READ_ONLY
         }
         updateCanvasFlags()
+        syncCanvasAttachment()
         syncBlockedAreas()
 
         syncParamCard()
@@ -425,6 +468,47 @@ class TapFlowService : AccessibilityService() {
             host.add(quickSettings, quickSettingsParams)
         }
         host.update(quickSettings, quickSettingsParams)
+    }
+
+    /**
+     * Keeps the full-screen canvas attached only while it is actually needed.
+     *
+     * FLAG_NOT_TOUCHABLE lets touches pass through, but it does not stop the window counting as an
+     * obscuring one. While it is attached, every touch every app on the device receives carries
+     * FLAG_WINDOW_IS_OBSCURED — and a view with filterTouchesWhenObscured set simply discards those.
+     * Apps that do this become completely unresponsive, to the user's own finger as much as to an
+     * injected gesture, merely because the toolbar is switched on. Launchers do not set it, which is
+     * why this looks like "works on the home screen, dead inside an app".
+     *
+     * So the canvas goes up to intercept (recording, editing) or when the user has explicitly asked
+     * for something painted over everything, and comes down otherwise.
+     */
+    private fun syncCanvasAttachment() {
+        val needed = canvasNeeded()
+        if (needed == host.isAttached(canvas)) return
+
+        if (needed) {
+            host.add(canvas, canvasParams)
+            // Same-type overlays stack in the order they were added, so everything else has to be
+            // re-added above the canvas or its buttons become unreachable.
+            restackAboveCanvas()
+        } else {
+            host.remove(canvas)
+        }
+    }
+
+    private fun canvasNeeded(): Boolean {
+        if (EngineState.mode.value == Mode.RECORDING) return true
+        if (EngineState.editing.value) return true
+        if (settings.dimOverlay && EngineState.mode.value == Mode.PLAYING) return true
+        return settings.showMarkersWhenIdle && Workspace.steps.value.isNotEmpty()
+    }
+
+    private fun restackAboveCanvas() {
+        host.bringToFront(transport, transportParams)
+        if (host.isAttached(paramCard)) host.bringToFront(paramCard, paramCardParams)
+        if (host.isAttached(quickSettings)) host.bringToFront(quickSettings, quickSettingsParams)
+        host.bringToFront(toolbar, toolbarParams)
     }
 
     private fun dpToPx(dp: Float) = dp * resources.displayMetrics.density
@@ -525,6 +609,12 @@ class TapFlowService : AccessibilityService() {
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
 
         val intercepting = when (canvas.mode) {
+            // Never while a captured gesture is being replayed. The canvas would otherwise swallow
+            // the event it just injected and the app below would see nothing at all.
+            //
+            // Keyed off canvas.replaying and nothing else. An earlier attempt tied this to an
+            // optional "move the overlay aside" setting, and because that setting defaulted off the
+            // flag was never applied and per-gesture replay did nothing anywhere.
             CanvasMode.RECORDING -> !canvas.replaying
             CanvasMode.EDIT -> true
             CanvasMode.READ_ONLY -> false
@@ -536,6 +626,10 @@ class TapFlowService : AccessibilityService() {
             flags = flags or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
         }
 
+        // The window is never moved or resized around a replay. Shrinking it shifted the whole
+        // coordinate space sideways, and moving it made the system cancel the gesture in flight —
+        // both broke recording everywhere in exchange for helping apps that discard obscured
+        // touches, which was never actually shown to work. Those apps stay a documented limitation.
         if (canvasParams.flags == flags) return
         canvasParams.flags = flags
         host.update(canvas, canvasParams)
@@ -554,27 +648,19 @@ class TapFlowService : AccessibilityService() {
         exitEditing()
         EngineState.toolbarForm.value = ToolbarForm.EXPANDED
         toolbar.ballIntent = BallIntent.EXPAND
-        EngineState.mode.value = Mode.RECORDING
-        canvas.mode = CanvasMode.RECORDING
         canvas.replaying = false
         recorder.restartTiming()
-        updateCanvasFlags()
 
-        // The canvas is now intercepting the whole screen, so re-stack the other two windows above
-        // it or their buttons become unreachable.
-        host.bringToFront(transport, transportParams)
-        host.bringToFront(toolbar, toolbarParams)
+        // syncOverlay derives the canvas mode, flags, attachment and stacking from the state.
+        EngineState.mode.value = Mode.RECORDING
         syncOverlay()
     }
 
     private fun stopRecording(collapseForInput: Boolean) {
         if (!EngineState.isRecording) return
 
-        canvas.mode = CanvasMode.READ_ONLY
         canvas.replaying = false
         EngineState.mode.value = Mode.IDLE
-        updateCanvasFlags()
-
         if (collapseForInput) collapseToBall(BallIntent.RESUME_RECORDING)
         syncOverlay()
     }
@@ -644,11 +730,15 @@ class TapFlowService : AccessibilityService() {
         return before != listOf(toolbarParams.x, toolbarParams.y, transportParams.x, transportParams.y)
     }
 
-    /** Snaps the toolbar to whichever side edge is closer, and remembers where it ended up. */
+    /**
+     * Remembers where the toolbar was dropped.
+     *
+     * It used to snap to whichever side edge was nearer, which meant it could not be put anywhere
+     * else — drag it to the middle and it sprang back. Edge docking is easy enough to do by hand if
+     * that is what you want, so the toolbar now simply stays where it is put.
+     */
     private fun settleToolbar() {
-        val size = host.displaySize()
-        val centre = toolbarParams.x + toolbar.width / 2
-        toolbarParams.x = if (centre < size.x / 2) 0 else max(0, size.x - toolbar.width)
+        clampWindows()
         host.update(toolbar, toolbarParams)
         Repo.writeInt(PREF_TOOLBAR_X, toolbarParams.x)
         Repo.writeInt(PREF_TOOLBAR_Y, toolbarParams.y)
@@ -675,17 +765,64 @@ class TapFlowService : AccessibilityService() {
         player.play(steps, Workspace.screen, settings.defaultLoopCount)
     }
 
-    private fun save(asNew: Boolean) {
-        val now = System.currentTimeMillis()
-        val clip = Workspace.commit(defaultClipName(resources, now), now, asNew)
-        if (clip == null) {
+    /**
+     * Opens one of the workspace dialogs.
+     *
+     * These are activities rather than more overlay panels because naming a clip needs a text field,
+     * a text field needs input focus, and every overlay here is deliberately FLAG_NOT_FOCUSABLE so it
+     * never takes focus from the app underneath.
+     */
+    private fun openWorkspaceDialog(mode: WorkspaceDialogActivity.Mode) {
+        if (mode != WorkspaceDialogActivity.Mode.LOAD && Workspace.isEmpty) {
             toast(getString(R.string.toast_nothing_to_save))
-        } else {
-            toast(getString(R.string.toast_saved, clip.name))
+            return
         }
+        EngineState.quickSettingsOpen.value = false
+        startActivity(
+            Intent(this, WorkspaceDialogActivity::class.java)
+                .putExtra(WorkspaceDialogActivity.EXTRA_MODE, mode.name)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
     }
 
     private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
+
+    /**
+     * The canvas received the gesture it had just injected.
+     *
+     * FLAG_NOT_TOUCHABLE had not taken effect in time, so the replay was swallowed by our own window
+     * and the app below saw nothing — which looks exactly like the replay doing nothing at all.
+     * Moving the window aside sidesteps the race entirely, so that is what the message suggests.
+     */
+    private fun onReplayEcho() {
+        Log.w(TAG, "Replayed gesture was swallowed by the canvas; FLAG_NOT_TOUCHABLE had not landed")
+        val now = SystemClock.uptimeMillis()
+        if (now - lastGestureWarningAt < GESTURE_WARNING_INTERVAL_MS) return
+        lastGestureWarningAt = now
+        toast(getString(R.string.toast_replay_echo))
+    }
+
+    /**
+     * Surfaces gestures the system would not deliver.
+     *
+     * This used to be swallowed, which made "the app ignored the tap" look exactly like "the tap was
+     * never delivered" — two problems with nothing in common. Reported at most once every few
+     * seconds, because a rejected run rejects every step and a toast per step would bury the screen.
+     */
+    private fun onGestureOutcome(outcome: GestureOutcome) {
+        if (outcome == GestureOutcome.COMPLETED || outcome == GestureOutcome.SKIPPED) return
+
+        val now = SystemClock.uptimeMillis()
+        if (now - lastGestureWarningAt < GESTURE_WARNING_INTERVAL_MS) return
+        lastGestureWarningAt = now
+
+        toast(
+            getString(
+                if (outcome == GestureOutcome.CANCELLED) R.string.toast_gesture_cancelled
+                else R.string.toast_gesture_refused
+            )
+        )
+    }
 
     // --- Editing -------------------------------------------------------------
 
@@ -693,10 +830,9 @@ class TapFlowService : AccessibilityService() {
         if (EngineState.isRecording || EngineState.isReplaying) return
         if (Workspace.isEmpty) return
         EngineState.toolbarForm.value = ToolbarForm.EXPANDED
+        // syncOverlay attaches the canvas and re-stacks everything above it.
         EngineState.editing.value = true
-        // The canvas now takes the whole screen; the toolbar and card must sit above it.
-        host.bringToFront(transport, transportParams)
-        host.bringToFront(toolbar, toolbarParams)
+        syncOverlay()
         toast(getString(R.string.toast_edit_mode_on))
     }
 
@@ -834,7 +970,9 @@ class TapFlowService : AccessibilityService() {
 
         override fun onInsertPausePoint() {
             if (EngineState.isReplaying) return
-            Workspace.appendPausePoint()
+            // Nothing is ever selected while recording, so this appends then, and lands after the
+            // selected marker when editing — one call covers both.
+            Workspace.insertAfter(EngineState.selectedStepId.value, PauseStep(), currentScreen())
             toast(getString(R.string.toast_pause_inserted))
             // Stopping is the point: the user is about to do this step by hand, so the canvas has to
             // let touches through and the toolbar has to clear the keyboard area.
@@ -871,9 +1009,11 @@ class TapFlowService : AccessibilityService() {
             if (Workspace.isEmpty) exitEditing()
         }
 
-        override fun onSave() = save(asNew = false)
+        override fun onSave() = openWorkspaceDialog(WorkspaceDialogActivity.Mode.SAVE)
 
-        override fun onSaveAsNew() = save(asNew = true)
+        override fun onLoad() = openWorkspaceDialog(WorkspaceDialogActivity.Mode.LOAD)
+
+        override fun onNewClip() = openWorkspaceDialog(WorkspaceDialogActivity.Mode.NEW)
 
         override fun onCycleDensity() =
             Repo.updateSettings { it.copy(markerDensity = it.markerDensity.next()) }

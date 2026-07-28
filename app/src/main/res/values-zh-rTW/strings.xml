@@ -59,7 +59,9 @@
     <string name="action_add_tap">新增點擊點</string>
     <string name="action_delete">刪除選取</string>
     <string name="action_edit_mode">編輯模式</string>
-    <string name="action_save">儲存為片段</string>
+    <string name="action_save">儲存片段</string>
+    <string name="action_load">讀取片段</string>
+    <string name="action_new_clip">開新的片段</string>
     <string name="action_density">標記顯示密度</string>
     <string name="action_quick_settings">快捷設定</string>
     <string name="action_collapse">摺疊</string>
@@ -88,7 +90,9 @@
     <string name="onboarding_overlay_action">前往懸浮視窗設定</string>
     <string name="onboarding_service_ready">無障礙服務運行中</string>
     <string name="onboarding_service_stalled_title">無障礙服務沒有在運行</string>
-    <string name="onboarding_service_stalled_body">觸控流在無障礙設定裡是開著的,但 Android 沒有把服務重新啟動。通常是 app 被從最近工作清單滑掉、或被強制停止之後會這樣。到無障礙設定把觸控流關掉再打開就會回來。\n\n下面的開關你現在就可以打開 —— 服務一連上,工具列就會出現。</string>
+    <string name="onboarding_service_error_title">服務啟動失敗</string>
+    <string name="onboarding_service_error_body">觸控流在無障礙設定裡是開著的,但服務在啟動過程中丟出錯誤,所以關掉再開沒有用。請把下面這一行回報給我 —— 它會直接指出是哪裡壞的。</string>
+    <string name="onboarding_service_stalled_body">觸控流在無障礙設定裡是開著的,但 Android 沒有把服務重新啟動。通常是 app 被從最近工作清單滑掉、或被強制停止之後會這樣。\n\n先試著到無障礙設定把觸控流關掉再打開。如果沒用,代表這台裝置把 app 壓在停止狀態:請把觸控流排除在電池最佳化之外、允許自動啟動,或重新安裝。app 內部沒有任何辦法強迫 Android 綁定服務。\n\n下面的開關你現在就可以打開 —— 服務一連上,工具列就會出現。</string>
 
     <!-- 主畫面 -->
     <string name="home_show_toolbar">顯示懸浮工具列</string>
@@ -107,6 +111,10 @@
     <string name="toast_loaded">已把「%1$s」載入工作區</string>
     <string name="toast_toolbar_hidden">已收起工具列。回到觸控流 app 重新開啟。</string>
     <string name="toast_overlay_failed">工具列掛不上去。這台裝置可能需要「顯示在其他應用上層」權限。</string>
+    <string name="toast_gesture_refused">系統不接受這個手勢。可能是座標超出畫面,或還有另一個手勢在執行。</string>
+    <string name="toast_gesture_cancelled">手勢執行到一半被取消。通常是畫面上的 app 拒絕接收注入或被遮蔽的觸控,無 root 無法繞過。</string>
+    <string name="toast_replay_echo">遮罩沒有及時放行,這一步的補發沒有送出去。再試一次,或關掉「逐手勢補發」改用純盲錄。</string>
+    <string name="home_version">版本 %1$s</string>
 
     <!-- 片段操作 -->
     <string name="clip_action_load">載入到工作區</string>
@@ -141,6 +149,19 @@
     <string name="quick_off">關</string>
     <string name="quick_full_settings">完整設定在 app 裡 →</string>
 
+    <!-- 工作區對話框 -->
+    <string name="save_title">儲存片段</string>
+    <string name="save_name_label">名稱</string>
+    <string name="save_as_new">另存為新片段,不覆蓋原本的</string>
+    <string name="load_title">讀取片段</string>
+    <string name="load_empty">還沒有存過任何片段。</string>
+    <string name="load_unsaved_warning">工作區有 %1$d 個未儲存的動作,讀取會取代它們。</string>
+    <string name="new_title">開新的片段</string>
+    <string name="new_body">會清空畫面上的 %1$d 個動作,未儲存的內容會消失。</string>
+    <string name="new_body_empty">工作區本來就是空的。</string>
+    <string name="new_confirm">清空</string>
+    <string name="toast_workspace_cleared">工作區已清空</string>
+
     <!-- 設定 -->
     <string name="settings_title">設定</string>
     <string name="settings_reset">恢復預設值</string>
@@ -165,11 +186,13 @@
     <string name="settings_ui_scale">工具列大小</string>
     <string name="settings_ui_opacity">工具列不透明度</string>
     <string name="settings_show_timer">顯示計時器</string>
+    <string name="settings_show_markers_idle">標記持續顯示在畫面上</string>
+    <string name="settings_show_markers_idle_body">讓序號標記在待機與播放時也顯示,而不只是錄製與編輯時。除非真的需要,建議保持關閉:畫標記需要一層全螢幕遮罩,而有些 app 會丟棄所有經過遮罩的觸控 —— 那些 app 連你自己手指點都不會有反應。</string>
     <string name="settings_section_screen">螢幕</string>
     <string name="settings_keep_screen_on">保持螢幕不熄</string>
     <string name="settings_keep_screen_on_body">螢幕一熄,注入的手勢就全部無效。</string>
     <string name="settings_dim">播放時蓋黑幕</string>
-    <string name="settings_dim_body">螢幕其實還亮著,只是看不到內容。適合放著跑。</string>
+    <string name="settings_dim_body">螢幕其實還亮著,只是看不到內容。適合放著跑。需要一層全螢幕遮罩,所以開著的時候,會丟棄被遮蔽觸控的 app 也會忽略重播。</string>
     <string name="settings_dim_alpha">黑幕濃度</string>
     <string name="value_ms">%1$d ms</string>
     <string name="value_px">%1$d px</string>

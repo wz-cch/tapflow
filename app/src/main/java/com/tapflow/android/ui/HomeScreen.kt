@@ -44,21 +44,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.tapflow.android.BuildConfig
 import com.tapflow.android.R
 import com.tapflow.android.data.Clip
 import com.tapflow.android.data.Repo
 import com.tapflow.android.engine.EngineState
 import com.tapflow.android.engine.Workspace
-import java.util.concurrent.TimeUnit
+import com.tapflow.android.text.clipSummary
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(onOpenSettings: () -> Unit) {
     val context = LocalContext.current
-    val status = rememberServiceStatus()
+    val service = rememberServiceState()
+    val status = service.status
     val overlayEnabled by Repo.overlayEnabled.collectAsStateWithLifecycle()
     val needsOverlayPermission by EngineState.needsOverlayPermission.collectAsStateWithLifecycle()
     val clips by Repo.clips.collectAsStateWithLifecycle()
@@ -85,7 +88,7 @@ fun HomeScreen(onOpenSettings: () -> Unit) {
             item { Spacer(Modifier.height(4.dp)) }
 
             item {
-                AccessibilityCard(status) { context.openAccessibilitySettings() }
+                AccessibilityCard(service) { context.openAccessibilitySettings() }
             }
 
             // Only worth mentioning once the accessibility overlay has actually been refused, which
@@ -130,16 +133,29 @@ fun HomeScreen(onOpenSettings: () -> Unit) {
                 }
             }
 
-            item { Spacer(Modifier.height(24.dp)) }
+            item {
+                Spacer(Modifier.height(24.dp))
+                // Shown so a bug report identifies its build. Every CI APK used to claim 0.1.0.
+                Text(
+                    stringResource(R.string.home_version, BuildConfig.VERSION_NAME),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontFamily = FontFamily.Monospace,
+                )
+                Spacer(Modifier.height(24.dp))
+            }
         }
     }
 }
 
 @Composable
-private fun AccessibilityCard(status: ServiceStatus, onOpen: () -> Unit) {
-    val stalled = status == ServiceStatus.ENABLED_NOT_RUNNING
+private fun AccessibilityCard(service: ServiceState, onOpen: () -> Unit) {
+    val status = service.status
+    val crashed = status != ServiceStatus.RUNNING && service.error != null
+    val problem = status == ServiceStatus.ENABLED_NOT_RUNNING
+
     Card(
-        colors = if (stalled) {
+        colors = if (problem) {
             CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
         } else {
             CardDefaults.cardColors()
@@ -148,10 +164,11 @@ private fun AccessibilityCard(status: ServiceStatus, onOpen: () -> Unit) {
         Column(Modifier.padding(16.dp)) {
             Text(
                 stringResource(
-                    when (status) {
-                        ServiceStatus.RUNNING -> R.string.onboarding_service_ready
-                        ServiceStatus.ENABLED_NOT_RUNNING -> R.string.onboarding_service_stalled_title
-                        ServiceStatus.DISABLED -> R.string.onboarding_accessibility_title
+                    when {
+                        status == ServiceStatus.RUNNING -> R.string.onboarding_service_ready
+                        crashed -> R.string.onboarding_service_error_title
+                        problem -> R.string.onboarding_service_stalled_title
+                        else -> R.string.onboarding_accessibility_title
                     }
                 ),
                 style = MaterialTheme.typography.titleMedium,
@@ -162,11 +179,26 @@ private fun AccessibilityCard(status: ServiceStatus, onOpen: () -> Unit) {
             Spacer(Modifier.height(6.dp))
             Text(
                 stringResource(
-                    if (stalled) R.string.onboarding_service_stalled_body
-                    else R.string.onboarding_accessibility_body
+                    when {
+                        crashed -> R.string.onboarding_service_error_body
+                        problem -> R.string.onboarding_service_stalled_body
+                        else -> R.string.onboarding_accessibility_body
+                    }
                 ),
                 style = MaterialTheme.typography.bodyMedium,
             )
+
+            // The actual exception, so it can be read off the screen and reported. Toggling the
+            // service off and on will not help if it crashes every time it starts.
+            if (crashed) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    service.error!!,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                )
+            }
+
             Spacer(Modifier.height(12.dp))
             OutlinedButton(onClick = onOpen) {
                 Text(stringResource(R.string.onboarding_accessibility_action))
@@ -237,7 +269,7 @@ private fun ClipRow(clip: Clip) {
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    clipSummary(context, clip),
+                    clipSummary(context.resources, clip),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -326,21 +358,6 @@ private fun RenameDialog(initial: String, onDismiss: () -> Unit, onConfirm: (Str
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.dialog_cancel)) }
         },
     )
-}
-
-private fun clipSummary(context: Context, clip: Clip): String {
-    val duration = formatDuration(clip.estimatedDurationMs)
-    return if (clip.pauseCount > 0) {
-        context.getString(R.string.clip_summary_with_pauses, clip.stepCount, clip.pauseCount, duration)
-    } else {
-        context.getString(R.string.clip_summary, clip.stepCount, duration)
-    }
-}
-
-private fun formatDuration(ms: Long): String {
-    val minutes = TimeUnit.MILLISECONDS.toMinutes(ms)
-    val seconds = TimeUnit.MILLISECONDS.toSeconds(ms) % 60
-    return if (minutes > 0) "${minutes}m ${seconds}s" else "${seconds}s"
 }
 
 private fun Context.openAccessibilitySettings() =

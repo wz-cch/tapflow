@@ -157,6 +157,13 @@ fun SettingsScreen(onBack: () -> Unit) {
                     checked = settings.showTimer,
                 ) { Repo.updateSettings { s -> s.copy(showTimer = it) } }
             }
+            item {
+                SwitchRow(
+                    label = stringResource(R.string.settings_show_markers_idle),
+                    body = stringResource(R.string.settings_show_markers_idle_body),
+                    checked = settings.showMarkersWhenIdle,
+                ) { Repo.updateSettings { s -> s.copy(showMarkersWhenIdle = it) } }
+            }
 
             item { Section(R.string.settings_section_screen) }
             item {

@@ -73,6 +73,16 @@ data class Settings(
     val showTimer: Boolean = true,
     val markerDensity: MarkerDensity = MarkerDensity.RECENT,
 
+    /**
+     * Keep the markers painted while idle and during playback, not only while recording or editing.
+     *
+     * Off by default, and that default matters. Painting them needs a full-screen window, and such a
+     * window makes every touch every app receives carry FLAG_WINDOW_IS_OBSCURED. Any view with
+     * filterTouchesWhenObscured set then discards the touch, so those apps stop responding entirely —
+     * to a real finger as much as to an injected gesture.
+     */
+    val showMarkersWhenIdle: Boolean = false,
+
     // --- Screen ---
     /** Keep the screen awake while recording or replaying; injected gestures do nothing once off. */
     val keepScreenOn: Boolean = true,

@@ -24,10 +24,6 @@ class OverlayHost(private val service: AccessibilityService) {
     private val windowManager = service.getSystemService(WindowManager::class.java)
     private val attached = mutableSetOf<View>()
 
-    /** True once any window had to use the SYSTEM_ALERT_WINDOW path. */
-    var usingFallback = false
-        private set
-
     /**
      * Full display size including system decor.
      *
@@ -96,15 +92,26 @@ class OverlayHost(private val service: AccessibilityService) {
             return false
         }
 
-        params.type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        params.type = fallbackWindowType
         if (tryAdd(view, params)) {
             attached += view
-            usingFallback = true
-            Log.i(TAG, "Fell back to TYPE_APPLICATION_OVERLAY")
+            Log.i(TAG, "Fell back to overlay window type ${params.type}")
             return true
         }
         return false
     }
+
+    /**
+     * TYPE_APPLICATION_OVERLAY only exists from API 26. Before that the equivalent is TYPE_PHONE,
+     * which is deprecated but is what SYSTEM_ALERT_WINDOW governed on those releases.
+     */
+    private val fallbackWindowType: Int
+        get() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        } else {
+            @Suppress("DEPRECATION")
+            WindowManager.LayoutParams.TYPE_PHONE
+        }
 
     fun update(view: View, params: WindowManager.LayoutParams) {
         if (view !in attached) return

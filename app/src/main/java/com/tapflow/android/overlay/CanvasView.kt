@@ -55,6 +55,15 @@ class CanvasView(context: Context) : View(context) {
     /** Editing: a position was picked for the step whose coordinate is being re-specified. */
     var onPickCoordinate: ((x: Float, y: Float) -> Unit)? = null
 
+    /**
+     * A touch arrived while a gesture was being replayed.
+     *
+     * That should be impossible: the window is set FLAG_NOT_TOUCHABLE first. If it happens, the flag
+     * had not taken effect yet and this canvas has just eaten the gesture it injected — which is
+     * indistinguishable from the replay silently doing nothing. Worth reporting rather than guessing.
+     */
+    var onReplayEcho: (() -> Unit)? = null
+
     var mode: CanvasMode = CanvasMode.READ_ONLY
         set(value) {
             if (field == value) return
@@ -178,9 +187,12 @@ class CanvasView(context: Context) : View(context) {
         if (mode == CanvasMode.EDIT) return handleEditTouch(event)
         if (mode != CanvasMode.RECORDING) return false
 
-        // While a captured gesture is being pushed down to the app below, the window is already
-        // non-touchable; this guard only catches events the system had already queued.
-        if (replaying) return true
+        // The window is already non-touchable by this point, so reaching here means the flag had not
+        // landed and the injected gesture is about to be swallowed. Report it instead of hiding it.
+        if (replaying) {
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) onReplayEcho?.invoke()
+            return true
+        }
 
         val now = event.eventTime
         when (event.actionMasked) {

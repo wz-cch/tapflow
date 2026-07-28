@@ -30,10 +30,18 @@ import kotlinx.coroutines.delay
  */
 enum class ServiceStatus { DISABLED, ENABLED_NOT_RUNNING, RUNNING }
 
+/**
+ * @param error non-null when the service threw while starting up, as opposed to never having been
+ *   bound by Android. Those look identical from outside and need completely different responses, so
+ *   the message is shown rather than left in logcat.
+ */
+data class ServiceState(val status: ServiceStatus, val error: String?)
+
 @Composable
-fun rememberServiceStatus(): ServiceStatus {
+fun rememberServiceState(): ServiceState {
     val context = LocalContext.current
     val running by EngineState.serviceRunning.collectAsStateWithLifecycle()
+    val error by EngineState.serviceError.collectAsStateWithLifecycle()
 
     // Whether the switch is on in system settings has no broadcast to listen to, so it is polled.
     // Only while resumed, so a backgrounded app is not waking up once a second for nothing.
@@ -48,11 +56,12 @@ fun rememberServiceStatus(): ServiceStatus {
         }
     }
 
-    return when {
+    val status = when {
         running -> ServiceStatus.RUNNING
         enabledInSettings -> ServiceStatus.ENABLED_NOT_RUNNING
         else -> ServiceStatus.DISABLED
     }
+    return ServiceState(status, error)
 }
 
 /**
