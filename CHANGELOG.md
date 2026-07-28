@@ -100,6 +100,12 @@
 - overlay 位置在 view 量測完成後會再 clamp 一次,避免沿用其他尺寸螢幕的座標而停在畫面外
 - 掛載失敗不再靜默,會 toast 並把開關關掉
 
+### Documented — 文件與程式碼重新對齊
+- **規格說「只用三個 window」,實際有五個。** 快捷設定面板與參數卡都是自己的 window(`host.add`),而 SPEC §3.3 還寫著參數卡「畫在畫布上,不另開 window」—— 跟同一份文件 §9 的「參數卡是獨立的 window」直接打架。SPEC §3 改成如實描述五個,並說明三個常駐、兩個按需掛上
+- 工具列按鍵數三處數字全錯(「14 排」「11 顆」「10 排以內 / 13 排」)。實際是宣告 14 顆、編輯模式外顯示 12 顆、編輯模式 7 顆
+- SPEC 的檔案樹還停在 `D:\touch\`,少列七個實際存在的檔案(`WorkspaceDialogActivity` / `QuickSettingsView` / `Diag` / `EngineState` / `Timing` / `ServiceStatus` / `DiagnosticsScreen`),`ParamCard.kt` 的檔名也不對。M3 / M4 尚未存在的檔案現在明確標記出來
+- SPEC 缺 §10.3(從 10.2 跳到 10.4),而 §3.1 有一處正指著它。交叉引用改指 §10.2(2),10.4 遞補為 10.3
+
 ### 尚待實機驗收
 M1 的三個風險項目還沒在實機上驗過,見 [docs/SPEC.md](docs/SPEC.md) 第十五節:
 逐手勢補發的手感、`FLAG_NOT_TOUCHABLE` 切換是否可靠、暫停時鍵盤是否真的按得到。
