@@ -14,6 +14,7 @@ import com.tapflow.android.data.MarkerDensity
 import com.tapflow.android.data.MatchMode
 import com.tapflow.android.data.Node
 import com.tapflow.android.data.PauseStep
+import com.tapflow.android.data.RepeatableStep
 import com.tapflow.android.data.Step
 import com.tapflow.android.data.WaitNode
 import java.time.Instant
@@ -28,12 +29,18 @@ import java.time.format.DateTimeFormatter
  * overlays call into it, which is why it sits in its own package rather than under ui/.
  */
 
-fun Step.label(res: Resources): String = when (this) {
-    // Named differently from this function on purpose: two same-named extensions on a type and its
-    // supertype invite the compiler to resolve the wrong one and recurse forever.
-    is GestureStep -> gestureLabel(res)
-    is GlobalStep -> res.getString(R.string.step_global, kind.label(res))
-    is PauseStep -> pauseLabel(res)
+fun Step.label(res: Resources): String {
+    val base = when (this) {
+        // Named differently from this function on purpose: two same-named extensions on a type and its
+        // supertype invite the compiler to resolve the wrong one and recurse forever.
+        is GestureStep -> gestureLabel(res)
+        is GlobalStep -> res.getString(R.string.step_global, kind.label(res))
+        is PauseStep -> pauseLabel(res)
+    }
+    // Suffixed rather than woven into each label, so one repeated step reads as one row. Ten identical
+    // rows is what this replaces, and a shorter list is the only thing that helps a hundred-step script.
+    val repeat = (this as? RepeatableStep)?.repeat ?: 1
+    return if (repeat > 1) res.getString(R.string.step_repeat_suffix, base, repeat) else base
 }
 
 private fun PauseStep.pauseLabel(res: Resources): String = when {

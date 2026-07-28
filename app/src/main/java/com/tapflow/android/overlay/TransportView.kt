@@ -109,6 +109,18 @@ class TransportView(context: Context, private val actions: Actions) : LinearLayo
                 append(loopText(progress))
                 append("   ")
                 append(context.getString(R.string.transport_step, progress.step, progress.totalSteps))
+                // Only when there is actually a repeat. A step running ten times with a gap between each
+                // otherwise holds the same number for ten seconds and reads as frozen.
+                if (progress.repeatTotal > 1) {
+                    append(" ")
+                    append(
+                        context.getString(
+                            R.string.transport_repeat,
+                            progress.repeatPass,
+                            progress.repeatTotal,
+                        )
+                    )
+                }
             }
             else -> ""
         }

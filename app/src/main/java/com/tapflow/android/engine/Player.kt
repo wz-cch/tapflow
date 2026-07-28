@@ -2,6 +2,7 @@ package com.tapflow.android.engine
 
 import android.content.res.Resources
 import com.tapflow.android.data.PauseStep
+import com.tapflow.android.data.RepeatableStep
 import com.tapflow.android.data.ScreenSpec
 import com.tapflow.android.data.Settings
 import com.tapflow.android.data.Step
@@ -58,8 +59,14 @@ class Player(
                     val from = if (loop == 1) startIndex.coerceIn(0, steps.lastIndex) else 0
                     for ((index, step) in steps.withIndex()) {
                         if (index < from) continue
-                        EngineState.progress.value = Progress(loop, loops, index + 1, steps.size)
-                        Diag.log("player: loop $loop step ${index + 1}/${steps.size} ${step::class.java.simpleName}")
+                        val passes = (step as? RepeatableStep)?.repeat?.coerceAtLeast(1) ?: 1
+                        EngineState.progress.value =
+                            Progress(loop, loops, index + 1, steps.size, 1, passes)
+                        Diag.log(
+                            "player: loop $loop step ${index + 1}/${steps.size} " +
+                                step::class.java.simpleName +
+                                if (passes > 1) " x$passes" else ""
+                        )
 
                         // Only the manual form asks for a pause. A timed one is just a delay, so it
                         // stays in RUNNING and the progress readout keeps moving — PAUSED continues
@@ -84,7 +91,22 @@ class Player(
                             continue
                         }
 
-                        dispatcher.perform(step, ScaleSpec.of(recordedScreen, currentScreen()), current)
+                        val scale = ScaleSpec.of(recordedScreen, currentScreen())
+                        val interval = (step as? RepeatableStep)?.repeatIntervalMs ?: 0
+                        for (pass in 1..passes) {
+                            // Between passes only, and after the lead delay has already been paid. The
+                            // interval is what stops ten taps arriving close enough together for the app
+                            // below to read them as one multi-tap — or to drop them.
+                            if (pass > 1) {
+                                EngineState.progress.value =
+                                    Progress(loop, loops, index + 1, steps.size, pass, passes)
+                                delay(Timing.replayDelay(interval, current))
+                                // Checked every pass, so pause and stop work in the middle of a repeat
+                                // rather than only between steps.
+                                gate()
+                            }
+                            dispatcher.perform(step, scale, current)
+                        }
                     }
                 }
             } finally {
