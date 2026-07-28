@@ -138,11 +138,17 @@
     <string name="param_type_multi_touch">Multi-finger</string>
     <string name="param_type_pause">Pause point</string>
     <string name="param_type_wait">Wait</string>
+    <string name="step_list_jump">Jump</string>
+    <string name="step_list_position">%1$d / %2$d</string>
+    <string name="step_list_count">%1$d steps</string>
+    <string name="step_list_jump_title">Jump to step</string>
+    <string name="step_list_jump_unit">#</string>
     <string name="wait_pad_title">Wait for</string>
     <string name="wait_pad_unit">s</string>
     <string name="param_type_other">Action</string>
     <string name="param_coordinates">%1$d, %2$d</string>
     <string name="param_repick">Re-pick</string>
+    <string name="param_play_from_here">Play from here</string>
     <string name="param_edit_note">Note</string>
     <string name="param_note_empty">No note</string>
     <string name="param_duration">Duration</string>

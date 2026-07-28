@@ -34,6 +34,7 @@ import com.tapflow.android.overlay.NumberPadView
 import com.tapflow.android.overlay.OverlayHost
 import com.tapflow.android.overlay.ParamCardView
 import com.tapflow.android.overlay.QuickSettingsView
+import com.tapflow.android.overlay.StepListView
 import com.tapflow.android.overlay.ToolbarView
 import com.tapflow.android.overlay.TransportView
 import com.tapflow.android.overlay.buildMarkers
@@ -96,14 +97,16 @@ class TapFlowService : AccessibilityService() {
     private lateinit var transport: TransportView
     private lateinit var paramCard: ParamCardView
     private lateinit var quickSettings: QuickSettingsView
-    private lateinit var waitPad: NumberPadView
+    private lateinit var numberPad: NumberPadView
+    private lateinit var stepList: StepListView
 
     private lateinit var canvasParams: WindowManager.LayoutParams
     private lateinit var toolbarParams: WindowManager.LayoutParams
     private lateinit var transportParams: WindowManager.LayoutParams
     private lateinit var paramCardParams: WindowManager.LayoutParams
     private lateinit var quickSettingsParams: WindowManager.LayoutParams
-    private lateinit var waitPadParams: WindowManager.LayoutParams
+    private lateinit var numberPadParams: WindowManager.LayoutParams
+    private lateinit var stepListParams: WindowManager.LayoutParams
 
     private lateinit var dispatcher: GestureDispatcher
     private lateinit var recorder: Recorder
@@ -297,7 +300,8 @@ class TapFlowService : AccessibilityService() {
         transport = TransportView(this, TransportActions())
         paramCard = ParamCardView(this, ParamCardActions())
         quickSettings = QuickSettingsView(this, QuickSettingsActions())
-        waitPad = NumberPadView(this, WaitPadActions())
+        numberPad = NumberPadView(this) { EngineState.numberPadOpen.value = false }
+        stepList = StepListView(this, StepListActions())
 
         canvasParams = host.params(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -319,7 +323,11 @@ class TapFlowService : AccessibilityService() {
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
         )
-        waitPadParams = host.params(
+        numberPadParams = host.params(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+        )
+        stepListParams = host.params(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
         )
@@ -406,8 +414,9 @@ class TapFlowService : AccessibilityService() {
         scope.launch { EngineState.selectedStepId.collect { syncOverlay() } }
         scope.launch { EngineState.pickingCoordinate.collect { syncOverlay() } }
         scope.launch { EngineState.quickSettingsOpen.collect { syncOverlay() } }
-        scope.launch { EngineState.waitPadOpen.collect { syncOverlay() } }
+        scope.launch { EngineState.numberPadOpen.collect { syncOverlay() } }
         scope.launch { EngineState.isolateSelection.collect { syncOverlay() } }
+        scope.launch { EngineState.stepListOpen.collect { syncOverlay() } }
         scope.launch {
             EngineState.progress.collect { progress ->
                 // Updated here rather than in syncOverlay so the highlight follows playback without
@@ -447,6 +456,7 @@ class TapFlowService : AccessibilityService() {
             quickSettingsOpen = EngineState.quickSettingsOpen.value,
             canUndo = Workspace.canUndo,
             isolateSelection = EngineState.isolateSelection.value,
+            stepListOpen = EngineState.stepListOpen.value,
         )
         host.update(toolbar, toolbarParams)
 
@@ -478,7 +488,8 @@ class TapFlowService : AccessibilityService() {
 
         syncParamCard()
         syncQuickSettings()
-        syncWaitPad()
+        syncStepList()
+        syncNumberPad()
         syncTransport()
     }
 
@@ -499,34 +510,85 @@ class TapFlowService : AccessibilityService() {
         host.update(quickSettings, quickSettingsParams)
     }
 
+    /** What the number pad is currently asking for. Null whenever it is closed. */
+    private class PadRequest(
+        val title: String,
+        val unit: String,
+        val initialValue: Int,
+        val max: Int,
+        val confirm: (Int) -> Unit,
+    )
+
+    private var padRequest: PadRequest? = null
+
     /**
-     * The number pad for a timed wait.
+     * Opens the number pad for one question.
+     *
+     * The pad itself knows nothing about what the number means, so each caller supplies its own label
+     * and handler. Two use it: how many seconds a wait should last, and which step to jump to.
+     */
+    private fun openNumberPad(request: PadRequest) {
+        padRequest = request
+        EngineState.numberPadOpen.value = true
+    }
+
+    /**
+     * The number pad.
      *
      * Attached and detached rather than hidden, like the parameter card, so it is only over the screen
      * while it is actually being used.
      */
-    private fun syncWaitPad() {
-        if (!EngineState.waitPadOpen.value) {
-            host.remove(waitPad)
+    private fun syncNumberPad() {
+        val request = padRequest
+        if (!EngineState.numberPadOpen.value || request == null) {
+            host.remove(numberPad)
+            padRequest = null
             return
         }
 
-        waitPad.applyAppearance(settings.uiScale, settings.uiOpacity)
-        if (!host.isAttached(waitPad)) {
+        numberPad.applyAppearance(settings.uiScale, settings.uiOpacity)
+        if (!host.isAttached(numberPad)) {
             val size = host.displaySize()
-            // Centred horizontally, in the upper half. Recording is the usual caller, and the lower
-            // half is where the thing being recorded tends to be.
-            waitPadParams.x = (size.x * 0.5f - dpToPx(105f)).toInt().coerceAtLeast(0)
-            waitPadParams.y = (size.y * 0.16f).toInt()
-            waitPad.open(
-                titleText = getString(R.string.wait_pad_title),
-                unit = getString(R.string.wait_pad_unit),
-                initialValue = 0,
-                max = MAX_WAIT_SECONDS,
-            )
-            host.add(waitPad, waitPadParams)
+            // Centred horizontally, in the upper half. Recording is a common caller, and the lower half
+            // is where the thing being recorded tends to be.
+            numberPadParams.x = (size.x * 0.5f - dpToPx(105f)).toInt().coerceAtLeast(0)
+            numberPadParams.y = (size.y * 0.16f).toInt()
+            numberPad.open(request.title, request.unit, request.initialValue, request.max) { value ->
+                EngineState.numberPadOpen.value = false
+                request.confirm(value)
+            }
+            host.add(numberPad, numberPadParams)
         }
-        host.update(waitPad, waitPadParams)
+        host.update(numberPad, numberPadParams)
+    }
+
+    /**
+     * The step list.
+     *
+     * Only up while editing, and only when asked for — it covers a strip of the screen, which is in
+     * the way of dragging a marker underneath it.
+     */
+    private fun syncStepList() {
+        val wanted = EngineState.editing.value && EngineState.stepListOpen.value
+        if (!wanted) {
+            host.remove(stepList)
+            return
+        }
+
+        val steps = Workspace.steps.value
+        stepList.applyAppearance(settings.uiScale, settings.uiOpacity)
+        stepList.render(
+            lines = stepLines(steps),
+            selected = steps.indexOfFirst { it.id == EngineState.selectedStepId.value },
+        )
+        if (!host.isAttached(stepList)) {
+            val size = host.displaySize()
+            // Low on the screen: the toolbar runs down one edge and the parameter card sits mid-screen.
+            stepListParams.x = (size.x * 0.5f - dpToPx(150f)).toInt().coerceAtLeast(0)
+            stepListParams.y = (size.y * 0.52f).toInt()
+            host.add(stepList, stepListParams)
+        }
+        host.update(stepList, stepListParams)
     }
 
     /**
@@ -568,7 +630,8 @@ class TapFlowService : AccessibilityService() {
         host.bringToFront(transport, transportParams)
         if (host.isAttached(paramCard)) host.bringToFront(paramCard, paramCardParams)
         if (host.isAttached(quickSettings)) host.bringToFront(quickSettings, quickSettingsParams)
-        if (host.isAttached(waitPad)) host.bringToFront(waitPad, waitPadParams)
+        if (host.isAttached(stepList)) host.bringToFront(stepList, stepListParams)
+        if (host.isAttached(numberPad)) host.bringToFront(numberPad, numberPadParams)
         host.bringToFront(toolbar, toolbarParams)
     }
 
@@ -786,9 +849,19 @@ class TapFlowService : AccessibilityService() {
         if (steps.isEmpty()) return
         Diag.clear()
         Diag.log("playback start")
+        val from = startFromIndex
+        startFromIndex = 0
         exitEditing()
-        player.play(steps, Workspace.screen, settings.defaultLoopCount)
+        player.play(steps, Workspace.screen, settings.defaultLoopCount, from)
     }
+
+    /**
+     * Where the next playback should begin. Consumed by [startPlayback] and reset immediately.
+     *
+     * Held here rather than passed through, because the request comes from the parameter card while the
+     * play button is what actually starts a run.
+     */
+    private var startFromIndex = 0
 
     /**
      * Opens one of the workspace dialogs.
@@ -814,7 +887,7 @@ class TapFlowService : AccessibilityService() {
             return
         }
         EngineState.quickSettingsOpen.value = false
-        EngineState.waitPadOpen.value = false
+        EngineState.numberPadOpen.value = false
         startActivity(
             Intent(this, WorkspaceDialogActivity::class.java)
                 .putExtra(WorkspaceDialogActivity.EXTRA_MODE, mode.name)
@@ -915,6 +988,7 @@ class TapFlowService : AccessibilityService() {
     }
 
     private fun exitEditing() {
+        EngineState.stepListOpen.value = false
         EngineState.editing.value = false
         EngineState.selectedStepId.value = null
         EngineState.pickingCoordinate.value = false
@@ -950,19 +1024,54 @@ class TapFlowService : AccessibilityService() {
         transform(step)?.let { Workspace.updateStep(it) }
     }
 
-    private inner class WaitPadActions : NumberPadView.Actions {
-        override fun onConfirm(value: Int) {
-            EngineState.waitPadOpen.value = false
-            // Same call as the manual pause: appends while recording, lands after the selection while
-            // editing. The two differ only in the duration they carry.
-            val step = PauseStep(ms = value * 1000L)
-            Workspace.insertBefore(EngineState.selectedStepId.value, step, currentScreen())
-            selectIfEditing(step.id)
-            toast(getString(R.string.toast_wait_inserted, value))
+    private inner class StepListActions : StepListView.Actions {
+        override fun onSelectIndex(index: Int) {
+            Workspace.steps.value.getOrNull(index)?.let { select(it.id) }
         }
 
-        override fun onCancel() {
-            EngineState.waitPadOpen.value = false
+        override fun onPrevious() = step(-1)
+
+        override fun onNext() = step(1)
+
+        /**
+         * Moves the selection one step, starting from the end nearest the direction travelled when
+         * nothing is selected yet.
+         */
+        private fun step(delta: Int) {
+            val steps = Workspace.steps.value
+            if (steps.isEmpty()) return
+            val current = steps.indexOfFirst { it.id == EngineState.selectedStepId.value }
+            val next = when {
+                current < 0 && delta > 0 -> 0
+                current < 0 -> steps.lastIndex
+                else -> (current + delta).coerceIn(0, steps.lastIndex)
+            }
+            select(steps[next].id)
+        }
+
+        /**
+         * Jumping by number is the point of this list.
+         *
+         * Playback reports the failing step as "47 / 100". Finding marker 47 among a hundred
+         * overlapping crosshairs is the problem; typing 47 is not.
+         */
+        override fun onJumpToStep() {
+            val steps = Workspace.steps.value
+            if (steps.isEmpty()) return
+            openNumberPad(
+                PadRequest(
+                    title = getString(R.string.step_list_jump_title),
+                    unit = getString(R.string.step_list_jump_unit),
+                    initialValue = steps.indexOfFirst { it.id == EngineState.selectedStepId.value } + 1,
+                    max = steps.size,
+                ) { number ->
+                    steps.getOrNull(number - 1)?.let { select(it.id) }
+                }
+            )
+        }
+
+        override fun onClose() {
+            EngineState.stepListOpen.value = false
         }
     }
 
@@ -1024,6 +1133,19 @@ class TapFlowService : AccessibilityService() {
                 is PauseStep -> step.copy(delayBefore = next)
                 is GlobalStep -> step.copy(delayBefore = next)
             }
+        }
+
+        /**
+         * Plays from the selected step.
+         *
+         * The other half of finding a broken step by number: having fixed step 47, checking it should
+         * not mean sitting through 1–46 again.
+         */
+        override fun onPlayFromHere() {
+            val index = Workspace.steps.value.indexOfFirst { it.id == EngineState.selectedStepId.value }
+            if (index < 0) return
+            startFromIndex = index
+            startPlayback()
         }
 
         override fun onEditNote() {
@@ -1089,7 +1211,24 @@ class TapFlowService : AccessibilityService() {
          */
         override fun onInsertWait() {
             if (EngineState.isReplaying) return
-            EngineState.waitPadOpen.value = true
+            openNumberPad(
+                PadRequest(
+                    title = getString(R.string.wait_pad_title),
+                    unit = getString(R.string.wait_pad_unit),
+                    initialValue = 0,
+                    max = MAX_WAIT_SECONDS,
+                ) { seconds ->
+                    val step = PauseStep(ms = seconds * 1000L)
+                    Workspace.insertBefore(EngineState.selectedStepId.value, step, currentScreen())
+                    selectIfEditing(step.id)
+                    toast(getString(R.string.toast_wait_inserted, seconds))
+                }
+            )
+        }
+
+        /** Shows or hides the step list. Only meaningful while editing, which is where it is offered. */
+        override fun onToggleStepList() {
+            EngineState.stepListOpen.value = !EngineState.stepListOpen.value
         }
 
         override fun onUndo() {

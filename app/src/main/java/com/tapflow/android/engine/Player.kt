@@ -36,8 +36,11 @@ class Player(
 
     /**
      * @param loops 0 runs until stopped.
+     * @param startIndex first step of the *first* pass. Later passes always start from the beginning:
+     *   "start at 47 and run three times" almost never means skipping 1–46 on every pass, it means
+     *   picking up where the problem was and then behaving normally.
      */
-    fun play(steps: List<Step>, recordedScreen: ScreenSpec?, loops: Int) {
+    fun play(steps: List<Step>, recordedScreen: ScreenSpec?, loops: Int, startIndex: Int = 0) {
         if (isActive || steps.isEmpty()) return
         pauseRequested.value = false
 
@@ -52,7 +55,9 @@ class Player(
                 var loop = 0
                 while (loops <= 0 || loop < loops) {
                     loop++
+                    val from = if (loop == 1) startIndex.coerceIn(0, steps.lastIndex) else 0
                     for ((index, step) in steps.withIndex()) {
+                        if (index < from) continue
                         EngineState.progress.value = Progress(loop, loops, index + 1, steps.size)
                         Diag.log("player: loop $loop step ${index + 1}/${steps.size} ${step::class.java.simpleName}")
 
@@ -68,7 +73,10 @@ class Player(
                         if (step is PauseStep && !step.isTimed) continue
 
                         val current = settings()
-                        delay(Timing.replayDelay(step.delayBefore, current))
+                        // The lead delay of the step started from is skipped: it is measured against the
+                        // step before it, and that one did not run. The start countdown covers the gap.
+                        val startedHere = loop == 1 && index == from && from > 0
+                        if (!startedHere) delay(Timing.replayDelay(step.delayBefore, current))
                         gate()
 
                         if (step is PauseStep) {

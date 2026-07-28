@@ -44,6 +44,9 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         /** Start/stop recording when idle or recording; stop playback otherwise. */
         fun onSecondary()
 
+        /** Shows or hides the scrollable step list, the way into a step by its number. */
+        fun onToggleStepList()
+
         /** Insert a pause that waits for the user, and stop recording so they can act. */
         fun onInsertPausePoint()
 
@@ -110,6 +113,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
     private val secondary = icon(R.drawable.ic_record)
     private val insertPause = icon(R.drawable.ic_pause_add)
     private val insertWait = icon(R.drawable.ic_wait_add)
+    private val stepListToggle = icon(R.drawable.ic_step_list)
     private val undo = icon(R.drawable.ic_undo)
     private val edit = icon(R.drawable.ic_edit)
     private val addTap = icon(R.drawable.ic_add)
@@ -124,8 +128,8 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
 
     /** Everything inside the scroller, in display order. The grip sits outside it. */
     private val scrollingButtons = listOf(
-        primary, secondary, insertPause, insertWait, undo, edit, addTap, deleteStep, newClip, save,
-        load, eye, quickSettings, dismiss, collapse,
+        primary, secondary, insertPause, insertWait, undo, edit, stepListToggle, addTap, deleteStep,
+        newClip, save, load, eye, quickSettings, dismiss, collapse,
     )
 
     private val allButtons = listOf(grip) + scrollingButtons
@@ -153,6 +157,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         secondary.setOnClickListener { actions.onSecondary() }
         insertPause.setOnClickListener { actions.onInsertPausePoint() }
         insertWait.setOnClickListener { actions.onInsertWait() }
+        stepListToggle.setOnClickListener { actions.onToggleStepList() }
         undo.setOnClickListener { actions.onUndo() }
         edit.setOnClickListener { actions.onToggleEdit() }
         addTap.setOnClickListener { actions.onAddTap() }
@@ -197,6 +202,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         quickSettingsOpen: Boolean,
         canUndo: Boolean,
         isolateSelection: Boolean,
+        stepListOpen: Boolean,
     ) {
         val hasSteps = workspaceSize > 0
         val recording = mode == Mode.RECORDING
@@ -235,10 +241,11 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         // every mode, so they are simply always visible.
         primary.visibility = visibleWhen(!editing && !recording)
         secondary.visibility = visibleWhen(!editing)
-        insertPause.visibility = visibleWhen(recording)
-        insertWait.visibility = visibleWhen(recording)
+        insertPause.visibility = visibleWhen(recording || editing)
+        insertWait.visibility = visibleWhen(recording || editing)
         undo.visibility = visibleWhen(recording || editing)
         edit.visibility = visibleWhen(!recording)
+        stepListToggle.visibility = visibleWhen(editing)
         addTap.visibility = visibleWhen(editing)
         deleteStep.visibility = visibleWhen(editing)
         newClip.visibility = visibleWhen(!editing && !recording)
@@ -272,6 +279,9 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
 
         quickSettings.imageTintList = android.content.res.ColorStateList.valueOf(
             if (quickSettingsOpen) ContextCompat.getColor(context, R.color.marker_highlight) else iconIdle
+        )
+        stepListToggle.imageTintList = android.content.res.ColorStateList.valueOf(
+            if (stepListOpen) ContextCompat.getColor(context, R.color.marker_highlight) else iconIdle
         )
 
         // What used to be "and not replaying" is now covered by not drawing the toolbar at all then,

@@ -135,11 +135,17 @@
     <string name="param_type_multi_touch">多指手勢</string>
     <string name="param_type_pause">暫停點</string>
     <string name="param_type_wait">等待</string>
+    <string name="step_list_jump">跳到</string>
+    <string name="step_list_position">%1$d / %2$d</string>
+    <string name="step_list_count">%1$d 步</string>
+    <string name="step_list_jump_title">跳到第幾步</string>
+    <string name="step_list_jump_unit">步</string>
     <string name="wait_pad_title">等待秒數</string>
     <string name="wait_pad_unit">秒</string>
     <string name="param_type_other">動作</string>
     <string name="param_coordinates">%1$d, %2$d</string>
     <string name="param_repick">重新指定</string>
+    <string name="param_play_from_here">從這裡播</string>
     <string name="param_edit_note">備註</string>
     <string name="param_note_empty">沒有備註</string>
     <string name="param_duration">時長</string>
