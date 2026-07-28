@@ -426,9 +426,11 @@ class TapFlowService : AccessibilityService() {
         val editing = EngineState.editing.value
         val selectedId = EngineState.selectedStepId.value
 
+        val screen = host.displaySize()
+
         toolbar.applyAppearance(current.uiScale, current.uiOpacity)
         // Recomputed here so a rotation, or a change of scale, re-caps the scrolling area.
-        toolbar.setAvailableHeight(host.displaySize().y - dpToPx(32f).toInt())
+        toolbar.setAvailableHeight(screen.y - dpToPx(32f).toInt())
         toolbar.render(
             mode = mode,
             form = EngineState.toolbarForm.value,
@@ -440,7 +442,12 @@ class TapFlowService : AccessibilityService() {
         )
         host.update(toolbar, toolbarParams)
 
-        canvas.markers = buildMarkers(steps)
+        canvas.markers = buildMarkers(
+            steps,
+            screen.x.toFloat(),
+            screen.y.toFloat(),
+            resources.displayMetrics.density,
+        )
         // Editing something invisible is not possible, so density is forced open while editing and
         // the user's own setting is left untouched underneath.
         canvas.density = if (editing) MarkerDensity.ALL else current.markerDensity

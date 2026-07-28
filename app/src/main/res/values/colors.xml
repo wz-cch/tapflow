@@ -21,6 +21,10 @@
     <color name="marker_long_press">#FF9B7BF7</color>
     <color name="marker_swipe">#FFE5734F</color>
     <color name="marker_multi">#FF2FBFAE</color>
+    <!-- Steps that stop the run rather than happening somewhere. Amber matches state_paused, and
+         slate matches state_idle, so the node reads the same as the engine state it produces. -->
+    <color name="marker_pause">#FFF5A524</color>
+    <color name="marker_wait">#FF7C89A8</color>
     <color name="marker_path">#59FFFFFF</color>
     <color name="marker_label">#FFFFFFFF</color>
     <color name="marker_highlight">#FFFFD24A</color>
