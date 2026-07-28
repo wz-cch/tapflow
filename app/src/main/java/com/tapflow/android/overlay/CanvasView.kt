@@ -276,11 +276,16 @@ class CanvasView(context: Context) : View(context) {
             MotionEvent.ACTION_DOWN -> {
                 editDownX = x
                 editDownY = y
-                grab = if (pickingCoordinate) null else hitTest(x, y)?.let { (marker, handle) ->
-                    val anchorX = if (handle == Handle.END) marker.endX else marker.anchorX
-                    val anchorY = if (handle == Handle.END) marker.endY else marker.anchorY
-                    Grab(marker.stepId, handle, x - anchorX, y - anchorY)
-                }
+                // A derived marker still hit-tests, so ACTION_UP can select it, but it never becomes
+                // a grab: its anchor is computed from its neighbours, so dragging would move nothing
+                // and the next rebuild would put it straight back.
+                grab = if (pickingCoordinate) null else hitTest(x, y)
+                    ?.takeIf { (marker, _) -> marker.isDraggable }
+                    ?.let { (marker, handle) ->
+                        val anchorX = if (handle == Handle.END) marker.endX else marker.anchorX
+                        val anchorY = if (handle == Handle.END) marker.endY else marker.anchorY
+                        Grab(marker.stepId, handle, x - anchorX, y - anchorY)
+                    }
             }
 
             MotionEvent.ACTION_MOVE -> {
