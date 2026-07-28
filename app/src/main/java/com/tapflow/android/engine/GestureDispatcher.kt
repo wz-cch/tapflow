@@ -88,7 +88,7 @@ class GestureDispatcher(
         val outcome = when (step) {
             is GestureStep -> dispatch(step, scale, settings)
             is GlobalStep ->
-                if (service.performGlobalAction(step.kind.toGlobalAction())) {
+                if (service.performGlobalAction(step.kind.toGlobalActionId())) {
                     GestureOutcome.COMPLETED
                 } else {
                     GestureOutcome.REFUSED
@@ -261,13 +261,6 @@ class GestureDispatcher(
         return (cos(angle) * distance).toFloat() to (sin(angle) * distance).toFloat()
     }
 
-    private fun GlobalKind.toGlobalAction(): Int = when (this) {
-        GlobalKind.BACK -> AccessibilityService.GLOBAL_ACTION_BACK
-        GlobalKind.HOME -> AccessibilityService.GLOBAL_ACTION_HOME
-        GlobalKind.RECENTS -> AccessibilityService.GLOBAL_ACTION_RECENTS
-        GlobalKind.NOTIFICATIONS -> AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS
-    }
-
     private companion object {
         const val TAG = "GestureDispatcher"
 
@@ -280,4 +273,18 @@ class GestureDispatcher(
         const val INJECTOR_TIMEOUT_HIGH = 1250L
         const val REREGISTER_DELAY_MS = 350L
     }
+}
+
+/**
+ * The framework constant for a global action.
+ *
+ * Top-level rather than private to the dispatcher, because two places carry one out: replay, and
+ * recording — where inserting a system key also performs it so the screen keeps up. A second copy of
+ * this mapping is a second thing to keep in step.
+ */
+fun GlobalKind.toGlobalActionId(): Int = when (this) {
+    GlobalKind.BACK -> AccessibilityService.GLOBAL_ACTION_BACK
+    GlobalKind.HOME -> AccessibilityService.GLOBAL_ACTION_HOME
+    GlobalKind.RECENTS -> AccessibilityService.GLOBAL_ACTION_RECENTS
+    GlobalKind.NOTIFICATIONS -> AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS
 }

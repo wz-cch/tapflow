@@ -15,9 +15,11 @@ import androidx.core.content.ContextCompat
 import com.tapflow.android.R
 import com.tapflow.android.data.GestureKind
 import com.tapflow.android.data.GestureStep
+import com.tapflow.android.data.GlobalStep
 import com.tapflow.android.data.PauseStep
 import com.tapflow.android.data.RepeatableStep
 import com.tapflow.android.data.Step
+import com.tapflow.android.text.label
 import com.tapflow.android.text.secondsText
 
 /**
@@ -362,19 +364,25 @@ class StepPanelView(context: Context, private val actions: Actions) : LinearLayo
         }
     }
 
-    private fun typeLabel(step: Step): String = context.getString(
-        when (step) {
-            is PauseStep -> if (step.isTimed) R.string.param_type_wait else R.string.param_type_pause
-            is GestureStep -> when (step.kind) {
-                GestureKind.TAP -> R.string.param_type_tap
-                GestureKind.LONG_PRESS -> R.string.param_type_long_press
-                GestureKind.SWIPE -> R.string.param_type_swipe
-                GestureKind.MULTI_TOUCH -> R.string.param_type_multi_touch
-            }
+    private fun typeLabel(step: Step): String = when (step) {
+        // Named, not "Action". All four global steps look alike on the canvas — one arrowhead disc — so
+        // this heading is where you find out which key you are looking at.
+        is GlobalStep -> step.kind.label(context.resources)
 
-            else -> R.string.param_type_other
-        }
-    )
+        else -> context.getString(
+            when (step) {
+                is PauseStep -> if (step.isTimed) R.string.param_type_wait else R.string.param_type_pause
+                is GestureStep -> when (step.kind) {
+                    GestureKind.TAP -> R.string.param_type_tap
+                    GestureKind.LONG_PRESS -> R.string.param_type_long_press
+                    GestureKind.SWIPE -> R.string.param_type_swipe
+                    GestureKind.MULTI_TOUCH -> R.string.param_type_multi_touch
+                }
+
+                else -> R.string.param_type_other
+            }
+        )
+    }
 
     private var appliedScale = Float.NaN
 

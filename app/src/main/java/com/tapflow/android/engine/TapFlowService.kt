@@ -15,6 +15,7 @@ import com.tapflow.android.MainActivity
 import com.tapflow.android.WorkspaceDialogActivity
 import com.tapflow.android.R
 import com.tapflow.android.data.GestureStep
+import com.tapflow.android.data.GlobalKind
 import com.tapflow.android.data.GlobalStep
 import com.tapflow.android.data.MarkerDensity
 import com.tapflow.android.data.PauseStep
@@ -34,6 +35,7 @@ import com.tapflow.android.overlay.CanvasMode
 import com.tapflow.android.overlay.CanvasView
 import com.tapflow.android.overlay.Handle
 import com.tapflow.android.overlay.NumberPadView
+import com.tapflow.android.overlay.OptionPadView
 import com.tapflow.android.overlay.OverlayHost
 import com.tapflow.android.overlay.QuickSettingsView
 import com.tapflow.android.overlay.StepListView
@@ -107,6 +109,7 @@ class TapFlowService : AccessibilityService() {
     private lateinit var stepPanel: StepPanelView
     private lateinit var quickSettings: QuickSettingsView
     private lateinit var numberPad: NumberPadView
+    private lateinit var optionPad: OptionPadView
     private lateinit var stepList: StepListView
 
     private lateinit var canvasParams: WindowManager.LayoutParams
@@ -115,6 +118,7 @@ class TapFlowService : AccessibilityService() {
     private lateinit var stepPanelParams: WindowManager.LayoutParams
     private lateinit var quickSettingsParams: WindowManager.LayoutParams
     private lateinit var numberPadParams: WindowManager.LayoutParams
+    private lateinit var optionPadParams: WindowManager.LayoutParams
     private lateinit var stepListParams: WindowManager.LayoutParams
 
     private lateinit var dispatcher: GestureDispatcher
@@ -309,6 +313,7 @@ class TapFlowService : AccessibilityService() {
         stepPanel = StepPanelView(this, StepPanelActions())
         quickSettings = QuickSettingsView(this, QuickSettingsActions())
         numberPad = NumberPadView(this) { EngineState.numberPadOpen.value = false }
+        optionPad = OptionPadView(this) { EngineState.optionPadOpen.value = false }
         stepList = StepListView(this, StepListActions())
 
         canvasParams = host.params(
@@ -332,6 +337,10 @@ class TapFlowService : AccessibilityService() {
             WindowManager.LayoutParams.WRAP_CONTENT,
         )
         numberPadParams = host.params(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+        )
+        optionPadParams = host.params(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
         )
@@ -405,7 +414,9 @@ class TapFlowService : AccessibilityService() {
         // detaches the toolbar, and syncOverlay returns early without it — so anything left attached here
         // would stay on screen with nothing able to remove it.
         EngineState.numberPadOpen.value = false
+        EngineState.optionPadOpen.value = false
         host.remove(numberPad)
+        host.remove(optionPad)
         host.remove(quickSettings)
         host.remove(stepPanel)
         host.remove(stepList)
@@ -428,6 +439,7 @@ class TapFlowService : AccessibilityService() {
         scope.launch { EngineState.selectedStepId.collect { syncOverlay() } }
         scope.launch { EngineState.quickSettingsOpen.collect { syncOverlay() } }
         scope.launch { EngineState.numberPadOpen.collect { syncOverlay() } }
+        scope.launch { EngineState.optionPadOpen.collect { syncOverlay() } }
         scope.launch { EngineState.isolateSelection.collect { syncOverlay() } }
         scope.launch { EngineState.stepListOpen.collect { syncOverlay() } }
         scope.launch { EngineState.paramPanelOpen.collect { syncOverlay() } }
@@ -510,6 +522,7 @@ class TapFlowService : AccessibilityService() {
         syncQuickSettings()
         syncStepList()
         syncNumberPad()
+        syncOptionPad()
         syncTransport()
     }
 
@@ -604,6 +617,48 @@ class TapFlowService : AccessibilityService() {
             host.add(numberPad, numberPadParams)
         }
         host.update(numberPad, numberPadParams)
+    }
+
+    /** What the option pad is currently asking. Null whenever it is closed. */
+    private class OptionRequest(
+        val title: String,
+        val labels: List<String>,
+        val pick: (Int) -> Unit,
+    )
+
+    private var optionRequest: OptionRequest? = null
+
+    private fun openOptionPad(request: OptionRequest) {
+        optionRequest = request
+        EngineState.optionPadOpen.value = true
+    }
+
+    /**
+     * The option pad, for an insertion that has to ask which kind first.
+     *
+     * Attached and detached like the number pad, and positioned the same way — centred horizontally in
+     * the upper half, because the lower half is where whatever is being recorded tends to be.
+     */
+    private fun syncOptionPad() {
+        val request = optionRequest
+        if (!EngineState.optionPadOpen.value || request == null) {
+            host.remove(optionPad)
+            optionRequest = null
+            return
+        }
+
+        optionPad.applyAppearance(settings.uiScale, settings.uiOpacity)
+        if (!host.isAttached(optionPad)) {
+            val size = host.displaySize()
+            optionPadParams.x = (size.x * 0.5f - dpToPx(120f)).toInt().coerceAtLeast(0)
+            optionPadParams.y = (size.y * 0.16f).toInt()
+            optionPad.open(request.title, request.labels) { index ->
+                EngineState.optionPadOpen.value = false
+                request.pick(index)
+            }
+            host.add(optionPad, optionPadParams)
+        }
+        host.update(optionPad, optionPadParams)
     }
 
     /**
@@ -703,6 +758,7 @@ class TapFlowService : AccessibilityService() {
         if (host.isAttached(quickSettings)) host.bringToFront(quickSettings, quickSettingsParams)
         if (host.isAttached(stepList)) host.bringToFront(stepList, stepListParams)
         if (host.isAttached(numberPad)) host.bringToFront(numberPad, numberPadParams)
+        if (host.isAttached(optionPad)) host.bringToFront(optionPad, optionPadParams)
         host.bringToFront(toolbar, toolbarParams)
     }
 
@@ -1517,6 +1573,44 @@ class TapFlowService : AccessibilityService() {
                     Workspace.insertAfter(EngineState.selectedStepId.value, step, currentScreen())
                     selectIfEditing(step.id)
                     toast(getString(R.string.toast_wait_inserted, seconds))
+                }
+            )
+        }
+
+        /**
+         * Asks which system key, then inserts it.
+         *
+         * **This is the only way one gets into a script.** Recording cannot capture back, home or
+         * recents: an accessibility overlay does not see the navigation bar, and hardware keys are not
+         * touch events at all. So without this button those four actions were reachable only by importing
+         * JSON that nothing can yet export — the dispatcher, the labels and now the repeat count all
+         * worked, with nothing able to create one.
+         *
+         * Asking first, on an overlay rather than in an Activity, for the same reason the wait length
+         * does: an Activity would push the app being recorded into the background, which is the very
+         * screen the next step is meant to land on.
+         */
+        override fun onInsertGlobalAction() {
+            if (EngineState.isReplaying) return
+            val kinds = GlobalKind.entries
+            openOptionPad(
+                OptionRequest(
+                    title = getString(R.string.global_pad_title),
+                    labels = kinds.map { it.label(resources) },
+                ) { index ->
+                    val kind = kinds.getOrNull(index) ?: return@OptionRequest
+                    val step = GlobalStep(kind = kind, delayBefore = settings.defaultGapMs)
+                    Workspace.insertAfter(EngineState.selectedStepId.value, step, currentScreen())
+                    selectIfEditing(step.id)
+                    toast(getString(R.string.toast_global_inserted, kind.label(resources)))
+
+                    // While recording, carry it out as well — for the same reason each captured gesture is
+                    // replayed downwards: the app underneath has to move with you, or every step after
+                    // this one is recorded against the wrong screen. Editing deliberately does not, since
+                    // there is no such walk to keep in step with.
+                    if (EngineState.isRecording && settings.replayEachGesture) {
+                        performGlobalAction(kind.toGlobalActionId())
+                    }
                 }
             )
         }

@@ -58,6 +58,15 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
 
         /** Ask for a number of seconds, then insert a pause that releases itself. */
         fun onInsertWait()
+
+        /**
+         * Ask which system key, then insert it.
+         *
+         * The only way to get one into a script. Recording cannot capture back, home or recents — an
+         * accessibility overlay does not see the navigation bar at all, and hardware keys are not touch
+         * events — so this is not a convenience, it is the entry point.
+         */
+        fun onInsertGlobalAction()
         fun onUndo()
         fun onToggleEdit()
 
@@ -130,6 +139,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
     private val secondary = icon(R.drawable.ic_record)
     private val insertPause = icon(R.drawable.ic_pause_add)
     private val insertWait = icon(R.drawable.ic_wait_add)
+    private val insertGlobal = icon(R.drawable.ic_global_add)
     private val stepListToggle = icon(R.drawable.ic_step_list)
     private val stepPanelToggle = icon(R.drawable.ic_step_params)
     private val undo = icon(R.drawable.ic_undo)
@@ -153,9 +163,9 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
      * two ways of looking at the script.
      */
     private val scrollingButtons = listOf(
-        primary, playFrom, secondary, edit, insertStep, duplicateStep, insertPause, insertWait,
-        deleteStep, undo, stepPanelToggle, stepListToggle, newClip, save, load, eye, quickSettings,
-        dismiss, collapse,
+        primary, playFrom, secondary, edit, insertStep, duplicateStep, insertGlobal, insertPause,
+        insertWait, deleteStep, undo, stepPanelToggle, stepListToggle, newClip, save, load, eye,
+        quickSettings, dismiss, collapse,
     )
 
     private val allButtons = listOf(grip) + scrollingButtons
@@ -184,6 +194,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         secondary.setOnClickListener { actions.onSecondary() }
         insertPause.setOnClickListener { actions.onInsertPausePoint() }
         insertWait.setOnClickListener { actions.onInsertWait() }
+        insertGlobal.setOnClickListener { actions.onInsertGlobalAction() }
         stepListToggle.setOnClickListener { actions.onToggleStepList() }
         stepPanelToggle.setOnClickListener { actions.onToggleStepPanel() }
         undo.setOnClickListener { actions.onUndo() }
@@ -279,6 +290,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         secondary.visibility = visibleWhen(!editing)
         insertPause.visibility = visibleWhen(recording || editing)
         insertWait.visibility = visibleWhen(recording || editing)
+        insertGlobal.visibility = visibleWhen(recording || editing)
         undo.visibility = visibleWhen(recording || editing)
         edit.visibility = visibleWhen(!recording)
         stepListToggle.visibility = visibleWhen(editing)
@@ -331,6 +343,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         // left: something to act on, and something selected.
         setActionEnabled(insertPause, true)
         setActionEnabled(insertWait, true)
+        setActionEnabled(insertGlobal, true)
         setActionEnabled(undo, canUndo)
         setActionEnabled(duplicateStep, hasSelection)
         setActionEnabled(deleteStep, hasSelection)
@@ -485,6 +498,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         primary.contentDescription = context.getString(R.string.action_play)
         secondary.contentDescription = context.getString(R.string.action_record)
         insertPause.contentDescription = context.getString(R.string.action_insert_pause)
+        insertGlobal.contentDescription = context.getString(R.string.action_insert_global)
         undo.contentDescription = context.getString(R.string.action_undo)
         edit.contentDescription = context.getString(R.string.action_edit_mode)
         insertStep.contentDescription = context.getString(R.string.action_insert_step)

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Tinted programmatically by the overlay views, so no tint attribute here.
+     A back arrowhead with a plus: insert a system key. Back is the commonest of the four. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12.4,4.6L11.0,3.2L3.2,11L11.0,18.8L12.4,17.4L6.0,11Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M17.2,14.4h1.9v6.4h-1.9zM14.95,16.65h6.4v1.9h-6.4z" />
+</vector>

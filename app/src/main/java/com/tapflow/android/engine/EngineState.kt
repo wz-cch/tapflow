@@ -131,6 +131,9 @@ object EngineState {
      */
     val numberPadOpen = MutableStateFlow(false)
 
+    /** Whether the option pad is up. Same contract as [numberPadOpen]: the caller holds the question. */
+    val optionPadOpen = MutableStateFlow(false)
+
     /**
      * Whether the step list is up.
      *
