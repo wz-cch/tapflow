@@ -27,8 +27,6 @@ class Player(
     private val resources: Resources,
     private val currentScreen: () -> ScreenSpec,
     private val settings: () -> Settings,
-    /** Lets the service move the toolbar out of the keyboard area while paused. */
-    private val onPausedChanged: (paused: Boolean) -> Unit,
 ) {
 
     private var job: Job? = null
@@ -83,7 +81,6 @@ class Player(
                 timerJob?.cancel()
                 timerJob = null
                 pauseRequested.value = false
-                onPausedChanged(false)
                 EngineState.reset()
             }
         }
@@ -115,12 +112,10 @@ class Player(
         if (!pauseRequested.value) return
 
         EngineState.mode.value = Mode.PAUSED
-        onPausedChanged(true)
 
         pauseRequested.first { !it }
 
         EngineState.pausePrompt.value = null
-        onPausedChanged(false)
         EngineState.mode.value = Mode.PLAYING
     }
 

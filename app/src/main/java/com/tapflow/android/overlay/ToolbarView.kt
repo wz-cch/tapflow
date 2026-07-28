@@ -19,7 +19,13 @@ import com.tapflow.android.engine.ToolbarForm
 import kotlin.math.hypot
 
 /** What tapping the collapsed ball should do. Set by the service, since only it knows why we collapsed. */
-enum class BallIntent { EXPAND, RESUME_PLAYBACK, RESUME_RECORDING }
+/**
+ * What tapping the collapsed ball does.
+ *
+ * There is deliberately no resume-playback intent: the toolbar is not shown at all while replaying,
+ * because the transport panel already carries resume, stop and progress.
+ */
+enum class BallIntent { EXPAND, RESUME_RECORDING }
 
 /**
  * The vertical toolbar, in its two shapes: expanded, and collapsed to a ball.
@@ -160,13 +166,12 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         attachDrag(ball) {
             when (ballIntent) {
                 BallIntent.EXPAND -> actions.onExpand()
-                BallIntent.RESUME_PLAYBACK -> actions.onPrimary()
                 BallIntent.RESUME_RECORDING -> actions.onSecondary()
             }
         }
         // No long-press on the ball: an OnTouchListener that consumes the event stops the view from
-        // generating long clicks at all. The ball never needs to expand while paused anyway, because
-        // the toolbar restores itself the moment playback resumes.
+        // generating long clicks at all. The ball never needs to expand while it is offering to
+        // resume recording, because that is the only thing worth doing at that moment.
 
         setContentDescriptions()
     }
@@ -185,6 +190,23 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         hasSelection: Boolean,
         quickSettingsOpen: Boolean,
     ) {
+        val hasSteps = workspaceSize > 0
+        val recording = mode == Mode.RECORDING
+        val replaying = mode == Mode.PLAYING || mode == Mode.PAUSED || mode == Mode.COUNTDOWN
+
+        // Replaying belongs to the transport panel, which already carries resume, stop and progress.
+        // Keeping the toolbar up as well would duplicate every one of those, and a second window over
+        // the screen is a second area where a replayed step gets swallowed (SPEC 10.3).
+        //
+        // Derived from the mode rather than stored as a third ToolbarForm on purpose. A stored
+        // "hidden" is exactly how the toolbar once became impossible to bring back (SPEC 3.1); this
+        // cannot stick, because the moment the mode changes the toolbar is back.
+        if (replaying) {
+            expanded.visibility = GONE
+            ball.visibility = GONE
+            return
+        }
+
         expanded.visibility = if (form == ToolbarForm.EXPANDED) VISIBLE else GONE
         ball.visibility = if (form == ToolbarForm.BALL) VISIBLE else GONE
 
@@ -192,33 +214,34 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         ball.setImageResource(
             when (ballIntent) {
                 BallIntent.RESUME_RECORDING -> R.drawable.ic_record
-                BallIntent.RESUME_PLAYBACK -> R.drawable.ic_play
                 BallIntent.EXPAND -> R.drawable.ic_grip
             }
         )
         ball.imageTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
 
-        val hasSteps = workspaceSize > 0
-        val recording = mode == Mode.RECORDING
-        val replaying = mode == Mode.PLAYING || mode == Mode.PAUSED || mode == Mode.COUNTDOWN
+        // Each mode shows the buttons that do something in it and hides the rest. SPEC 9 rules out
+        // greying out a button that could simply be absent, but until now that only applied to
+        // editing — recording still showed all twelve with five of them dead.
+        //
+        // The eye and the collapse handle are missing from this list on purpose: both are useful in
+        // every mode, so they are simply always visible.
+        primary.visibility = visibleWhen(!editing && !recording)
+        secondary.visibility = visibleWhen(!editing)
+        insertPause.visibility = visibleWhen(recording)
+        undo.visibility = visibleWhen(recording)
+        edit.visibility = visibleWhen(!recording)
+        addTap.visibility = visibleWhen(editing)
+        deleteStep.visibility = visibleWhen(editing)
+        newClip.visibility = visibleWhen(!editing && !recording)
+        save.visibility = visibleWhen(!recording)
+        load.visibility = visibleWhen(!editing && !recording)
+        quickSettings.visibility = visibleWhen(!recording)
+        dismiss.visibility = visibleWhen(!editing && !recording)
 
-        // Editing shows a different, shorter set rather than a dozen greyed-out buttons. Playing and
-        // recording make no sense alongside dragging markers, and add/delete make no sense outside
-        // it, so nothing here is ever merely disabled when it could just be absent.
-        primary.visibility = if (editing) GONE else VISIBLE
-        secondary.visibility = if (editing) GONE else VISIBLE
-        insertPause.visibility = if (editing) GONE else VISIBLE
-        undo.visibility = if (editing) GONE else VISIBLE
-        dismiss.visibility = if (editing) GONE else VISIBLE
-        addTap.visibility = if (editing) VISIBLE else GONE
-        deleteStep.visibility = if (editing) VISIBLE else GONE
-        newClip.visibility = if (editing) GONE else VISIBLE
-        load.visibility = if (editing) GONE else VISIBLE
+        primary.setImageResource(R.drawable.ic_play)
+        setActionEnabled(primary, hasSteps)
 
-        primary.setImageResource(if (mode == Mode.PLAYING) R.drawable.ic_pause else R.drawable.ic_play)
-        setActionEnabled(primary, hasSteps && !recording)
-
-        secondary.setImageResource(if (recording || replaying) R.drawable.ic_stop else R.drawable.ic_record)
+        secondary.setImageResource(if (recording) R.drawable.ic_stop else R.drawable.ic_record)
         // Recording tints red so it is obvious at a glance that touches are being intercepted.
         secondary.imageTintList = android.content.res.ColorStateList.valueOf(
             if (mode == Mode.IDLE) ContextCompat.getColor(context, R.color.state_recording) else iconIdle
@@ -226,36 +249,32 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         secondary.contentDescription = context.getString(
             when {
                 recording -> R.string.action_record_stop
-                replaying -> R.string.action_stop
                 workspaceSize > 0 -> R.string.action_record_resume
                 else -> R.string.action_record
             }
         )
-        primary.contentDescription = context.getString(
-            when (mode) {
-                Mode.PLAYING -> R.string.action_pause
-                Mode.PAUSED -> R.string.action_resume
-                else -> R.string.action_play
-            }
-        )
+        primary.contentDescription = context.getString(R.string.action_play)
         setActionEnabled(secondary, true)
 
         edit.imageTintList = android.content.res.ColorStateList.valueOf(
             if (editing) ContextCompat.getColor(context, R.color.marker_highlight) else iconIdle
         )
-        setActionEnabled(edit, hasSteps && !recording && !replaying)
+        setActionEnabled(edit, hasSteps)
 
         quickSettings.imageTintList = android.content.res.ColorStateList.valueOf(
             if (quickSettingsOpen) ContextCompat.getColor(context, R.color.marker_highlight) else iconIdle
         )
 
-        setActionEnabled(insertPause, !replaying)
-        setActionEnabled(undo, hasSteps && !replaying)
+        // What used to be "and not replaying" is now covered by not drawing the toolbar at all then,
+        // and "and not recording" by the visibility block above. Only the genuine preconditions are
+        // left: something to act on, and something selected.
+        setActionEnabled(insertPause, true)
+        setActionEnabled(undo, hasSteps)
         setActionEnabled(deleteStep, hasSelection)
-        setActionEnabled(save, hasSteps && !replaying)
-        setActionEnabled(load, !recording && !replaying)
-        setActionEnabled(newClip, hasSteps && !recording && !replaying)
-        setActionEnabled(dismiss, !recording && !replaying)
+        setActionEnabled(save, hasSteps)
+        setActionEnabled(load, true)
+        setActionEnabled(newClip, hasSteps)
+        setActionEnabled(dismiss, true)
 
         // The eye dims progressively as fewer markers are shown, so the current setting is readable
         // without a label.
@@ -265,6 +284,8 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
             MarkerDensity.HIDDEN -> 0.35f
         }
     }
+
+    private fun visibleWhen(condition: Boolean): Int = if (condition) VISIBLE else GONE
 
     /**
      * @param availableHeightPx how tall the toolbar may be before its buttons start scrolling.
