@@ -113,9 +113,34 @@ class OverlayHost(private val service: AccessibilityService) {
             WindowManager.LayoutParams.TYPE_PHONE
         }
 
+    /** The window geometry actually pushed to the system, so identical updates can be skipped. */
+    private data class Applied(
+        val x: Int,
+        val y: Int,
+        val width: Int,
+        val height: Int,
+        val flags: Int,
+        val type: Int,
+    )
+
+    private val applied = mutableMapOf<View, Applied>()
+
+    /**
+     * Pushes layout params, but only when something actually changed.
+     *
+     * Callers re-derive the whole overlay from state, so they ask for an update far more often than
+     * anything differs — the replay timer alone ticks five times a second. Every one of those was a
+     * real updateViewLayout, and a window change while an injected gesture is in flight gets that
+     * gesture cancelled: a 300ms swipe could not survive a window update landing in the middle of it.
+     */
     fun update(view: View, params: WindowManager.LayoutParams) {
         if (view !in attached) return
+
+        val next = Applied(params.x, params.y, params.width, params.height, params.flags, params.type)
+        if (applied[view] == next) return
+
         runCatching { windowManager.updateViewLayout(view, params) }
+            .onSuccess { applied[view] = next }
             .onFailure { Log.w(TAG, "updateViewLayout failed", it) }
     }
 
@@ -124,6 +149,7 @@ class OverlayHost(private val service: AccessibilityService) {
         runCatching { windowManager.removeViewImmediate(view) }
             .onFailure { Log.w(TAG, "removeView failed", it) }
         attached -= view
+        applied -= view
     }
 
     /**
@@ -143,7 +169,11 @@ class OverlayHost(private val service: AccessibilityService) {
     }
 
     private fun tryAdd(view: View, params: WindowManager.LayoutParams): Boolean =
-        runCatching { windowManager.addView(view, params); true }
+        runCatching {
+            windowManager.addView(view, params)
+            applied[view] = Applied(params.x, params.y, params.width, params.height, params.flags, params.type)
+            true
+        }
             .onFailure { Log.w(TAG, "addView failed for type ${params.type}", it) }
             .getOrDefault(false)
 

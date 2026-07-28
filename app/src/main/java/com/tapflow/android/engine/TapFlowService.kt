@@ -1,7 +1,6 @@
 package com.tapflow.android.engine
 
 import android.accessibilityservice.AccessibilityService
-import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.RectF
@@ -112,6 +111,10 @@ class TapFlowService : AccessibilityService() {
     private var volumeLongPressJob: Job? = null
 
     private var lastGestureWarningAt = 0L
+    private var consecutiveGestureFailures = 0
+
+    /** Re-registration is worth one attempt per binding, not one per gesture. */
+    private var registrationRenewed = false
 
     private val settings: Settings get() = Repo.settings.value
 
@@ -148,13 +151,16 @@ class TapFlowService : AccessibilityService() {
         // Whatever fails is reported in the app rather than only in logcat.
         step("restore workspace") { Workspace.restore() }
 
-        // Needed for the volume-key fallback. Declared in the config XML too, but setting it here
-        // as well keeps it working if the XML is ever trimmed.
-        step("apply service info") {
-            serviceInfo = (serviceInfo ?: AccessibilityServiceInfo()).apply {
-                flags = flags or AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
-            }
-        }
+        // Deliberately nothing here touches serviceInfo.
+        //
+        // flagRequestFilterKeyEvents is already declared in accessibility_service_config.xml, so
+        // setting it again at runtime bought nothing and carried two real risks. setServiceInfo makes
+        // the system recompute its user state, and that recompute is when the accessibility input
+        // filter — which owns the MotionEventInjector that dispatchGesture needs — gets installed;
+        // poking it during binding is a way to race that installation. And if the getter ever returned
+        // null, the fallback built a blank AccessibilityServiceInfo whose capabilities are zero, which
+        // would drop canPerformGestures altogether. A race matches the symptom: fine most of the time,
+        // then stuck once it goes wrong, surviving reinstalls of any version.
 
         buildOverlay()
 
@@ -272,7 +278,11 @@ class TapFlowService : AccessibilityService() {
 
     private fun buildOverlay() {
         host = OverlayHost(this)
-        dispatcher = GestureDispatcher(this) { outcome -> onGestureOutcome(outcome) }
+        dispatcher = GestureDispatcher(
+            service = this,
+            report = { outcome -> onGestureOutcome(outcome) },
+            renewRegistration = { renewRegistration() },
+        )
 
         canvas = CanvasView(this).apply {
             onGesture = { strokes, down, up -> recorder.onGesture(strokes, down, up) }
@@ -487,6 +497,7 @@ class TapFlowService : AccessibilityService() {
         val needed = canvasNeeded()
         if (needed == host.isAttached(canvas)) return
 
+        Diag.log("canvas ${if (needed) "attach" else "detach"} (mode=${EngineState.mode.value})")
         if (needed) {
             host.add(canvas, canvasParams)
             // Same-type overlays stack in the order they were added, so everything else has to be
@@ -644,6 +655,8 @@ class TapFlowService : AccessibilityService() {
 
     private fun startRecording() {
         if (EngineState.isReplaying || EngineState.isRecording) return
+        Diag.clear()
+        Diag.log("record start")
 
         exitEditing()
         EngineState.toolbarForm.value = ToolbarForm.EXPANDED
@@ -761,6 +774,8 @@ class TapFlowService : AccessibilityService() {
     private fun startPlayback() {
         val steps = Workspace.steps.value
         if (steps.isEmpty()) return
+        Diag.clear()
+        Diag.log("playback start")
         exitEditing()
         player.play(steps, Workspace.screen, settings.defaultLoopCount)
     }
@@ -796,6 +811,7 @@ class TapFlowService : AccessibilityService() {
      */
     private fun onReplayEcho() {
         Log.w(TAG, "Replayed gesture was swallowed by the canvas; FLAG_NOT_TOUCHABLE had not landed")
+        Diag.log("!! canvas received a touch during replay: the flag had not landed")
         val now = SystemClock.uptimeMillis()
         if (now - lastGestureWarningAt < GESTURE_WARNING_INTERVAL_MS) return
         lastGestureWarningAt = now
@@ -809,17 +825,54 @@ class TapFlowService : AccessibilityService() {
      * never delivered" — two problems with nothing in common. Reported at most once every few
      * seconds, because a rejected run rejects every step and a toast per step would bury the screen.
      */
-    private fun onGestureOutcome(outcome: GestureOutcome) {
-        if (outcome == GestureOutcome.COMPLETED || outcome == GestureOutcome.SKIPPED) return
+    /**
+     * Re-applies the service info to prod the framework into rebuilding the accessibility input
+     * filter, which is where the MotionEventInjector lives.
+     *
+     * setServiceInfo makes the system recompute its user state, and that recompute is what installs
+     * the filter. It is a nudge, not a guarantee — if it does not take, only toggling the service in
+     * system settings will — so it is attempted at most once per binding rather than per gesture.
+     */
+    private fun renewRegistration(): Boolean {
+        if (registrationRenewed) return false
+        registrationRenewed = true
+        // Never fabricate a blank AccessibilityServiceInfo as a fallback: its capabilities are zero,
+        // so setting one would drop canPerformGestures and guarantee the very failure this is trying
+        // to recover from. If the current info cannot be read, decline instead of guessing.
+        val current = runCatching { serviceInfo }.getOrNull()
+        if (current == null) {
+            Diag.log("cannot re-register: service info unavailable")
+            return false
+        }
 
+        Diag.log("re-applying service info to rebuild the input filter")
+        return runCatching { serviceInfo = current; true }
+            .onFailure { Log.w(TAG, "Could not re-apply service info", it) }
+            .getOrDefault(false)
+    }
+
+    private fun onGestureOutcome(outcome: GestureOutcome) {
+        if (outcome == GestureOutcome.COMPLETED || outcome == GestureOutcome.SKIPPED) {
+            consecutiveGestureFailures = 0
+            return
+        }
+
+        consecutiveGestureFailures++
         val now = SystemClock.uptimeMillis()
         if (now - lastGestureWarningAt < GESTURE_WARNING_INTERVAL_MS) return
         lastGestureWarningAt = now
 
+        // The run of failures is in the message because one cancelled gesture and every gesture
+        // being cancelled are different problems, and the toast is throttled so the count is the
+        // only way to tell them apart.
         toast(
             getString(
-                if (outcome == GestureOutcome.CANCELLED) R.string.toast_gesture_cancelled
-                else R.string.toast_gesture_refused
+                when (outcome) {
+                    GestureOutcome.INJECTOR_MISSING -> R.string.toast_gesture_injector_missing
+                    GestureOutcome.CANCELLED -> R.string.toast_gesture_cancelled
+                    else -> R.string.toast_gesture_refused
+                },
+                consecutiveGestureFailures,
             )
         )
     }

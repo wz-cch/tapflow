@@ -273,17 +273,35 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
      */
     fun setAvailableHeight(availableHeightPx: Int) {
         val gripHeight = grip.layoutParams?.height?.takeIf { it > 0 } ?: dp(44f)
-        val forScroller = availableHeightPx - gripHeight - dp(12f)
+        // Clamp before comparing. Comparing the raw value against the clamped one stored last time
+        // never matches on a short screen, and then this forced a relayout on every refresh.
+        val forScroller = (availableHeightPx - gripHeight - dp(12f)).coerceAtLeast(dp(88f))
         if (scroller.maxHeightPx == forScroller) return
-        scroller.maxHeightPx = forScroller.coerceAtLeast(dp(88f))
+        scroller.maxHeightPx = forScroller
         scroller.requestLayout()
     }
 
+    private var appliedScale = Float.NaN
+    private var appliedOpacity = Float.NaN
+
+    /**
+     * Only does work when the appearance actually changed.
+     *
+     * It is called from every overlay refresh, and it used to rebuild fifteen sets of layout params
+     * and force a relayout each time. A relayout leads to a window update, and a window update while
+     * an injected gesture is in flight cancels that gesture.
+     */
     fun applyAppearance(scale: Float, opacity: Float) {
-        alpha = opacity.coerceIn(0.3f, 1f)
-        val size = (dp(44f) * scale.coerceIn(0.7f, 1.5f)).toInt()
+        val clampedScale = scale.coerceIn(0.7f, 1.5f)
+        val clampedOpacity = opacity.coerceIn(0.3f, 1f)
+        if (clampedScale == appliedScale && clampedOpacity == appliedOpacity) return
+        appliedScale = clampedScale
+        appliedOpacity = clampedOpacity
+
+        alpha = clampedOpacity
+        val size = (dp(44f) * clampedScale).toInt()
         allButtons.forEach { it.layoutParams = LinearLayout.LayoutParams(size, size) }
-        val ballSize = (dp(BALL_DP) * scale.coerceIn(0.7f, 1.5f)).toInt()
+        val ballSize = (dp(BALL_DP) * clampedScale).toInt()
         ball.layoutParams = LayoutParams(ballSize, ballSize)
         requestLayout()
     }

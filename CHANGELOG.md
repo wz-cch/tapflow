@@ -35,6 +35,23 @@
 - 懸浮工具列多一顆快捷設定鍵:迴圈次數、速度、逐手勢補發、螢幕常亮、黑幕、計時器、工具列大小與不透明度都能在目標 app 裡直接改,面板底部有連結可跳到完整設定
 - 拖曳期間不寫草稿檔,放開才 flush —— 一次拖曳一次寫入,而不是每個觸控取樣寫一次
 
+### Documented — 系統層的手勢注入器卡住(非程式碼問題)
+- **診斷結果:手勢全部失敗、每次固定在 ~1010ms,是 `AccessibilityManagerService` 的 `WAIT_MOTION_INJECTOR_TIMEOUT_MILLIS`(1 秒)逾時。** `MotionEventInjector` 隨無障礙輸入過濾鏈安裝,而過濾鏈偶爾不會為新綁定重建。**重開機即恢復**,與 APK 無關 —— 同一個 APK 前一天正常、隔天全部失敗
+- 辨認方式寫進 [README 疑難排解](README.md#疑難排解):**失敗時間與手勢長度無關**就是判準。106ms 的點擊和 1147ms 的滑動在同一時間點失敗,那是逾時而不是被打斷
+- 新增 `GestureOutcome.INJECTOR_MISSING`,不再把它誤報成「該 app 拒收注入手勢、需要 root」—— 那句話是錯的,而且它讓這輪除錯往錯的方向走了四輪
+- 加入一次性自我修復:偵測到這個特徵時重新套用 `serviceInfo`,讓系統重算 user state(那正是安裝過濾鏈的時機)。每次綁定只試一次,失敗就明講要 toggle 或重開機
+- **新增診斷紀錄畫面**(主畫面最下方):記錄擷取、畫布釋放、派送座標與結果耗時,可一鍵複製。logcat 在手機上拿不到,而 toast 只能講一句話 —— 這個畫面一次就定案了前面猜了四輪的問題
+
+### Fixed — 移除 startup 期間對 serviceInfo 的寫入
+- `connect()` 原本在剛綁定時重設一次 `serviceInfo`,只為了加上 XML 裡**早就宣告過**的 `flagRequestFilterKeyEvents`。零收益,但 `setServiceInfo` 會讓系統重算 user state,而那正是安裝輸入過濾鏈的時機 —— 在綁定期間去踩它就是在跟安裝競速
+- 而且原本的 fallback 會在 getter 回傳 null 時塞一個空白的 `AccessibilityServiceInfo`,其 capabilities 為 0,會直接抹掉 `canPerformGestures`。自我修復路徑也改成讀不到就拒絕執行,不自己造一個
+
+### Fixed — 其他
+- overlay 不再推送內容相同的 window 更新。呼叫端每次都從狀態重算,所以要求更新的頻率遠高於真正有變化的頻率(播放計時器每秒五次),而每一次都是真的 `updateViewLayout`
+- 兩個面板的 `applyAppearance()` 原本每次刷新都重建所有子 view 的 layoutParams 並強制排版,即使大小沒變
+- `setAvailableHeight()` 拿夾限前的值跟上次存的夾限後的值比,在短螢幕上永遠不相等,於是每次刷新都強制排版
+- 補上斜線警示區的文字說明(規格要求但一直沒畫),條紋原本只說「不行」卻沒說原因
+
 ### Added — 工作區的存 / 讀 / 開新的
 - **`💾 儲存` 會跳出命名畫面**,可以直接取名,不必存完再回 app 改。載入自片段時預設覆蓋原本那個,勾選才另存新的
 - **新增 `📂 讀取`**:工具列上直接挑片段載入工作區,不用切回 app。工作區有未儲存變更時會先警告讀取會取代它們

@@ -58,7 +58,7 @@ import com.tapflow.android.text.clipSummary
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(onOpenSettings: () -> Unit) {
+fun HomeScreen(onOpenSettings: () -> Unit, onOpenDiagnostics: () -> Unit) {
     val context = LocalContext.current
     val service = rememberServiceState()
     val status = service.status
@@ -142,6 +142,10 @@ fun HomeScreen(onOpenSettings: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontFamily = FontFamily.Monospace,
                 )
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(onClick = onOpenDiagnostics) {
+                    Text(stringResource(R.string.diag_title))
+                }
                 Spacer(Modifier.height(24.dp))
             }
         }
