@@ -41,6 +41,9 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         /** Play, pause or resume, depending on mode. */
         fun onPrimary()
 
+        /** Asks which step to start from, then plays. A property of starting, not of editing. */
+        fun onPlayFrom()
+
         /** Start/stop recording when idle or recording; stop playback otherwise. */
         fun onSecondary()
 
@@ -110,6 +113,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
 
     private val grip = icon(R.drawable.ic_grip)
     private val primary = icon(R.drawable.ic_play)
+    private val playFrom = icon(R.drawable.ic_play_from)
     private val secondary = icon(R.drawable.ic_record)
     private val insertPause = icon(R.drawable.ic_pause_add)
     private val insertWait = icon(R.drawable.ic_wait_add)
@@ -128,8 +132,8 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
 
     /** Everything inside the scroller, in display order. The grip sits outside it. */
     private val scrollingButtons = listOf(
-        primary, secondary, insertPause, insertWait, undo, edit, stepListToggle, addTap, deleteStep,
-        newClip, save, load, eye, quickSettings, dismiss, collapse,
+        primary, playFrom, secondary, insertPause, insertWait, undo, edit, stepListToggle, addTap,
+        deleteStep, newClip, save, load, eye, quickSettings, dismiss, collapse,
     )
 
     private val allButtons = listOf(grip) + scrollingButtons
@@ -154,6 +158,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         addView(ball, LayoutParams(dp(BALL_DP), dp(BALL_DP)))
 
         primary.setOnClickListener { actions.onPrimary() }
+        playFrom.setOnClickListener { actions.onPlayFrom() }
         secondary.setOnClickListener { actions.onSecondary() }
         insertPause.setOnClickListener { actions.onInsertPausePoint() }
         insertWait.setOnClickListener { actions.onInsertWait() }
@@ -240,6 +245,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         // The eye and the collapse handle are missing from this list on purpose: both are useful in
         // every mode, so they are simply always visible.
         primary.visibility = visibleWhen(!editing && !recording)
+        playFrom.visibility = visibleWhen(!editing && !recording)
         secondary.visibility = visibleWhen(!editing)
         insertPause.visibility = visibleWhen(recording || editing)
         insertWait.visibility = visibleWhen(recording || editing)
@@ -256,6 +262,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
 
         primary.setImageResource(R.drawable.ic_play)
         setActionEnabled(primary, hasSteps)
+        setActionEnabled(playFrom, hasSteps)
 
         secondary.setImageResource(if (recording) R.drawable.ic_stop else R.drawable.ic_record)
         // Recording tints red so it is obvious at a glance that touches are being intercepted.

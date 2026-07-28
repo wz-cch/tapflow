@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Tinted programmatically by the overlay views, so no tint attribute here.
+     A play triangle behind a bar: start, but not from the beginning. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M4,5h2.4v14h-2.4z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M9,5l11,7l-11,7z" />
+</vector>

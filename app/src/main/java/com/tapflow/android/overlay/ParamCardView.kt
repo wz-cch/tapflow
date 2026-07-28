@@ -39,8 +39,6 @@ class ParamCardView(context: Context, private val actions: Actions) : LinearLayo
         /** Opens somewhere focusable to type the pause note. An overlay cannot raise a keyboard. */
         fun onEditNote()
 
-        /** Starts playback from this step rather than from the beginning. */
-        fun onPlayFromHere()
 
         /** Captures this step's gesture again, keeping its lead delay. */
         fun onReRecord()
@@ -74,7 +72,6 @@ class ParamCardView(context: Context, private val actions: Actions) : LinearLayo
     }
     private val durationValue = valueLabel()
     private val delayValue = valueLabel()
-    private val playFromHere = textButton(R.string.param_play_from_here)
     private val delete = textButton(R.string.clip_action_delete)
     private val done = textButton(R.string.param_done)
 
@@ -117,8 +114,6 @@ class ParamCardView(context: Context, private val actions: Actions) : LinearLayo
             LinearLayout(context).apply {
                 orientation = HORIZONTAL
                 gravity = Gravity.END
-                addView(playFromHere)
-                addView(Space(context), LayoutParams(dp(8f), 1))
                 addView(delete)
                 addView(Space(context), LayoutParams(dp(8f), 1))
                 addView(done)
@@ -129,7 +124,6 @@ class ParamCardView(context: Context, private val actions: Actions) : LinearLayo
         pick.setOnClickListener { actions.onPickCoordinate() }
         reRecord.setOnClickListener { actions.onReRecord() }
         editNote.setOnClickListener { actions.onEditNote() }
-        playFromHere.setOnClickListener { actions.onPlayFromHere() }
         delete.setOnClickListener { actions.onDelete() }
         done.setOnClickListener { actions.onDone() }
     }
