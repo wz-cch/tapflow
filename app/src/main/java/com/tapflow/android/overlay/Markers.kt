@@ -31,15 +31,17 @@ enum class MarkerKind {
     SWIPE,
     MULTI_TOUCH,
     PAUSE,
-    WAIT;
+    WAIT,
+    GLOBAL;
 
     /**
      * Whether the step behind this marker carries no coordinates of its own.
      *
-     * A pause point stops the run; it does not happen anywhere. Its position on screen is inferred
-     * from the steps around it purely so there is something to point at and delete.
+     * A pause point stops the run; it does not happen anywhere. Nor does a global action — "back" is
+     * not a place. Their positions on screen are inferred from the steps around them purely so there is
+     * something to point at and delete.
      */
-    val isDerived: Boolean get() = this == PAUSE || this == WAIT
+    val isDerived: Boolean get() = this == PAUSE || this == WAIT || this == GLOBAL
 }
 
 private fun GestureKind.toMarkerKind(): MarkerKind = when (this) {
@@ -123,9 +125,18 @@ fun buildMarkers(
                 )
             }
 
-            // No UI constructs one of these yet. When something does, it needs the same treatment as
-            // the two above or it will be unselectable in exactly the same way.
-            is GlobalStep -> null
+            // Same treatment as a pause: no coordinates of its own, so its anchor is inferred from its
+            // neighbours purely so it can be pointed at, selected and deleted.
+            is GlobalStep -> {
+                val (x, y) = derivedAnchor(gestures, index, spacing, screenWidth, screenHeight)
+                Marker(
+                    stepId = step.id,
+                    number = index + 1,
+                    kind = MarkerKind.GLOBAL,
+                    anchorX = clamp(x, screenWidth, spacing),
+                    anchorY = clamp(y, screenHeight, spacing),
+                )
+            }
         }
     }
 }
@@ -235,6 +246,7 @@ class MarkerPainter(context: Context) {
     private val colorMulti = color(context, R.color.marker_multi)
     private val colorPause = color(context, R.color.marker_pause)
     private val colorWait = color(context, R.color.marker_wait)
+    private val colorGlobal = color(context, R.color.marker_global)
     private val colorLabel = color(context, R.color.marker_label)
     private val colorHighlight = color(context, R.color.marker_highlight)
 
@@ -329,7 +341,7 @@ class MarkerPainter(context: Context) {
             MarkerKind.LONG_PRESS -> colorLongPress
             MarkerKind.SWIPE -> colorSwipe
             MarkerKind.MULTI_TOUCH -> colorMulti
-            MarkerKind.PAUSE, MarkerKind.WAIT -> colorPause
+            MarkerKind.PAUSE, MarkerKind.WAIT, MarkerKind.GLOBAL -> colorPause
         }
         val radius = dp(if (highlighted) 13f else 10f) * scale
 
@@ -370,6 +382,7 @@ class MarkerPainter(context: Context) {
         val tint = when {
             highlighted -> colorHighlight
             marker.kind == MarkerKind.WAIT -> colorWait
+            marker.kind == MarkerKind.GLOBAL -> colorGlobal
             else -> colorPause
         }
         val radius = dp(if (highlighted) 12f else 10f) * scale
@@ -379,7 +392,19 @@ class MarkerPainter(context: Context) {
 
         stroke.color = colorLabel
         stroke.strokeWidth = dp(2f) * scale
-        if (marker.kind == MarkerKind.WAIT) {
+        if (marker.kind == MarkerKind.GLOBAL) {
+            // A left-pointing arrowhead. Back is the commonest of the four and the only one with an
+            // obvious shape, so the disc says "a system key" and the list text says which.
+            val reach = radius * 0.42f
+            canvas.drawLine(
+                marker.anchorX + reach, marker.anchorY - reach,
+                marker.anchorX - reach * 0.5f, marker.anchorY, stroke,
+            )
+            canvas.drawLine(
+                marker.anchorX - reach * 0.5f, marker.anchorY,
+                marker.anchorX + reach, marker.anchorY + reach, stroke,
+            )
+        } else if (marker.kind == MarkerKind.WAIT) {
             // Clock hands, reading noon and three.
             canvas.drawLine(
                 marker.anchorX, marker.anchorY,
