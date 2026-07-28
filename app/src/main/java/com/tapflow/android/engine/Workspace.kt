@@ -125,11 +125,11 @@ object Workspace {
     /**
      * Inserts immediately **after** [afterId], or at the end when it is null or unknown.
      *
-     * This is the direction the toolbar inserts in, because it is the direction recording grows in:
-     * every step you have ever added to a script landed after the previous one. Offering only
-     * insert-before there read backwards even though it is the more expressive primitive — and the
-     * expressiveness is not lost, because [insertBefore] is offered by name on the step settings panel,
-     * where a labelled button says which way it goes.
+     * The only insertion direction there is, because it is the direction recording grows in: every step
+     * you have ever added to a script landed after the previous one. Insert-before is the more expressive
+     * primitive, but having one insertion carry a direction while its three siblings did not made that
+     * one read as an exception — so direction moved to [moveStep], where a button cannot exist without
+     * one, and reaching the front became insert-then-move.
      *
      * Recording never has a selection, so recorded steps keep landing at the end without a special case.
      */
@@ -146,19 +146,34 @@ object Workspace {
         markDirty()
     }
 
+    // There is deliberately no insertBefore. Everything inserts after, and reaching the front is
+    // insert-then-move — see [moveStep]. Having one insertion carry a direction while its three
+    // siblings did not made that one read as an exception rather than a rule.
+
     /**
-     * Inserts immediately **before** [beforeId], or at the end when it is null or unknown.
+     * Moves a step [delta] slots. Returns false when it is already at that end.
      *
-     * The only way to express "make this the first step", which is why it survives alongside
-     * [insertAfter] rather than being replaced by it.
+     * Direction belongs here rather than on the insertion calls: a move button cannot exist without a
+     * direction, whereas an insert button carrying one is an exception to an otherwise single rule.
+     *
+     * A step is one whole thing, so this reorders the list and nothing else — which means [Step.delayBefore]
+     * travels with it for free. That is the point, not an accident: the delay belongs to the step, not to
+     * the slot, so moving a step must not silently retime it. The rhythm around it does change, but that
+     * is what moving a step means, and the delay stays separately editable.
+     *
+     * Snapshots like every other mutation, so undo covers a move.
      */
-    fun insertBefore(beforeId: String?, step: Step, capturedOn: ScreenSpec) {
-        if (screen == null) screen = capturedOn
-        snapshot()
+    fun moveStep(id: String, delta: Int): Boolean {
         val current = steps.value
-        val index = current.indexOfFirst { it.id == beforeId }
-        steps.value = if (index < 0) current + step else current.toMutableList().apply { add(index, step) }
+        val index = current.indexOfFirst { it.id == id }
+        if (index < 0) return false
+        val target = index + delta
+        if (target !in current.indices) return false
+
+        snapshot()
+        steps.value = current.toMutableList().apply { add(target, removeAt(index)) }
         markDirty()
+        return true
     }
 
     /** Writes the draft after a run of non-persisting edits, and ends the coalescing window. */

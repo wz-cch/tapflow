@@ -1046,28 +1046,16 @@ class TapFlowService : AccessibilityService() {
                 toast(getString(R.string.toast_step_rerecorded))
             }
 
-            is Capture.InsertAfter -> insertCaptured(strokes) { step ->
+            // The lead delay is the configured default rather than anything measured: the clock was
+            // running while the user found the toolbar button, and charging that to the step would
+            // insert a pause of however long the decision took.
+            is Capture.InsertAfter -> {
+                val step = GestureStep(strokes = strokes, delayBefore = settings.defaultGapMs)
                 Workspace.insertAfter(pending.afterId, step, currentScreen())
-            }
-
-            is Capture.InsertBefore -> insertCaptured(strokes) { step ->
-                Workspace.insertBefore(pending.beforeId, step, currentScreen())
+                select(step.id)
+                toast(getString(R.string.toast_step_inserted))
             }
         }
-    }
-
-    /**
-     * Turns captured strokes into a step and hands it to [place].
-     *
-     * The lead delay is the configured default rather than anything measured: the clock was running
-     * while the user found the toolbar button, and charging that to the step would insert a pause of
-     * however long the decision took.
-     */
-    private inline fun insertCaptured(strokes: List<Stroke>, place: (GestureStep) -> Unit) {
-        val step = GestureStep(strokes = strokes, delayBefore = settings.defaultGapMs)
-        place(step)
-        select(step.id)
-        toast(getString(R.string.toast_step_inserted))
     }
 
     private fun onGestureOutcome(outcome: GestureOutcome) {
@@ -1337,16 +1325,21 @@ class TapFlowService : AccessibilityService() {
 
         override fun onDelete() = deleteSelected()
 
+        override fun onMoveBack() = move(-1)
+
+        override fun onMoveForward() = move(1)
+
         /**
-         * The one place insertion goes backwards, and it says so on the button.
+         * Moves the selected step one slot.
          *
-         * The toolbar inserts after, because that is the direction recording grows in. Inserting before
-         * is still needed — it is the only way to put something ahead of step 1 — so it lives here, named.
+         * Deliberately only one slot. Absolute positioning was considered and cut: it serves
+         * restructuring a script, and restructuring presupposes being able to tell what each step is —
+         * which, with a hundred steps labelled by coordinate, you cannot. What is real is the nudge
+         * right after inserting, where you know exactly what you just made.
          */
-        override fun onInsertBefore() {
+        private fun move(delta: Int) {
             val id = EngineState.selectedStepId.value ?: return
-            EngineState.pendingCapture.value = Capture.InsertBefore(id)
-            toast(getString(R.string.toast_capture_prompt))
+            Workspace.moveStep(id, delta)
         }
 
         override fun onClose() {

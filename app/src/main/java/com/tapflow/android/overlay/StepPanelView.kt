@@ -36,11 +36,12 @@ import com.tapflow.android.text.secondsText
  * Closing always returns to the canvas. One exit, so the panel needs to remember nothing about who
  * opened it; to get back to the list, press the list button again.
  *
- * Duplicate, insert-before and delete all act on the step being shown, and all three leave the panel
- * open on whatever the act left behind: the copy, the new step ahead of this one, or — for delete — the
- * step before it. Delete was held back at first precisely because "what does the panel do afterwards"
- * had no answer; once stepping back one was settled, the objection went with it. Every one of them calls
- * the same code as its toolbar counterpart, so a second entry point cannot become a second behaviour.
+ * Duplicate, delete and the two move buttons all act on the step being shown, and all of them leave the
+ * panel open on whatever the act left behind: the copy, the step before the deleted one, or the same step
+ * at its new number. Delete was held back at first precisely because "what does the panel do afterwards"
+ * had no answer; once stepping back one was settled, the objection went with it. Duplicate and delete
+ * call the same code as their toolbar counterparts, so a second entry point cannot become a second
+ * behaviour.
  *
  * It stays non-focusable like every other overlay here, so it never steals input from the app
  * underneath. That rules out a text field, which is why the note on a pause is typed in the main app
@@ -81,12 +82,17 @@ class StepPanelView(context: Context, private val actions: Actions) : LinearLayo
         fun onDuplicate()
 
         /**
-         * Captures a gesture and inserts it *before* this step.
+         * Moves this step one slot earlier or later.
          *
-         * Labelled, and only here. The toolbar inserts after, matching the direction recording grows
-         * in; this is the named exception for the one thing inserting after cannot express.
+         * This is where direction lives, and the reason insertion has none: a move button cannot exist
+         * without a direction, whereas an insert button carrying one is an exception to an otherwise
+         * single rule. Insert always goes after; reaching the front is insert-then-move-back.
+         *
+         * One slot only. Absolute positioning would serve restructuring a script, and restructuring
+         * presupposes being able to read it — which a hundred steps labelled by coordinate are not.
          */
-        fun onInsertBefore()
+        fun onMoveBack()
+        fun onMoveForward()
 
         /**
          * Deletes this step; the panel stays open on the one before it.
@@ -135,8 +141,15 @@ class StepPanelView(context: Context, private val actions: Actions) : LinearLayo
     private val editNote = textButton(R.string.param_edit_note) { actions.onEditNote() }
     private val editWait = textButton(R.string.param_change) { actions.onEditWaitSeconds() }
     private val duplicate = textButton(R.string.param_duplicate) { actions.onDuplicate() }
-    private val insertBefore = textButton(R.string.param_insert_before) { actions.onInsertBefore() }
     private val delete = textButton(R.string.param_delete) { actions.onDelete() }
+
+    // Double chevrons, and icons rather than words. The header's single chevrons move *you* through the
+    // script; these move *the step*, so they have to be told apart at a glance — and a translated
+    // "Move back" is long enough to push this row out of shape in one locale and not another.
+    private val moveBack = iconButton(R.drawable.ic_move_back) { actions.onMoveBack() }
+        .apply { contentDescription = context.getString(R.string.param_move_back) }
+    private val moveForward = iconButton(R.drawable.ic_move_forward) { actions.onMoveForward() }
+        .apply { contentDescription = context.getString(R.string.param_move_forward) }
 
     private val coordinateRow = LinearLayout(context).apply {
         orientation = HORIZONTAL
@@ -180,8 +193,9 @@ class StepPanelView(context: Context, private val actions: Actions) : LinearLayo
      * A ScrollView that wraps its content but never grows past [maxHeightPx].
      *
      * Same shape as the toolbar's, and for the same reason: the rows come to roughly 340dp, which does
-     * not fit a phone in landscape. Without the cap the bottom row — "往前插" — ends up below the screen
-     * edge and cannot be reached at all, which is the mistake §3.1 records for the toolbar column.
+     * not fit a phone in landscape. Without the cap the bottom row — the one with delete on it — ends up
+     * below the screen edge and cannot be reached at all, which is the mistake §3.1 records for the
+     * toolbar column.
      *
      * A ScrollView is safe here where it would not be on the canvas: the panel is not draggable and
      * holds nothing else that wants vertical gestures, so there is nothing for it to fight with.
@@ -232,18 +246,21 @@ class StepPanelView(context: Context, private val actions: Actions) : LinearLayo
         body.addView(waitRow, rowParams())
         body.addView(durationRow, rowParams())
         body.addView(delayRow, rowParams())
-        // Delete is pushed to the far side on its own. The other two create a step and sit together in
-        // the order of where the new one lands; putting the destructive one next to them is how you
-        // reach for duplicate and hit delete.
+        // The move buttons sit at the two ends, so each one is on the side it points to. That leaves the
+        // middle for the other two, and the gap between them puts duplicate and delete as far apart as
+        // the row allows — reaching for one and hitting the other is the mistake worth designing out,
+        // and only one of the two is expensive to make.
         body.addView(
             LinearLayout(context).apply {
                 orientation = HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                addView(delete)
-                addView(Space(context), LayoutParams(0, 1, 1f))
-                addView(insertBefore)
-                addView(Space(context), LayoutParams(dp(8f), 1))
+                addView(moveBack)
+                addView(Space(context), LayoutParams(dp(6f), 1))
                 addView(duplicate)
+                addView(Space(context), LayoutParams(0, 1, 1f))
+                addView(delete)
+                addView(Space(context), LayoutParams(dp(6f), 1))
+                addView(moveForward)
             },
             rowParams(),
         )
@@ -270,6 +287,11 @@ class StepPanelView(context: Context, private val actions: Actions) : LinearLayo
     fun render(step: Step, number: Int, total: Int) {
         position.text = context.getString(R.string.step_list_position, number, total)
         title.text = typeLabel(step)
+
+        // Dimmed rather than hidden: a button that vanishes at the ends would shift the whole row
+        // sideways, and this row's whole point is that each end holds the direction it points to.
+        setEnabled(moveBack, number > 1)
+        setEnabled(moveForward, number < total)
 
         val gesture = step as? GestureStep
         coordinateRow.visibility = if (gesture != null) VISIBLE else GONE
@@ -352,6 +374,11 @@ class StepPanelView(context: Context, private val actions: Actions) : LinearLayo
         typeface = Typeface.MONOSPACE
         gravity = Gravity.END
         minWidth = dp(72f)
+    }
+
+    private fun setEnabled(view: ImageView, enabled: Boolean) {
+        view.isEnabled = enabled
+        view.alpha = if (enabled) 1f else 0.3f
     }
 
     private fun iconButton(resId: Int, onClick: () -> Unit) = ImageView(context).apply {

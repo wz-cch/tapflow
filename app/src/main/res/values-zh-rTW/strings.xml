@@ -147,7 +147,8 @@
     <string name="wait_pad_unit">秒</string>
     <string name="param_coordinates">%1$d, %2$d</string>
     <string name="param_rerecord">重錄</string>
-    <string name="param_insert_before">往前插</string>
+    <string name="param_move_back">往前移一格</string>
+    <string name="param_move_forward">往後移一格</string>
     <string name="param_duplicate">複製</string>
     <string name="param_delete">刪除</string>
     <string name="param_edit_note">備註</string>

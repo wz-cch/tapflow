@@ -40,11 +40,13 @@ data class Progress(val loop: Int, val totalLoops: Int, val step: Int, val total
  * which is why they share [com.tapflow.android.overlay.CanvasView]'s capture wholesale.
  */
 sealed interface Capture {
-    /** Insert a new step immediately after [afterId], or at the end when it is null. */
+    /**
+     * Insert a new step immediately after [afterId], or at the end when it is null.
+     *
+     * The only insertion direction there is. Reaching the front is insert-then-move — see
+     * [Workspace.moveStep].
+     */
     data class InsertAfter(val afterId: String?) : Capture
-
-    /** Insert a new step immediately before [beforeId]. */
-    data class InsertBefore(val beforeId: String) : Capture
 
     /** Replace [stepId]'s strokes, keeping its id and its lead delay. */
     data class Replace(val stepId: String) : Capture
