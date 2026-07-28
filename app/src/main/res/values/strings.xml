@@ -78,7 +78,6 @@
     <string name="transport_recording">Recording · %1$d actions</string>
 
     <!-- Warnings shown on the canvas or in the editor -->
-    <string name="warn_toolbar_area">This area cannot be recorded — drag the toolbar away</string>
     <string name="warn_rotation_changed">Screen rotated during recording, so recording stopped. Coordinates would not line up.</string>
 
     <!-- Permission onboarding -->

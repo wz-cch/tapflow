@@ -75,7 +75,6 @@
     <string name="transport_recording">錄製中 · 已錄 %1$d 個動作</string>
 
     <!-- 畫布與編輯器上的警示 -->
-    <string name="warn_toolbar_area">此區域無法錄製,請拖走工具列</string>
     <string name="warn_rotation_changed">錄製中螢幕轉向,已中止錄製。座標系會對不上。</string>
 
     <!-- 權限引導 -->
