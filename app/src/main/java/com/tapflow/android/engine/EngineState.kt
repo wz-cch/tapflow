@@ -47,6 +47,16 @@ object EngineState {
      */
     val editing = MutableStateFlow(false)
 
+    /**
+     * While editing, whether to draw only the selected step's marker.
+     *
+     * On by default, and reset on every entry into editing. A hundred markers at once is a hundred
+     * overlapping crosshairs, and the ninety-nine that are not being changed have no bearing on the
+     * one that is. The eye button turns it off for the case where the marker has to be found by sight,
+     * because a marker that is not drawn cannot be tapped either.
+     */
+    val isolateSelection = MutableStateFlow(true)
+
     /** Step selected for editing, by id. Null when nothing is selected. */
     val selectedStepId = MutableStateFlow<String?>(null)
 

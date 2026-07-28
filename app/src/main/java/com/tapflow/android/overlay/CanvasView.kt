@@ -117,6 +117,18 @@ class CanvasView(context: Context) : View(context) {
             invalidate()
         }
 
+    /**
+     * Draw only the selected marker, ignoring [density].
+     *
+     * Set while editing. Hit-testing follows the same list, so what cannot be seen cannot be grabbed
+     * either — which is the point, and why the eye button can turn this off.
+     */
+    var isolateSelection: Boolean = false
+        set(value) {
+            field = value
+            invalidate()
+        }
+
     /** Black layer opacity for idling with the screen on but unreadable. 0 disables it. */
     var dimAlpha: Float = 0f
         set(value) {
@@ -313,7 +325,7 @@ class CanvasView(context: Context) : View(context) {
      */
     private fun hitTest(x: Float, y: Float): Pair<Marker, Handle>? {
         val radius = dp(26f)
-        for (marker in markers.forDensity(density).asReversed()) {
+        for (marker in visibleMarkers().asReversed()) {
             if (marker.hasEndHandle && hypot(x - marker.endX, y - marker.endY) <= radius) {
                 return marker to Handle.END
             }
@@ -322,6 +334,20 @@ class CanvasView(context: Context) : View(context) {
             }
         }
         return null
+    }
+
+    /**
+     * What is on screen, and therefore what can be hit.
+     *
+     * HIDDEN still keeps the newest marker rather than none — it drops the trail of older ones, which
+     * forDensity handles, so only isolation needs branching here.
+     */
+    private fun visibleMarkers(): List<Marker> {
+        if (!isolateSelection) return markers.forDensity(density)
+        // Nothing selected means nothing to isolate to. Hiding everything would leave editing with a
+        // blank canvas and no marker to tap — the selection has to come from somewhere.
+        val selected = markers.firstOrNull { it.stepId == selectedStepId } ?: return markers.forDensity(density)
+        return listOf(selected)
     }
 
     // --- Drawing -------------------------------------------------------------
@@ -336,9 +362,7 @@ class CanvasView(context: Context) : View(context) {
             if (mode == CanvasMode.RECORDING) canvas.drawColor(scrimColor)
         }
 
-        // HIDDEN still shows the newest marker, it just stops showing the trail of older ones —
-        // forDensity handles that, so there is nothing to branch on here.
-        painter.draw(canvas, markers.forDensity(density), highlightNumber, selectedStepId, scale = 1f)
+        painter.draw(canvas, visibleMarkers(), highlightNumber, selectedStepId, scale = 1f)
 
         drawInProgressStrokes(canvas)
 
