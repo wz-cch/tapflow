@@ -56,7 +56,7 @@
     <string name="action_record_resume">繼續錄製</string>
     <string name="action_record_stop">停止錄製</string>
     <string name="action_insert_pause">插入暫停點</string>
-    <string name="action_undo">復原上一步</string>
+    <string name="action_undo">復原</string>
     <string name="action_insert_step">在選取之後插入一步</string>
     <string name="action_duplicate_step">複製這一步</string>
     <string name="action_delete">刪除選取</string>
@@ -108,7 +108,7 @@
     <string name="toast_nothing_to_save">還沒有錄到任何動作</string>
     <string name="toast_pause_inserted">已插入暫停點 — 請手動完成這一步,再按錄製接續</string>
     <string name="toast_wait_inserted">已插入等待 %1$d 秒</string>
-    <string name="toast_undone">已移除最後一步</string>
+    <string name="toast_undone">已復原</string>
     <string name="toast_loaded">已把「%1$s」載入工作區</string>
     <string name="toast_toolbar_hidden">已收起工具列。回到觸控流 app 重新開啟。</string>
     <string name="toast_overlay_failed">工具列掛不上去。這台裝置可能需要「顯示在其他應用上層」權限。</string>
