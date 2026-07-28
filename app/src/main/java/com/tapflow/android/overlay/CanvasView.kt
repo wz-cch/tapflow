@@ -309,21 +309,43 @@ class CanvasView(context: Context) : View(context) {
      * Finds the marker under a point.
      *
      * Searched newest first because later markers are painted on top, so the one the user can see is
-     * the one that gets picked. End handles win over bodies: a short swipe can have both within the
-     * same radius, and the tip is the more specific intent.
+     * the one that gets picked.
+     *
+     * Between a marker's two grab points, **the nearer one wins.** It used to test the end handle first
+     * and return on a hit, with both using the same radius — and that made the body unreachable on any
+     * swipe shorter than the radius. `GestureStep.SWIPE_TRAVEL_PX` is 24 raw pixels, so on a 3× screen a
+     * travel of eight dp already counts as a swipe; its end then sits well inside the body's radius and
+     * took every touch. Short swipes could not be moved at all. Nearest-wins keeps both halves reachable
+     * for any swipe whose ends are distinguishable, and degrades gracefully when they are not.
      */
     private fun hitTest(x: Float, y: Float): Pair<Marker, Handle>? {
-        val radius = dp(26f)
+        // Deliberately *not* scaled with the drawing. 26dp is a 52dp target, already past the 48dp a
+        // finger needs — the problem was never the hit area, it was that a 20dp disc understated it and
+        // you aim at what you can see. Growing this as well would only make adjacent derived markers,
+        // spaced 46dp apart, start swallowing each other's touches.
+        val radius = dp(HIT_RADIUS_DP)
         for (marker in visibleMarkers().asReversed()) {
-            if (marker.hasEndHandle && hypot(x - marker.endX, y - marker.endY) <= radius) {
-                return marker to Handle.END
+            val toBody = hypot(x - marker.anchorX, y - marker.anchorY)
+            val toEnd = if (marker.hasEndHandle) {
+                hypot(x - marker.endX, y - marker.endY)
+            } else {
+                Float.MAX_VALUE
             }
-            if (hypot(x - marker.anchorX, y - marker.anchorY) <= radius) {
-                return marker to Handle.BODY
-            }
+            if (minOf(toBody, toEnd) > radius) continue
+            return marker to if (toEnd < toBody) Handle.END else Handle.BODY
         }
         return null
     }
+
+    /**
+     * How much bigger markers are drawn while editing.
+     *
+     * Editing is the only mode where a marker is a *touch target*; everywhere else it is a readout. At 1×
+     * the disc is 20dp across while the grab radius is 26dp — so the thing you aim at was smaller than
+     * the thing that actually catches you, and aiming is done by eye. At 1.5× the disc is 30dp inside a
+     * 52dp target, which is the right way round: visibly big, and still forgiving.
+     */
+    private fun editScale(): Float = if (mode == CanvasMode.EDIT) EDIT_MARKER_SCALE else 1f
 
     /**
      * What is on screen, and therefore what can be hit.
@@ -351,7 +373,7 @@ class CanvasView(context: Context) : View(context) {
             if (mode == CanvasMode.RECORDING) canvas.drawColor(scrimColor)
         }
 
-        painter.draw(canvas, visibleMarkers(), highlightNumber, selectedStepId, scale = 1f)
+        painter.draw(canvas, visibleMarkers(), highlightNumber, selectedStepId, scale = editScale())
 
         drawInProgressStrokes(canvas)
 
@@ -414,5 +436,11 @@ class CanvasView(context: Context) : View(context) {
 
     private companion object {
         const val HIGHLIGHT_MS = 800L
+
+        /** Radius of a grab point. A 52dp target, past the 48dp a finger needs. Never scaled. */
+        const val HIT_RADIUS_DP = 26f
+
+        /** See editScale(). Puts a 30dp disc inside that 52dp target instead of a 20dp one. */
+        const val EDIT_MARKER_SCALE = 1.5f
     }
 }
