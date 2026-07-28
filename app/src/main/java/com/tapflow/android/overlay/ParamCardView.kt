@@ -41,6 +41,9 @@ class ParamCardView(context: Context, private val actions: Actions) : LinearLayo
 
         /** Starts playback from this step rather than from the beginning. */
         fun onPlayFromHere()
+
+        /** Captures this step's gesture again, keeping its lead delay. */
+        fun onReRecord()
         fun onDelete()
         fun onDone()
     }
@@ -60,6 +63,7 @@ class ParamCardView(context: Context, private val actions: Actions) : LinearLayo
     }
 
     private val pick = textButton(R.string.param_repick)
+    private val reRecord = textButton(R.string.param_rerecord)
     private val editNote = textButton(R.string.param_edit_note)
 
     private val noteValue = TextView(context).apply {
@@ -84,6 +88,7 @@ class ParamCardView(context: Context, private val actions: Actions) : LinearLayo
         orientation = HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         addView(coordinates, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+        addView(reRecord)
         addView(pick)
     }
     private val noteRow = LinearLayout(context).apply {
@@ -122,6 +127,7 @@ class ParamCardView(context: Context, private val actions: Actions) : LinearLayo
         )
 
         pick.setOnClickListener { actions.onPickCoordinate() }
+        reRecord.setOnClickListener { actions.onReRecord() }
         editNote.setOnClickListener { actions.onEditNote() }
         playFromHere.setOnClickListener { actions.onPlayFromHere() }
         delete.setOnClickListener { actions.onDelete() }

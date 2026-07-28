@@ -148,6 +148,9 @@
     <string name="param_type_other">Action</string>
     <string name="param_coordinates">%1$d, %2$d</string>
     <string name="param_repick">Re-pick</string>
+    <string name="param_rerecord">Redo</string>
+    <string name="toast_rerecord_prompt">Make the gesture again to replace this step</string>
+    <string name="toast_step_rerecorded">Step replaced</string>
     <string name="param_play_from_here">Play from here</string>
     <string name="param_edit_note">Note</string>
     <string name="param_note_empty">No note</string>

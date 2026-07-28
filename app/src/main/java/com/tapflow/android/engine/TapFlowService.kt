@@ -22,6 +22,7 @@ import com.tapflow.android.data.Repo
 import com.tapflow.android.data.ScreenSpec
 import com.tapflow.android.data.Settings
 import com.tapflow.android.data.Step
+import com.tapflow.android.data.Stroke
 import com.tapflow.android.data.movedTo
 import com.tapflow.android.data.tapStep
 import com.tapflow.android.data.withDuration
@@ -289,7 +290,7 @@ class TapFlowService : AccessibilityService() {
         )
 
         canvas = CanvasView(this).apply {
-            onGesture = { strokes, down, up -> recorder.onGesture(strokes, down, up) }
+            onGesture = { strokes, down, up -> onGestureCaptured(strokes, down, up) }
             onSelect = { stepId -> select(stepId) }
             onDragStep = { stepId, handle, x, y -> dragStep(stepId, handle, x, y) }
             onDragEnd = { Workspace.flush() }
@@ -417,6 +418,7 @@ class TapFlowService : AccessibilityService() {
         scope.launch { EngineState.numberPadOpen.collect { syncOverlay() } }
         scope.launch { EngineState.isolateSelection.collect { syncOverlay() } }
         scope.launch { EngineState.stepListOpen.collect { syncOverlay() } }
+        scope.launch { EngineState.reRecordingStepId.collect { syncOverlay() } }
         scope.launch {
             EngineState.progress.collect { progress ->
                 // Updated here rather than in syncOverlay so the highlight follows playback without
@@ -480,6 +482,9 @@ class TapFlowService : AccessibilityService() {
         canvas.dimAlpha = if (current.dimOverlay && mode == Mode.PLAYING) current.dimAlpha else 0f
         canvas.mode = when {
             mode == Mode.RECORDING -> CanvasMode.RECORDING
+            // Capturing a replacement gesture needs the same full-screen interception as recording, and
+            // the recording tint is honest about what the next touch will do.
+            EngineState.reRecordingStepId.value != null -> CanvasMode.RECORDING
             editing -> CanvasMode.EDIT
             else -> CanvasMode.READ_ONLY
         }
@@ -655,7 +660,8 @@ class TapFlowService : AccessibilityService() {
      */
     private fun syncParamCard() {
         val step = Workspace.stepById(EngineState.selectedStepId.value)
-        val wanted = EngineState.editing.value && step != null && !EngineState.pickingCoordinate.value
+        val wanted = EngineState.editing.value && step != null &&
+            !EngineState.pickingCoordinate.value && EngineState.reRecordingStepId.value == null
 
         if (!wanted) {
             host.remove(paramCard)
@@ -947,6 +953,31 @@ class TapFlowService : AccessibilityService() {
             .getOrDefault(false)
     }
 
+    /**
+     * Routes a captured gesture: normally it becomes a new step, but a re-record replaces one.
+     *
+     * The replacement keeps the step's id and its lead delay and swaps only the strokes. The delay is
+     * the rhythm around the step, measured against its neighbour, and redoing the movement is no
+     * reason to lose it — it stays separately editable.
+     *
+     * No per-gesture replay either. That exists so the app under a recording moves forward with you;
+     * while editing there is no such walk to keep in step with, and dispatching would poke the app for
+     * no reason.
+     */
+    private fun onGestureCaptured(strokes: List<Stroke>, downUptime: Long, upUptime: Long) {
+        val id = EngineState.reRecordingStepId.value
+        if (id == null) {
+            recorder.onGesture(strokes, downUptime, upUptime)
+            return
+        }
+
+        EngineState.reRecordingStepId.value = null
+        val existing = Workspace.stepById(id) as? GestureStep ?: return
+        Workspace.updateStep(existing.copy(strokes = strokes))
+        Diag.log("re-record: step ${existing.id} replaced with ${strokes.size} stroke(s)")
+        toast(getString(R.string.toast_step_rerecorded))
+    }
+
     private fun onGestureOutcome(outcome: GestureOutcome) {
         if (outcome == GestureOutcome.COMPLETED || outcome == GestureOutcome.SKIPPED) {
             consecutiveGestureFailures = 0
@@ -989,6 +1020,7 @@ class TapFlowService : AccessibilityService() {
 
     private fun exitEditing() {
         EngineState.stepListOpen.value = false
+        EngineState.reRecordingStepId.value = null
         EngineState.editing.value = false
         EngineState.selectedStepId.value = null
         EngineState.pickingCoordinate.value = false
@@ -1141,6 +1173,18 @@ class TapFlowService : AccessibilityService() {
          * The other half of finding a broken step by number: having fixed step 47, checking it should
          * not mean sitting through 1–46 again.
          */
+        /**
+         * Captures this step's gesture again.
+         *
+         * Starts immediately, with no countdown, for the same reason resuming a recording does: undo
+         * is cheaper than making everyone wait three seconds every time.
+         */
+        override fun onReRecord() {
+            val step = Workspace.stepById(EngineState.selectedStepId.value) as? GestureStep ?: return
+            EngineState.reRecordingStepId.value = step.id
+            toast(getString(R.string.toast_rerecord_prompt))
+        }
+
         override fun onPlayFromHere() {
             val index = Workspace.steps.value.indexOfFirst { it.id == EngineState.selectedStepId.value }
             if (index < 0) return

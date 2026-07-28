@@ -63,6 +63,14 @@ object EngineState {
     /** True while the next canvas tap should be read as "put the selected step here". */
     val pickingCoordinate = MutableStateFlow(false)
 
+    /**
+     * Step whose gesture is being captured again, or null.
+     *
+     * Re-recording one step is the cheap alternative to re-recording a hundred: when one tap landed in
+     * the wrong place, redoing that tap should not cost the whole script.
+     */
+    val reRecordingStepId = MutableStateFlow<String?>(null)
+
     /** Whether the in-place settings panel is showing. */
     val quickSettingsOpen = MutableStateFlow(false)
 
