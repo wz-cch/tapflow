@@ -31,6 +31,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.tapflow.android.data.Clip
+import com.tapflow.android.data.PauseStep
 import com.tapflow.android.data.Repo
 import com.tapflow.android.engine.Workspace
 import com.tapflow.android.text.clipSummary
@@ -38,19 +39,23 @@ import com.tapflow.android.text.defaultClipName
 import com.tapflow.android.ui.TapFlowTheme
 
 /**
- * The workspace file operations: save, load, and start a new one.
+ * The workspace operations that need a keyboard: save, load, start a new one, and write a pause note.
  *
  * An activity rather than more overlay panels. Every floating window here is FLAG_NOT_FOCUSABLE on
  * purpose — a focusable overlay takes input focus from the app underneath, which is what makes a
  * pause point usable — and a window that cannot take focus cannot raise a keyboard for a text field.
  * An activity gets focus and IME for free, and it is the natural shape for a modal question.
  *
- * One activity with three modes rather than three activities: same theme, same scaffolding, one
- * manifest entry. One toolbar button opens each mode, and each mode does exactly one thing.
+ * One activity with four modes rather than four activities: same theme, same scaffolding, one
+ * manifest entry. Each mode does exactly one thing.
+ *
+ * The number pad for a timed wait deliberately does *not* come here — digits need no IME, so it stays
+ * an overlay and does not push the app being recorded into the background. A note is free text and
+ * genuinely needs the keyboard, so it does.
  */
 class WorkspaceDialogActivity : ComponentActivity() {
 
-    enum class Mode { SAVE, LOAD, NEW }
+    enum class Mode { SAVE, LOAD, NEW, NOTE }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -69,6 +74,10 @@ class WorkspaceDialogActivity : ComponentActivity() {
                     Mode.SAVE -> SaveDialog(::finish) { name, asNew -> save(name, asNew) }
                     Mode.LOAD -> LoadDialog(::finish) { clip -> load(clip) }
                     Mode.NEW -> NewDialog(::finish) { startNew() }
+                    Mode.NOTE -> {
+                        val step = Workspace.stepById(intent.getStringExtra(EXTRA_STEP_ID)) as? PauseStep
+                        if (step == null) finish() else NoteDialog(step, ::finish) { note -> saveNote(step, note) }
+                    }
                 }
             }
         }
@@ -89,6 +98,15 @@ class WorkspaceDialogActivity : ComponentActivity() {
         finish()
     }
 
+    /**
+     * Blank is a valid note, not a cancellation — the prompt falls back to a generic line, and
+     * clearing one you no longer want should be possible without deleting the step.
+     */
+    private fun saveNote(step: PauseStep, note: String) {
+        Workspace.updateStep(step.copy(note = note.trim()))
+        finish()
+    }
+
     private fun startNew() {
         Workspace.clear()
         toast(getString(R.string.toast_workspace_cleared))
@@ -99,6 +117,7 @@ class WorkspaceDialogActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_MODE = "com.tapflow.android.WORKSPACE_MODE"
+        const val EXTRA_STEP_ID = "com.tapflow.android.STEP_ID"
     }
 }
 
@@ -216,6 +235,47 @@ private fun NewDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
         },
         confirmButton = {
             TextButton(onClick = onConfirm) { Text(stringResource(R.string.new_confirm)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.dialog_cancel)) }
+        },
+    )
+}
+
+
+/**
+ * Types the note shown when a replay stops on this step.
+ *
+ * Not asked for at insert time on purpose. Inserting a pause point is one tap with no dialog (SPEC
+ * 10.1), and the moment after it is exactly when the user wants the target app in front of them to do
+ * the step by hand — throwing an activity up then would be in the way.
+ */
+@Composable
+private fun NoteDialog(step: PauseStep, onDismiss: () -> Unit, onSave: (String) -> Unit) {
+    var note by remember { mutableStateOf(step.note) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.note_title)) },
+        text = {
+            Column {
+                Text(
+                    stringResource(R.string.note_explain),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it },
+                    singleLine = false,
+                    maxLines = 3,
+                    label = { Text(stringResource(R.string.note_label)) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(note) }) { Text(stringResource(R.string.dialog_confirm)) }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.dialog_cancel)) }

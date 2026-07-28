@@ -143,6 +143,8 @@
     <string name="param_type_other">Action</string>
     <string name="param_coordinates">%1$d, %2$d</string>
     <string name="param_repick">Re-pick</string>
+    <string name="param_edit_note">Note</string>
+    <string name="param_note_empty">No note</string>
     <string name="param_duration">Duration</string>
     <string name="param_delay">Delay before</string>
     <string name="param_ms">%1$d ms</string>
@@ -155,6 +157,9 @@
     <string name="quick_full_settings">All settings in the app →</string>
 
     <!-- Workspace dialogs -->
+    <string name="note_title">Pause note</string>
+    <string name="note_explain">Shown when a replay stops here. Leave it blank if you do not need one.</string>
+    <string name="note_label">What to do by hand</string>
     <string name="save_title">Save clip</string>
     <string name="save_name_label">Name</string>
     <string name="save_as_new">Save as a new clip instead of replacing it</string>
