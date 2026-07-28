@@ -235,7 +235,15 @@ class GestureDispatcher(
             }
         }
 
-    /** Stroke bounds, so a logcat line is enough to tell whether the coordinates were sane. */
+    /**
+     * Stroke bounds, so a logcat line is enough to tell whether the coordinates were sane.
+     *
+     * computeBounds(RectF, Boolean) is deprecated as of API 35, but its replacement — the
+     * single-argument overload — only exists from API 36, and this project compiles against 35. The
+     * boolean was ignored by the platform long before the deprecation, so there is nothing to lose
+     * by keeping it. Drop the suppression once compileSdk reaches 36.
+     */
+    @Suppress("DEPRECATION")
     fun GestureDescription.describeForLog(): String = buildString {
         append("strokes=").append(strokeCount)
         for (index in 0 until strokeCount) {
