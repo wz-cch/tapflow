@@ -29,6 +29,7 @@ import com.tapflow.android.data.movedTo
 import com.tapflow.android.data.newId
 import com.tapflow.android.data.withDuration
 import com.tapflow.android.data.withRepeat
+import com.tapflow.android.data.withStartAt
 import com.tapflow.android.data.withEndAt
 import com.tapflow.android.overlay.BallIntent
 import com.tapflow.android.overlay.CanvasMode
@@ -490,12 +491,18 @@ class TapFlowService : AccessibilityService() {
         )
         host.update(toolbar, toolbarParams)
 
+        // One figure drives the drawn ring, the grab radius and the separation two ends need before both
+        // get a ring of their own — see Settings.editHandleDp. Keeping them derived from one another is
+        // what stops a ring from advertising a radius the hit test does not honour.
+        val handleRadius = dpToPx(current.editHandleDp / 2f)
         canvas.markers = buildMarkers(
             steps,
             screen.x.toFloat(),
             screen.y.toFloat(),
             resources.displayMetrics.density,
+            endHandleMinPx = handleRadius * 2f,
         )
+        canvas.handleRadiusPx = handleRadius
         // Editing shows only the selected step by default. With a hundred markers up, "show
         // everything" is a hundred overlapping crosshairs and the other ninety-nine have no bearing on
         // the one being changed. The eye button still widens it when the marker has to be found by
@@ -1209,6 +1216,7 @@ class TapFlowService : AccessibilityService() {
         val step = Workspace.stepById(stepId) as? GestureStep ?: return
         val updated = when (handle) {
             Handle.BODY -> step.movedTo(x, y)
+            Handle.START -> step.withStartAt(x, y)
             Handle.END -> step.withEndAt(x, y)
         }
         // Not persisted per sample: a drag would otherwise write the draft file dozens of times.

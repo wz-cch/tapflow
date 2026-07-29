@@ -134,6 +134,19 @@ fun SettingsScreen(onBack: () -> Unit) {
                 }
             }
 
+            item { Section(R.string.settings_section_editing) }
+            item {
+                SliderRow(
+                    label = stringResource(R.string.settings_edit_handle),
+                    body = stringResource(R.string.settings_edit_handle_body),
+                    value = stringResource(R.string.value_dp, settings.editHandleDp),
+                    position = settings.editHandleDp.toFloat(),
+                    range = Settings.EDIT_HANDLE_RANGE,
+                ) { dp ->
+                    Repo.updateSettings { s -> s.copy(editHandleDp = (dp / 4f).roundToInt() * 4) }
+                }
+            }
+
             item { Section(R.string.settings_section_appearance) }
             item {
                 SliderRow(

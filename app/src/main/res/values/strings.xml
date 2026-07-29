@@ -230,6 +230,10 @@
     <string name="settings_replay_each">Replay each gesture</string>
     <string name="settings_replay_each_body">Sends every recorded gesture straight back to the app underneath so the screen moves on. Turn it off for blind recording, where the screen never changes but fast swipes stay accurate.</string>
     <string name="settings_replay_delay">Wait after replaying</string>
+    <string name="settings_section_editing">Editing</string>
+    <string name="settings_edit_handle">Grab handle size</string>
+    <string name="settings_edit_handle_body">The ring drawn on a selected marker, and how close you have to touch to grab it. Larger is easier to hit; the marker dot itself stays small, because it points at one exact pixel.</string>
+    <string name="value_dp">%1$d dp</string>
     <string name="settings_section_appearance">Appearance</string>
     <string name="settings_ui_scale">Toolbar size</string>
     <string name="settings_ui_opacity">Toolbar opacity</string>
