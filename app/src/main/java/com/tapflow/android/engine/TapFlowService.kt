@@ -14,6 +14,7 @@ import android.widget.Toast
 import com.tapflow.android.MainActivity
 import com.tapflow.android.WorkspaceDialogActivity
 import com.tapflow.android.R
+import com.tapflow.android.data.AppMode
 import com.tapflow.android.data.GestureStep
 import com.tapflow.android.data.GlobalKind
 import com.tapflow.android.data.GlobalStep
@@ -167,7 +168,10 @@ class TapFlowService : AccessibilityService() {
 
         // Each step is isolated so one bad piece of saved state cannot stop the service coming up.
         // Whatever fails is reported in the app rather than only in logcat.
-        step("restore workspace") { Workspace.restore() }
+        // Both, because the service can reconnect without the process dying and the question belongs to
+        // this startup rather than the last one.
+        recoveryAsked = false
+        step("restore workspace") { recoveredDraft = Workspace.restore() }
 
         // Deliberately nothing here touches serviceInfo.
         //
@@ -434,6 +438,9 @@ class TapFlowService : AccessibilityService() {
         }
         scope.launch { Workspace.steps.collect { syncOverlay() } }
         scope.launch { Repo.currentFlowId.collect { syncOverlay() } }
+        // Both, not just the mode: flow mode with nothing loaded is a real state, and which one it is
+        // decides whether play and the flow buttons are live.
+        scope.launch { Repo.mode.collect { syncOverlay() } }
         scope.launch { Repo.flows.collect { syncOverlay() } }
         scope.launch { Repo.settings.collect { syncOverlay() } }
         scope.launch { EngineState.mode.collect { syncOverlay() } }
@@ -461,6 +468,37 @@ class TapFlowService : AccessibilityService() {
     }
 
     // --- Rendering -----------------------------------------------------------
+
+    /**
+     * Whether startup brought back unsaved steps, and whether that has been raised yet.
+     *
+     * Every deliberate way out empties the workspace, so a dirty draft on disk means the last process
+     * died — which is the whole detection mechanism, no flag written anywhere.
+     */
+    private var recoveredDraft = false
+    private var recoveryAsked = false
+
+    /**
+     * Asks once, the first time the toolbar is actually on screen.
+     *
+     * Not at startup: the service can connect long before anything is visible, and a question nobody can
+     * see is a question that gets answered by whatever happens next. Not in the app either — the workspace
+     * is only reachable through the toolbar, so this is where it can be acted on.
+     *
+     * Doing nothing on "keep" is correct: the steps are already in memory. Ignoring the question entirely
+     * is also safe for the same reason, which is why it is asked after restoring rather than before.
+     */
+    private fun askAboutRecoveredDraft() {
+        if (!recoveredDraft || recoveryAsked) return
+        if (EngineState.optionPadOpen.value || EngineState.numberPadOpen.value) return
+        recoveryAsked = true
+        openOptionPad(
+            OptionRequest(
+                title = getString(R.string.recover_title),
+                labels = listOf(getString(R.string.recover_keep), getString(R.string.recover_discard)),
+            ) { index -> if (index == 1) Session.startFresh() }
+        )
+    }
 
     private fun syncOverlay() {
         if (!host.isAttached(toolbar)) return
@@ -491,8 +529,11 @@ class TapFlowService : AccessibilityService() {
             stepListOpen = EngineState.stepListOpen.value,
             stepPanelOpen = EngineState.paramPanelOpen.value,
             flowMode = flowMode,
+            hasFlow = Repo.currentFlowId.value != null,
         )
         host.update(toolbar, toolbarParams)
+
+        askAboutRecoveredDraft()
 
         // One figure drives the drawn ring, the grab radius and the separation two ends need before both
         // get a ring of their own — see Settings.editHandleDp. Keeping them derived from one another is
@@ -886,9 +927,11 @@ class TapFlowService : AccessibilityService() {
         Diag.clear()
         Diag.log("record start")
 
-        // Recording is the way out of flow mode. Blocking it there would be obstructive, and there is
-        // nothing to protect: the flow is saved, so switching costs nothing.
-        leaveFlowMode()
+        // Recording belongs to clip mode. The button is not on the flow toolbar at all, so this guards a
+        // second route in — the ball's resume-recording tap — rather than something the user can ask for.
+        // It returns instead of switching mode, because switching silently here is precisely the hidden
+        // transition the mode button was added to replace.
+        if (flowMode) return
 
         exitEditing()
         EngineState.toolbarForm.value = ToolbarForm.EXPANDED
@@ -989,11 +1032,34 @@ class TapFlowService : AccessibilityService() {
         return ScreenSpec(size.x, size.y, host.rotation())
     }
 
-    /** Whether a flow is loaded, which is the same thing as being in flow mode. */
-    private val flowMode: Boolean get() = Repo.currentFlowId.value != null
+    private val flowMode: Boolean get() = Repo.mode.value == AppMode.FLOW
 
     private fun startPlayback() {
         if (flowMode) startFlowPlayback() else startWorkspacePlayback()
+    }
+
+    /**
+     * Runs [proceed], asking first if that would throw away unsaved work.
+     *
+     * One helper behind every way of discarding the workspace — turning the toolbar off, switching mode,
+     * loading something else, starting fresh. Each of those used to warn in its own words, with its own
+     * step count, and two of them did not warn at all. The differences were not worth the four dialogs.
+     *
+     * There is no "save" option here on purpose. Saving a fresh recording needs a name, which needs an
+     * activity, which means holding the pending action across a trip out to it and back — for every one of
+     * the callers. Cancel and press save is one more tap and no state machine.
+     */
+    private fun confirmDiscard(proceed: () -> Unit) {
+        if (!Session.needsConfirm) {
+            proceed()
+            return
+        }
+        openOptionPad(
+            OptionRequest(
+                title = getString(R.string.discard_warning),
+                labels = listOf(getString(R.string.dialog_confirm), getString(R.string.dialog_cancel)),
+            ) { index -> if (index == 0) proceed() }
+        )
     }
 
     private fun startWorkspacePlayback() {
@@ -1041,17 +1107,6 @@ class TapFlowService : AccessibilityService() {
     }
 
     /**
-     * Puts the workspace back in charge, unloading any flow.
-     *
-     * Free in this direction and so done without asking: a flow is already saved, so unloading one loses
-     * nothing. The opposite direction is not free — loading a flow clears the workspace — which is why
-     * that one warns first, in the app where there is room to explain.
-     */
-    private fun leaveFlowMode() {
-        if (flowMode) Repo.setCurrentFlow(null)
-    }
-
-    /**
      * Where the next playback should begin. Consumed by [startPlayback] and reset immediately.
      *
      * Held here rather than passed through, because the request comes from the parameter card while the
@@ -1077,8 +1132,17 @@ class TapFlowService : AccessibilityService() {
         if (EngineState.editing.value) EngineState.selectedStepId.value = id
     }
 
+    /**
+     * The guard is on saving only, and naming which mode it applies to matters.
+     *
+     * It used to read "anything except LOAD", back when starting a new clip was one of these too and an
+     * empty workspace really did make three of the four pointless. That inverted default then swallowed
+     * `⊕ new flow` on the toolbar: flow mode keeps the workspace empty, so the one button for creating a
+     * flow from the toolbar answered "nothing to save" and never opened the dialog at all. Listing what
+     * the rule is *for* cannot go wrong the same way when a fifth mode is added.
+     */
     private fun openWorkspaceDialog(mode: WorkspaceDialogActivity.Mode, stepId: String? = null) {
-        if (mode != WorkspaceDialogActivity.Mode.LOAD && Workspace.isEmpty) {
+        if (mode == WorkspaceDialogActivity.Mode.SAVE && Workspace.isEmpty) {
             toast(getString(R.string.toast_nothing_to_save))
             return
         }
@@ -1774,7 +1838,43 @@ class TapFlowService : AccessibilityService() {
 
         override fun onLoad() = openWorkspaceDialog(WorkspaceDialogActivity.Mode.LOAD)
 
-        override fun onNewClip() = openWorkspaceDialog(WorkspaceDialogActivity.Mode.NEW)
+        /**
+         * Opens the loaded flow's arrangement screen.
+         *
+         * An activity, like every other list-and-text screen: the flow editor has sliders and a clip
+         * picker, and it is the same screen the app's flow rows open — one editor, two ways in.
+         */
+        override fun onEditFlow() {
+            val flow = Repo.currentFlow() ?: return
+            startActivity(
+                Intent(this@TapFlowService, MainActivity::class.java)
+                    .putExtra(MainActivity.EXTRA_OPEN_FLOW, flow.id)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        }
+
+        /**
+         * Switches mode, after asking if that would cost unsaved steps.
+         *
+         * No dialog of its own — the same [confirmDiscard] every other discard goes through. Switching
+         * empties both sides, so the answer to "what does play do" stays readable off the mode alone.
+         */
+        override fun onToggleMode() = confirmDiscard {
+            Session.switchMode(if (flowMode) AppMode.CLIP else AppMode.FLOW)
+            toast(getString(if (flowMode) R.string.toast_mode_flow else R.string.toast_mode_clip))
+        }
+
+        /**
+         * Clears the workspace. No activity involved any more.
+         *
+         * It used to open one purely to show a "this will clear N actions" confirmation, which is what
+         * [confirmDiscard] now says for every caller — and on a clean workspace there was nothing to
+         * confirm, so the activity was a screen that appeared to ask a question with only one answer.
+         */
+        override fun onNewClip() = confirmDiscard {
+            Session.startFresh()
+            toast(getString(R.string.toast_workspace_cleared))
+        }
 
         /**
          * While editing this is the isolate toggle, not the density cycle.
@@ -1805,8 +1905,13 @@ class TapFlowService : AccessibilityService() {
          * and because the form was never reset there was no way back — the app switch, and even
          * restarting the accessibility service, both restored the same unhittable sliver. Turning the
          * overlay off is honest, the app switch mirrors it, and the toast says how to undo it.
+         *
+         * This is the deliberate exit, so it empties the workspace. That is what lets a dirty draft on
+         * disk mean "the process died" and nothing else — see [Session.close]. Use the collapse button
+         * to put the toolbar out of the way without ending the session.
          */
-        override fun onDismiss() {
+        override fun onDismiss() = confirmDiscard {
+            Session.close()
             Repo.setOverlayEnabled(false)
             toast(getString(R.string.toast_toolbar_hidden))
         }

@@ -51,20 +51,38 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tapflow.android.BuildConfig
 import com.tapflow.android.R
+import com.tapflow.android.data.AppMode
 import com.tapflow.android.data.Clip
 import com.tapflow.android.data.Flow
 import com.tapflow.android.data.Repo
 import com.tapflow.android.text.flowSummary
 import com.tapflow.android.engine.EngineState
-import com.tapflow.android.engine.Workspace
+import com.tapflow.android.engine.Session
 import com.tapflow.android.text.clipSummary
 
+/**
+ * The launch screen.
+ *
+ * Not a mode selector, and not the only way to load something. Its job is to get you into a mode with
+ * something in it and then get out of the way — because everything you actually *do* with a clip happens
+ * on top of another app, where the toolbar is. So loading here closes this screen.
+ *
+ * Loading lives on the row itself rather than in the `⋮` menu. It used to be the other way round, which
+ * left tapping a clip row doing nothing at all while tapping a flow row opened an editor: the main action
+ * buried in a menu, and the most direct gesture meaning two different things. The menu keeps what is left,
+ * which is maintenance.
+ *
+ * "Start without loading" exists because neither list answers the commonest opening move. Making the lists
+ * the way into a mode leaves a hole exactly where a first-time user stands — there is no row to tap when
+ * what you want is to record something new.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     onOpenSettings: () -> Unit,
     onOpenDiagnostics: () -> Unit,
-    onOpenFlow: (String) -> Unit,
+    onOpenFlow: (String, Boolean) -> Unit,
+    onClose: () -> Unit,
 ) {
     val context = LocalContext.current
     val service = rememberServiceState()
@@ -74,7 +92,33 @@ fun HomeScreen(
     val clips by Repo.clips.collectAsStateWithLifecycle()
     val flows by Repo.flows.collectAsStateWithLifecycle()
     val currentFlowId by Repo.currentFlowId.collectAsStateWithLifecycle()
+    val currentClipId by Repo.currentClipId.collectAsStateWithLifecycle()
+    val mode by Repo.mode.collectAsStateWithLifecycle()
     var creatingFlow by remember { mutableStateOf(false) }
+    var pendingStart by remember { mutableStateOf(false) }
+    var closingToolbar by remember { mutableStateOf(false) }
+
+    /**
+     * Hands over to the toolbar.
+     *
+     * Turning the overlay on is part of loading, not a separate step the user has to remember: loading
+     * means "I am about to use this", and the toolbar is how it gets used. Closing is skipped when the
+     * service is not running, because then there would be nothing on screen at all — the permission card
+     * at the top is what that user needs, so leave them looking at it.
+     */
+    fun handOver() {
+        if (status != ServiceStatus.RUNNING) {
+            Toast.makeText(context, context.getString(R.string.toast_service_off), Toast.LENGTH_SHORT).show()
+            return
+        }
+        Repo.setOverlayEnabled(true)
+        onClose()
+    }
+
+    fun startFresh() {
+        Session.startFresh()
+        handOver()
+    }
 
     Scaffold(
         topBar = {
@@ -117,8 +161,38 @@ fun HomeScreen(
                     // temporary state into "the switch does nothing".
                     enabled = status != ServiceStatus.DISABLED,
                     checked = overlayEnabled,
-                    onCheckedChange = { Repo.setOverlayEnabled(it) },
+                    onCheckedChange = { on ->
+                        // Turning it off is a deliberate exit, so it empties the workspace — the same act
+                        // as the toolbar's own dismiss, and the same question first.
+                        if (!on) {
+                            guardDiscard({ Session.close(); Repo.setOverlayEnabled(false) }) {
+                                closingToolbar = true
+                            }
+                        } else {
+                            Repo.setOverlayEnabled(true)
+                        }
+                    },
                 )
+            }
+
+            item {
+                // Which mode a load would land you in, and which one is already in force. Read-only:
+                // switching lives on the toolbar alone, for the same reason loading lives in one place —
+                // one act, one entry point. Loading a row below is what changes it from here.
+                Text(
+                    stringResource(
+                        if (mode == AppMode.FLOW) R.string.home_mode_flow else R.string.home_mode_clip
+                    ),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
+
+            item {
+                OutlinedButton(onClick = { guardDiscard(::startFresh) { pendingStart = true } }) {
+                    Text(stringResource(R.string.home_start_fresh))
+                }
             }
 
             item {
@@ -139,7 +213,19 @@ fun HomeScreen(
                 }
             } else {
                 items(clips, key = { it.id }) { clip ->
-                    ClipRow(clip)
+                    ClipRow(
+                        clip = clip,
+                        loaded = mode == AppMode.CLIP && clip.id == currentClipId,
+                        onLoad = {
+                            Session.loadClip(clip)
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.toast_loaded, clip.name),
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                            handOver()
+                        },
+                    )
                 }
             }
 
@@ -164,14 +250,23 @@ fun HomeScreen(
                     FlowRow(
                         flow = flow,
                         clips = clips,
-                        loaded = flow.id == currentFlowId,
-                        onOpen = { onOpenFlow(flow.id) },
+                        loaded = mode == AppMode.FLOW && flow.id == currentFlowId,
+                        onLoad = {
+                            Session.loadFlow(flow)
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.toast_flow_loaded, flow.name),
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                            handOver()
+                        },
+                        onArrange = { onOpenFlow(flow.id, false) },
                     )
                 }
             }
 
-            // The only way to make the *first* one. The toolbar can create flows too, but only in flow
-            // mode, and flow mode needs a flow to be loaded — so without this there was no way in at all.
+            // Flow mode's own "start without loading": a flow is made by arranging clips, which needs a
+            // list on a real screen, so unlike a clip it cannot begin on the toolbar.
             item {
                 OutlinedButton(onClick = { creatingFlow = true }) {
                     Text(stringResource(R.string.flow_new_title))
@@ -205,9 +300,26 @@ fun HomeScreen(
             )
             Repo.upsertFlow(flow)
             creatingFlow = false
-            // Straight into the editor: a flow with no clips in it does nothing, so naming it is only
-            // half of what you came to do.
-            onOpenFlow(flow.id)
+            // Loaded as well as created, the same as picking an existing row: "new flow" is flow mode's
+            // way in, so it would be odd for it to leave you in clip mode. Then straight into the editor,
+            // because a flow with no clips in it does nothing — naming it is half of what you came to do.
+            Session.loadFlow(flow)
+            onOpenFlow(flow.id, true)
+        }
+    }
+
+    if (pendingStart) {
+        DiscardConfirmDialog(onDismiss = { pendingStart = false }) {
+            pendingStart = false
+            startFresh()
+        }
+    }
+
+    if (closingToolbar) {
+        DiscardConfirmDialog(onDismiss = { closingToolbar = false }) {
+            closingToolbar = false
+            Session.close()
+            Repo.setOverlayEnabled(false)
         }
     }
 }
@@ -311,14 +423,22 @@ private fun ToolbarSwitch(enabled: Boolean, checked: Boolean, onCheckedChange: (
     }
 }
 
+/**
+ * One saved clip. Tapping it loads it and hands over to the toolbar.
+ *
+ * The `⋮` keeps only what is left after load moved onto the row: rename and delete, which are library
+ * maintenance and need a keyboard or a confirmation. There is nothing else a clip row could offer, because
+ * everything you do *to* a clip — record over it, edit its steps, play it — happens on the target app.
+ */
 @Composable
-private fun ClipRow(clip: Clip) {
+private fun ClipRow(clip: Clip, loaded: Boolean, onLoad: () -> Unit) {
     val context = LocalContext.current
     var menuOpen by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
     var confirmingDelete by remember { mutableStateOf(false) }
+    var confirmingLoad by remember { mutableStateOf(false) }
 
-    Card {
+    Card(Modifier.fillMaxWidth().clickable { guardDiscard(onLoad) { confirmingLoad = true } }) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -339,26 +459,21 @@ private fun ClipRow(clip: Clip) {
                 )
             }
 
+            // At most one row in either list ever carries this, which is what switching modes emptying
+            // both sides buys: the badge is the whole answer to "what does play run".
+            if (loaded) {
+                Text(
+                    stringResource(R.string.home_loaded),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+
             IconButton(onClick = { menuOpen = true }) {
                 Icon(Icons.Filled.MoreVert, contentDescription = null)
             }
 
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.clip_action_load)) },
-                    onClick = {
-                        menuOpen = false
-                        // Unload any flow: exactly one of the two is ever loaded, so play has one
-                        // meaning. Free in this direction, since a flow is already saved.
-                        Repo.setCurrentFlow(null)
-                        Workspace.load(clip)
-                        Toast.makeText(
-                            context,
-                            context.getString(R.string.toast_loaded, clip.name),
-                            Toast.LENGTH_SHORT,
-                        ).show()
-                    },
-                )
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.clip_action_rename)) },
                     onClick = { menuOpen = false; renaming = true },
@@ -369,6 +484,13 @@ private fun ClipRow(clip: Clip) {
                     onClick = { menuOpen = false; confirmingDelete = true },
                 )
             }
+        }
+    }
+
+    if (confirmingLoad) {
+        DiscardConfirmDialog(onDismiss = { confirmingLoad = false }) {
+            confirmingLoad = false
+            onLoad()
         }
     }
 
@@ -412,25 +534,12 @@ private fun ClipRow(clip: Clip) {
     }
 }
 
-/**
- * One flow in the home list.
- *
- * Tapping it opens the editor. There is no play button here: playing is the toolbar's job, in the target
- * app, which is where you actually want to be when a flow runs. The badge says whether this is the flow the
- * toolbar will play — with a flow and the workspace being mutually exclusive, that is the whole answer to
- * "what happens when I press play".
- */
-/**
- * Names and creates a flow.
- *
- * Deliberately does **not** load it, unlike the toolbar's version. Creating a flow from the app should not
- * clear the workspace out from under whatever you were recording; the toolbar's create happens when a flow
- * is already loaded, so there is nothing left to protect there. Opening the editor straight afterwards is
- * what you wanted anyway — a flow with no clips in it does nothing.
- */
+/** Names a flow. Creating one loads it, so confirm on the way out if that costs unsaved steps. */
 @Composable
 private fun NewFlowDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) {
     var name by remember { mutableStateOf("") }
+    var confirming by remember { mutableStateOf(false) }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.flow_new_title)) },
@@ -443,22 +552,35 @@ private fun NewFlowDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) {
             )
         },
         confirmButton = {
-            TextButton(onClick = { onCreate(name) }, enabled = name.isNotBlank()) {
-                Text(stringResource(R.string.flow_new_confirm))
-            }
+            TextButton(
+                onClick = { guardDiscard({ onCreate(name) }) { confirming = true } },
+                enabled = name.isNotBlank(),
+            ) { Text(stringResource(R.string.flow_new_confirm)) }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.dialog_cancel)) }
         },
     )
+
+    if (confirming) {
+        DiscardConfirmDialog(onDismiss = { confirming = false }) { onCreate(name) }
+    }
 }
 
+/**
+ * One saved flow. Tapping it loads it, exactly as a clip row does.
+ *
+ * Arranging moved into the `⋮`, which is a demotion of the thing a flow needs most — but tapping the row
+ * had to mean the same as tapping a clip row, and there are now two other ways to the editor: this menu
+ * without loading, and the toolbar's pencil once it is loaded.
+ */
 @Composable
 private fun FlowRow(
     flow: Flow,
     clips: List<Clip>,
     loaded: Boolean,
-    onOpen: () -> Unit,
+    onLoad: () -> Unit,
+    onArrange: () -> Unit,
 ) {
     val context = LocalContext.current
     var menuOpen by remember { mutableStateOf(false) }
@@ -466,17 +588,7 @@ private fun FlowRow(
     var confirmingDelete by remember { mutableStateOf(false) }
     var confirmingLoad by remember { mutableStateOf(false) }
 
-    fun loadNow() {
-        Workspace.clear()
-        Repo.setCurrentFlow(flow.id)
-        Toast.makeText(
-            context,
-            context.getString(R.string.toast_flow_loaded, flow.name),
-            Toast.LENGTH_SHORT,
-        ).show()
-    }
-
-    Card(Modifier.fillMaxWidth().clickable { onOpen() }) {
+    Card(Modifier.fillMaxWidth().clickable { guardDiscard(onLoad) { confirmingLoad = true } }) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -499,7 +611,7 @@ private fun FlowRow(
 
             if (loaded) {
                 Text(
-                    stringResource(R.string.home_flow_loaded),
+                    stringResource(R.string.home_loaded),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
                 )
@@ -509,17 +621,13 @@ private fun FlowRow(
                 Icon(Icons.Filled.MoreVert, contentDescription = null)
             }
 
-            // The same three a clip row offers, which is what "flows work like clips" has to mean if it
-            // means anything. Load was missing here, and it is the only way into flow mode from the app —
-            // tapping the row opens the editor, which is a different thing entirely.
+            // Arrange is the one a clip row has no equivalent of, and that asymmetry is real rather than
+            // an oversight: a clip's content is captured by gesture on top of another app, a flow's is a
+            // list of references arranged on a screen. Rename and delete are the same two either way.
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                 DropdownMenuItem(
-                    text = { Text(stringResource(R.string.flow_action_load)) },
-                    onClick = {
-                        menuOpen = false
-                        // Loading a flow clears the workspace, so unsaved work gets a question first.
-                        if (Workspace.dirty.value) confirmingLoad = true else loadNow()
-                    },
+                    text = { Text(stringResource(R.string.flow_action_arrange)) },
+                    onClick = { menuOpen = false; onArrange() },
                 )
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.clip_action_rename)) },
@@ -535,21 +643,10 @@ private fun FlowRow(
     }
 
     if (confirmingLoad) {
-        AlertDialog(
-            onDismissRequest = { confirmingLoad = false },
-            title = { Text(stringResource(R.string.flow_action_load)) },
-            text = { Text(stringResource(R.string.flow_unsaved_warning, Workspace.size)) },
-            confirmButton = {
-                TextButton(onClick = { confirmingLoad = false; loadNow() }) {
-                    Text(stringResource(R.string.dialog_confirm))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmingLoad = false }) {
-                    Text(stringResource(R.string.dialog_cancel))
-                }
-            },
-        )
+        DiscardConfirmDialog(onDismiss = { confirmingLoad = false }) {
+            confirmingLoad = false
+            onLoad()
+        }
     }
 
     if (renaming) {

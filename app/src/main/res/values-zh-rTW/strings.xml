@@ -50,12 +50,11 @@
     <string name="flow_node_repeat">×%1$d</string>
     <string name="flow_node_interval">每 %1$d ms</string>
     <string name="flow_node_settings_title">第 %1$d 個片段</string>
-    <string name="home_flow_loaded">已讀取</string>
+    <string name="home_loaded">已讀取</string>
     <string name="flow_summary">%1$d 個片段 · 約 %2$s</string>
     <string name="flow_new_title">新建流程</string>
     <string name="flow_new_confirm">建立</string>
     <string name="flow_name_label">流程名稱</string>
-    <string name="flow_unsaved_warning">讀取流程會清掉工作區 —— %1$d 個還沒儲存的動作會不見。</string>
     <string name="flow_delete_title">要刪除「%1$s」嗎?流程刪掉無法復原。</string>
     <string name="toast_flow_created">已建立並讀取「%1$s」</string>
     <string name="toast_flow_loaded">已讀取「%1$s」</string>
@@ -141,8 +140,6 @@
     <string name="home_version">版本 %1$s</string>
 
     <!-- 片段操作 -->
-    <string name="flow_action_load">讀取(按播放就跑這條)</string>
-    <string name="clip_action_load">載入到工作區</string>
     <string name="clip_action_rename">重新命名</string>
     <string name="clip_action_delete">刪除</string>
     <string name="clip_rename_title">重新命名片段</string>
@@ -215,11 +212,6 @@
     <string name="save_as_new">另存為新片段,不覆蓋原本的</string>
     <string name="load_title">讀取片段</string>
     <string name="load_empty">還沒有存過任何片段。</string>
-    <string name="load_unsaved_warning">工作區有 %1$d 個未儲存的動作,讀取會取代它們。</string>
-    <string name="new_title">開新的片段</string>
-    <string name="new_body">會清空畫面上的 %1$d 個動作,未儲存的內容會消失。</string>
-    <string name="new_body_empty">工作區本來就是空的。</string>
-    <string name="new_confirm">清空</string>
     <string name="toast_workspace_cleared">工作區已清空</string>
 
     <!-- 診斷 -->
@@ -273,4 +265,20 @@
     <string name="value_times">%1$d 次</string>
     <string name="value_multiplier">%1$s 倍</string>
 
+
+    <!-- Mode, and the one shared question every discard asks. -->
+    <string name="action_mode_clip">片段模式 —— 按一下切到流程</string>
+    <string name="action_mode_flow">流程模式 —— 按一下切到片段</string>
+    <string name="action_edit_flow">編排這條流程</string>
+    <string name="toast_mode_clip">片段模式</string>
+    <string name="toast_mode_flow">流程模式</string>
+    <string name="discard_warning">有修改沒儲存,會丟失。</string>
+    <string name="recover_title">上次未正常關閉,要復原沒存到的動作嗎?</string>
+    <string name="recover_keep">復原</string>
+    <string name="recover_discard">丟棄</string>
+    <string name="home_start_fresh">直接開始(不讀檔)</string>
+    <string name="flow_action_arrange">編排</string>
+    <string name="home_mode_clip">片段模式</string>
+    <string name="home_mode_flow">流程模式</string>
+    <string name="toast_service_off">請先啟用無障礙服務。</string>
 </resources>
