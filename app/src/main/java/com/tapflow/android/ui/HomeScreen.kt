@@ -74,6 +74,7 @@ fun HomeScreen(
     val clips by Repo.clips.collectAsStateWithLifecycle()
     val flows by Repo.flows.collectAsStateWithLifecycle()
     val currentFlowId by Repo.currentFlowId.collectAsStateWithLifecycle()
+    var creatingFlow by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -165,7 +166,16 @@ fun HomeScreen(
                         clips = clips,
                         loaded = flow.id == currentFlowId,
                         onOpen = { onOpenFlow(flow.id) },
+                        onDelete = { Repo.deleteFlow(flow.id) },
                     )
+                }
+            }
+
+            // The only way to make the *first* one. The toolbar can create flows too, but only in flow
+            // mode, and flow mode needs a flow to be loaded — so without this there was no way in at all.
+            item {
+                OutlinedButton(onClick = { creatingFlow = true }) {
+                    Text(stringResource(R.string.flow_new_title))
                 }
             }
 
@@ -184,6 +194,21 @@ fun HomeScreen(
                 }
                 Spacer(Modifier.height(24.dp))
             }
+        }
+    }
+
+    if (creatingFlow) {
+        NewFlowDialog(onDismiss = { creatingFlow = false }) { name ->
+            val flow = Flow(
+                name = name.trim(),
+                clips = emptyList(),
+                createdAt = System.currentTimeMillis(),
+            )
+            Repo.upsertFlow(flow)
+            creatingFlow = false
+            // Straight into the editor: a flow with no clips in it does nothing, so naming it is only
+            // half of what you came to do.
+            onOpenFlow(flow.id)
         }
     }
 }
@@ -393,8 +418,47 @@ private fun ClipRow(clip: Clip) {
  * toolbar will play — with a flow and the workspace being mutually exclusive, that is the whole answer to
  * "what happens when I press play".
  */
+/**
+ * Names and creates a flow.
+ *
+ * Deliberately does **not** load it, unlike the toolbar's version. Creating a flow from the app should not
+ * clear the workspace out from under whatever you were recording; the toolbar's create happens when a flow
+ * is already loaded, so there is nothing left to protect there. Opening the editor straight afterwards is
+ * what you wanted anyway — a flow with no clips in it does nothing.
+ */
 @Composable
-private fun FlowRow(flow: Flow, clips: List<Clip>, loaded: Boolean, onOpen: () -> Unit) {
+private fun NewFlowDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) {
+    var name by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.flow_new_title)) },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text(stringResource(R.string.flow_name_label)) },
+                singleLine = true,
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onCreate(name) }, enabled = name.isNotBlank()) {
+                Text(stringResource(R.string.flow_new_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.dialog_cancel)) }
+        },
+    )
+}
+
+@Composable
+private fun FlowRow(
+    flow: Flow,
+    clips: List<Clip>,
+    loaded: Boolean,
+    onOpen: () -> Unit,
+    onDelete: () -> Unit,
+) {
     val resources = LocalContext.current.resources
     Card(Modifier.fillMaxWidth().clickable { onOpen() }) {
         Row(
@@ -419,6 +483,26 @@ private fun FlowRow(flow: Flow, clips: List<Clip>, loaded: Boolean, onOpen: () -
                     stringResource(R.string.home_flow_loaded),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
+                )
+            }
+            var confirming by remember { mutableStateOf(false) }
+            IconButton(onClick = { confirming = true }) {
+                Text("−", style = MaterialTheme.typography.titleMedium)
+            }
+            if (confirming) {
+                AlertDialog(
+                    onDismissRequest = { confirming = false },
+                    title = { Text(stringResource(R.string.flow_delete_title, flow.name)) },
+                    confirmButton = {
+                        TextButton(onClick = { confirming = false; onDelete() }) {
+                            Text(stringResource(R.string.dialog_confirm))
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { confirming = false }) {
+                            Text(stringResource(R.string.dialog_cancel))
+                        }
+                    },
                 )
             }
         }

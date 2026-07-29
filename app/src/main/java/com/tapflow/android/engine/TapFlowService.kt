@@ -1752,8 +1752,6 @@ class TapFlowService : AccessibilityService() {
          */
         override fun onNewFlow() = openWorkspaceDialog(WorkspaceDialogActivity.Mode.NEW_FLOW)
 
-        override fun onLoadFlow() = openWorkspaceDialog(WorkspaceDialogActivity.Mode.LOAD_FLOW)
-
         /**
          * Deletes the loaded flow, after asking.
          *

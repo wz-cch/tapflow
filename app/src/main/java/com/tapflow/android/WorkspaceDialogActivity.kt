@@ -61,7 +61,7 @@ import com.tapflow.android.ui.TapFlowTheme
  */
 class WorkspaceDialogActivity : ComponentActivity() {
 
-    enum class Mode { SAVE, LOAD, NEW, NOTE, NEW_FLOW, LOAD_FLOW }
+    enum class Mode { SAVE, LOAD, NEW, NOTE, NEW_FLOW }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -78,7 +78,7 @@ class WorkspaceDialogActivity : ComponentActivity() {
             TapFlowTheme {
                 when (mode) {
                     Mode.SAVE -> SaveDialog(::finish) { name, asNew -> save(name, asNew) }
-                    Mode.LOAD -> LoadDialog(::finish) { clip -> load(clip) }
+                    Mode.LOAD -> LoadDialog(::finish, { clip -> load(clip) }) { flow -> loadFlow(flow) }
                     Mode.NEW -> NewDialog(::finish) { startNew() }
                     Mode.NOTE -> {
                         val step = Workspace.stepById(intent.getStringExtra(EXTRA_STEP_ID)) as? PauseStep
@@ -86,7 +86,6 @@ class WorkspaceDialogActivity : ComponentActivity() {
                     }
 
                     Mode.NEW_FLOW -> NewFlowDialog(::finish) { name -> createFlow(name) }
-                    Mode.LOAD_FLOW -> LoadFlowDialog(::finish) { flow -> loadFlow(flow) }
                 }
             }
         }
@@ -207,22 +206,35 @@ private fun SaveDialog(onDismiss: () -> Unit, onSave: (name: String, asNew: Bool
     )
 }
 
+/**
+ * Loads one thing, and what you pick decides the mode.
+ *
+ * Clips and flows in one dialog rather than two, because loading is one act with one meaning: exactly one
+ * of the two is ever loaded (SPEC 10.5), so "load" needs no noun and the toolbar needs only one button for
+ * it. Two separate load buttons would also have had to share an icon in the same mode, which is the
+ * ambiguity that keeping them mode-exclusive was meant to avoid — and that exclusivity is what made flow
+ * mode unreachable in the first place, since you cannot load a flow from a toolbar that only offers clips.
+ */
 @Composable
-private fun LoadDialog(onDismiss: () -> Unit, onPick: (Clip) -> Unit) {
+private fun LoadDialog(
+    onDismiss: () -> Unit,
+    onPickClip: (Clip) -> Unit,
+    onPickFlow: (Flow) -> Unit,
+) {
     val resources = androidx.compose.ui.platform.LocalContext.current.resources
     val clips = Repo.clips.value
+    val flows = Repo.flows.value
     val dirty = Workspace.dirty.value
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.load_title)) },
         text = {
-            if (clips.isEmpty()) {
+            if (clips.isEmpty() && flows.isEmpty()) {
                 Text(stringResource(R.string.load_empty))
             } else {
                 Column {
-                    // Loading replaces what is on screen, so say so before it happens rather than
-                    // after.
+                    // Loading replaces what is on screen, so say so before it happens rather than after.
                     if (dirty) {
                         Text(
                             stringResource(R.string.load_unsaved_warning, Workspace.size),
@@ -231,25 +243,27 @@ private fun LoadDialog(onDismiss: () -> Unit, onPick: (Clip) -> Unit) {
                         )
                         Spacer(Modifier.height(8.dp))
                     }
-                    LazyColumn(Modifier.heightIn(max = 320.dp)) {
-                        items(clips, key = { it.id }) { clip ->
-                            Column(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .clickable { onPick(clip) }
-                                    .padding(vertical = 10.dp)
-                            ) {
-                                Text(
-                                    clip.name,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Text(
-                                    clipSummary(resources, clip),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
+                    LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                        if (flows.isNotEmpty()) {
+                            item {
+                                SectionLabel(stringResource(R.string.home_tab_flows))
+                            }
+                            items(flows, key = { "flow-" + it.id }) { flow ->
+                                PickRow(
+                                    title = flow.name,
+                                    subtitle = flowSummary(resources, flow, clips),
+                                ) { onPickFlow(flow) }
+                            }
+                        }
+                        if (clips.isNotEmpty()) {
+                            item {
+                                SectionLabel(stringResource(R.string.home_tab_clips))
+                            }
+                            items(clips, key = { "clip-" + it.id }) { clip ->
+                                PickRow(
+                                    title = clip.name,
+                                    subtitle = clipSummary(resources, clip),
+                                ) { onPickClip(clip) }
                             }
                         }
                     }
@@ -260,6 +274,38 @@ private fun LoadDialog(onDismiss: () -> Unit, onPick: (Clip) -> Unit) {
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.dialog_cancel)) }
         },
     )
+}
+
+@Composable
+private fun SectionLabel(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(top = 12.dp, bottom = 2.dp),
+    )
+}
+
+@Composable
+private fun PickRow(title: String, subtitle: String, onClick: () -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp)
+    ) {
+        Text(
+            title,
+            style = MaterialTheme.typography.bodyLarge,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            subtitle,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
 
 @Composable
@@ -369,56 +415,3 @@ private fun NewFlowDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) {
     )
 }
 
-@Composable
-private fun LoadFlowDialog(onDismiss: () -> Unit, onPick: (Flow) -> Unit) {
-    val resources = androidx.compose.ui.platform.LocalContext.current.resources
-    val flows = Repo.flows.value
-    val clips = Repo.clips.value
-    val dirty = Workspace.dirty.value
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.flow_load_title)) },
-        text = {
-            if (flows.isEmpty()) {
-                Text(stringResource(R.string.flow_load_empty))
-            } else {
-                Column {
-                    if (dirty) {
-                        Text(
-                            stringResource(R.string.flow_unsaved_warning, Workspace.size),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                        Spacer(Modifier.height(8.dp))
-                    }
-                    LazyColumn(Modifier.heightIn(max = 320.dp)) {
-                        items(flows, key = { it.id }) { flow ->
-                            Column(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .clickable { onPick(flow) }
-                                    .padding(vertical = 10.dp)
-                            ) {
-                                Text(
-                                    flow.name,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Text(
-                                    flowSummary(resources, flow, clips),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.dialog_cancel)) }
-        },
-    )
-}

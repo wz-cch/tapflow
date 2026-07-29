@@ -91,7 +91,6 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
          * you which noun is in force is the play button, which is a different icon in flow mode.
          */
         fun onNewFlow()
-        fun onLoadFlow()
         fun onDeleteFlow()
         fun onCycleDensity()
         fun onToggleQuickSettings()
@@ -160,7 +159,6 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
     private val save = icon(R.drawable.ic_save)
     private val load = icon(R.drawable.ic_folder_open)
     private val newFlow = icon(R.drawable.ic_new_clip)
-    private val loadFlow = icon(R.drawable.ic_folder_open)
     private val deleteFlow = icon(R.drawable.ic_remove)
     private val eye = icon(R.drawable.ic_eye)
     private val quickSettings = icon(R.drawable.ic_tune)
@@ -177,7 +175,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
     private val scrollingButtons = listOf(
         primary, playFrom, secondary, edit, insertStep, duplicateStep, insertGlobal, insertPause,
         insertWait, deleteStep, undo, stepPanelToggle, stepListToggle, newClip, save, load,
-        newFlow, loadFlow, deleteFlow, eye, quickSettings, dismiss, collapse,
+        newFlow, deleteFlow, eye, quickSettings, dismiss, collapse,
     )
 
     private val allButtons = listOf(grip) + scrollingButtons
@@ -225,7 +223,6 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         load.setOnClickListener { actions.onLoad() }
         newClip.setOnClickListener { actions.onNewClip() }
         newFlow.setOnClickListener { actions.onNewFlow() }
-        loadFlow.setOnClickListener { actions.onLoadFlow() }
         deleteFlow.setOnClickListener { actions.onDeleteFlow() }
 
         attachDrag(grip, onTap = null)
@@ -328,9 +325,12 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         deleteStep.visibility = visibleWhen(editing)
         newClip.visibility = visibleWhen(idle)
         save.visibility = visibleWhen(idle)
-        load.visibility = visibleWhen(idle)
+        // One load button for both modes, and one dialog behind it listing clips *and* flows. Loading is
+        // a single act with a single meaning, because exactly one of the two is ever loaded — so what you
+        // pick is what decides the mode. Gating this on idle alone is what made flow mode unreachable:
+        // there was no way into it from a toolbar that only ever offered clips.
+        load.visibility = visibleWhen(idle || flowMode)
         newFlow.visibility = visibleWhen(flowMode)
-        loadFlow.visibility = visibleWhen(flowMode)
         deleteFlow.visibility = visibleWhen(flowMode)
         quickSettings.visibility = visibleWhen(idle || flowMode)
         dismiss.visibility = visibleWhen(idle || flowMode)
@@ -543,7 +543,6 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         load.contentDescription = context.getString(R.string.action_load)
         newClip.contentDescription = context.getString(R.string.action_new_clip)
         newFlow.contentDescription = context.getString(R.string.action_new_flow)
-        loadFlow.contentDescription = context.getString(R.string.action_load_flow)
         deleteFlow.contentDescription = context.getString(R.string.action_delete_flow)
         eye.contentDescription = context.getString(R.string.action_density)
         quickSettings.contentDescription = context.getString(R.string.action_quick_settings)

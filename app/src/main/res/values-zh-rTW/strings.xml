@@ -55,8 +55,6 @@
     <string name="flow_new_title">新建流程</string>
     <string name="flow_new_confirm">建立</string>
     <string name="flow_name_label">流程名稱</string>
-    <string name="flow_load_title">讀取流程</string>
-    <string name="flow_load_empty">還沒有流程。建一條,然後把片段加進去。</string>
     <string name="flow_unsaved_warning">讀取流程會清掉工作區 —— %1$d 個還沒儲存的動作會不見。</string>
     <string name="flow_delete_title">要刪除「%1$s」嗎?流程刪掉無法復原。</string>
     <string name="toast_flow_created">已建立並讀取「%1$s」</string>
@@ -87,7 +85,6 @@
     <string name="action_load">讀取片段</string>
     <string name="action_play_flow">播放這條流程</string>
     <string name="action_new_flow">新建流程</string>
-    <string name="action_load_flow">讀取流程</string>
     <string name="action_delete_flow">刪除這條流程</string>
     <string name="action_new_clip">開新的片段</string>
     <string name="action_density">標記顯示密度</string>
