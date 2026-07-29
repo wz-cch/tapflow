@@ -24,6 +24,7 @@
     <string name="step_global">System action: %1$s</string>
     <string name="step_pause">⏸ Pause point</string>
     <string name="step_pause_with_note">⏸ Pause point: %1$s</string>
+    <string name="pause_touch_interrupted">Step %1$d was interrupted — a touch cancels an injected gesture. Resume to carry on from the next step.</string>
     <string name="pause_default_prompt">Paused — finish by hand, then press resume</string>
 
     <!-- Global actions -->
