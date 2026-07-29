@@ -107,8 +107,12 @@ class TransportView(context: Context, private val actions: Actions) : LinearLayo
             mode == Mode.PAUSED -> pausePrompt ?: context.getString(R.string.action_pause)
             progress != null -> buildString {
                 append(loopText(progress))
-                append("   ")
-                append(context.getString(R.string.transport_step, progress.step, progress.totalSteps))
+                // Step 0 means "between passes, in the gap before the next one starts". There is no step
+                // running, and printing "0 / 100" would read as a broken counter rather than as a wait.
+                if (progress.step > 0) {
+                    append("   ")
+                    append(context.getString(R.string.transport_step, progress.step, progress.totalSteps))
+                }
                 // Only when there is actually a repeat. A step running ten times with a gap between each
                 // otherwise holds the same number for ten seconds and reads as frozen.
                 if (progress.repeatTotal > 1) {

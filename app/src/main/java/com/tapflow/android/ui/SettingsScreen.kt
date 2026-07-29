@@ -100,6 +100,11 @@ fun SettingsScreen(onBack: () -> Unit) {
                     Repo.updateSettings { it.copy(startDelayMs = ms) }
                 }
             }
+            item {
+                MsSlider(R.string.settings_loop_interval, settings.loopIntervalMs, 0f, 30_000f, 250f) { ms ->
+                    Repo.updateSettings { it.copy(loopIntervalMs = ms) }
+                }
+            }
 
             item { Section(R.string.settings_section_randomise) }
             item {

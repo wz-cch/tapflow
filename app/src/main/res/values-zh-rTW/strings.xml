@@ -218,6 +218,7 @@
     <string name="settings_loop_count">重複次數</string>
     <string name="settings_loop_forever">直到按下停止</string>
     <string name="settings_speed">速度</string>
+    <string name="settings_loop_interval">每圈之間的間隔</string>
     <string name="settings_start_delay">開始前倒數</string>
     <string name="settings_section_randomise">隨機化</string>
     <string name="settings_jitter_radius">隨機位置半徑</string>

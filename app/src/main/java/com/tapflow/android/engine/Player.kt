@@ -56,6 +56,16 @@ class Player(
                 var loop = 0
                 while (loops <= 0 || loop < loops) {
                     loop++
+                    // Between passes, never after the last one — which is what putting it at the top of
+                    // the body and skipping the first pass gets for free. It matters most when looping
+                    // forever, where without it the script simply hammers the app continuously.
+                    if (loop > 1) {
+                        val current = settings()
+                        EngineState.progress.value = Progress(loop, loops, 0, steps.size)
+                        delay(Timing.replayDelay(current.loopIntervalMs, current))
+                        // So pause and stop land during the gap rather than only at the next step.
+                        gate()
+                    }
                     val from = if (loop == 1) startIndex.coerceIn(0, steps.lastIndex) else 0
                     for ((index, step) in steps.withIndex()) {
                         if (index < from) continue

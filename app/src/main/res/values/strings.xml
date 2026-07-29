@@ -221,6 +221,7 @@
     <string name="settings_loop_count">Repeat count</string>
     <string name="settings_loop_forever">Until stopped</string>
     <string name="settings_speed">Speed</string>
+    <string name="settings_loop_interval">Gap between loops</string>
     <string name="settings_start_delay">Countdown before starting</string>
     <string name="settings_section_randomise">Randomisation</string>
     <string name="settings_jitter_radius">Position jitter radius</string>
