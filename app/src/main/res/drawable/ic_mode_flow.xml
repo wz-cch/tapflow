@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Tinted programmatically by the overlay views, so no tint attribute here.
+     Flow mode: three stacked cards — several clips in a row, which is what this mode's buttons act on.
+     Shares its stacked-rows shape with ic_play_flow on purpose: "several clips" should look the same
+     wherever it appears. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M4,4h16v4h-16zM4,10h16v4h-16zM4,16h16v4h-16z" />
+</vector>

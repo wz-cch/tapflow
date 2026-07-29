@@ -28,6 +28,16 @@ class MainActivity : ComponentActivity() {
     /** Which flow the editor is on. Alongside [screen] for the same reason: it survives recomposition. */
     private val editingFlowId = mutableStateOf<String?>(null)
 
+    /**
+     * Whether leaving the flow editor should close the app rather than go back to the home screen.
+     *
+     * True when the editor was reached by *loading* — creating a flow, or the toolbar's pencil. The flow is
+     * already what play runs by then, so the next thing wanted is the target app, and stopping at the home
+     * screen just to close it is a step with nothing in it. False when arranging from the `⋮` menu, which
+     * loaded nothing and came from the list.
+     */
+    private val flowEditorExits = mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Repo.init(this)
@@ -42,10 +52,14 @@ class MainActivity : ComponentActivity() {
                     Screen.HOME -> HomeScreen(
                         onOpenSettings = { screen.value = Screen.SETTINGS },
                         onOpenDiagnostics = { screen.value = Screen.DIAGNOSTICS },
-                        onOpenFlow = { id ->
+                        onOpenFlow = { id, exitAfter ->
                             editingFlowId.value = id
+                            flowEditorExits.value = exitAfter
                             screen.value = Screen.FLOW
                         },
+                        // Loading hands over to the toolbar, and the toolbar is on top of another app —
+                        // so the last thing loading does is get this screen out of the way.
+                        onClose = { finish() },
                     )
 
                     Screen.SETTINGS -> {
@@ -63,8 +77,13 @@ class MainActivity : ComponentActivity() {
                         if (id == null) {
                             screen.value = Screen.HOME
                         } else {
-                            BackHandler { screen.value = Screen.HOME }
-                            FlowEditorScreen(flowId = id, onBack = { screen.value = Screen.HOME })
+                            // Editing a flow writes straight back, so there is never anything unsaved to
+                            // ask about on the way out.
+                            val leave = {
+                                if (flowEditorExits.value) finish() else screen.value = Screen.HOME
+                            }
+                            BackHandler { leave() }
+                            FlowEditorScreen(flowId = id, onBack = leave)
                         }
                     }
                 }
@@ -82,9 +101,17 @@ class MainActivity : ComponentActivity() {
         if (intent?.getBooleanExtra(EXTRA_OPEN_SETTINGS, false) == true) {
             screen.value = Screen.SETTINGS
         }
+        // The toolbar's pencil in flow mode. That flow is already loaded, so closing the editor should go
+        // back to the target app rather than land on a home screen nobody asked for.
+        intent?.getStringExtra(EXTRA_OPEN_FLOW)?.let { id ->
+            editingFlowId.value = id
+            flowEditorExits.value = true
+            screen.value = Screen.FLOW
+        }
     }
 
     companion object {
         const val EXTRA_OPEN_SETTINGS = "com.tapflow.android.OPEN_SETTINGS"
+        const val EXTRA_OPEN_FLOW = "com.tapflow.android.OPEN_FLOW"
     }
 }

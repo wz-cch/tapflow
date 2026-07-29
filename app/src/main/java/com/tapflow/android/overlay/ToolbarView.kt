@@ -86,12 +86,30 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         fun onNewClip()
 
         /**
-         * Flow mode's three. Same icons as the clip versions, and deliberately so: the noun follows the
-         * mode, and doubling the icons would make the column longer without making it clearer. What tells
-         * you which noun is in force is the play button, which is a different icon in flow mode.
+         * Switches between clip mode and flow mode.
+         *
+         * The only deliberate way between them. Everything else that used to change mode did it as a side
+         * effect of loading, unloading or recording, which meant the mode could change without anyone
+         * having asked for it — and "switch back" was not expressible at all.
+         */
+        fun onToggleMode()
+
+        /**
+         * Flow mode's four. Same icons as the clip versions where they overlap, and deliberately so: the
+         * noun follows the mode, and doubling the icons would make the column longer without making it
+         * clearer. What tells you which noun is in force is the mode button at the top of the column.
          */
         fun onNewFlow()
         fun onDeleteFlow()
+
+        /**
+         * Opens the flow's arrangement screen.
+         *
+         * Flow mode had no way to change what a flow contains; you had to go back to the app for it. It
+         * shares the pencil with clip mode's edit on purpose — both mean "edit the thing this mode is
+         * about", which for a clip is its steps and for a flow is its list of clips.
+         */
+        fun onEditFlow()
         fun onCycleDensity()
         fun onToggleQuickSettings()
         fun onDismiss()
@@ -160,6 +178,8 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
     private val load = icon(R.drawable.ic_folder_open)
     private val newFlow = icon(R.drawable.ic_new_clip)
     private val deleteFlow = icon(R.drawable.ic_remove)
+    private val editFlow = icon(R.drawable.ic_edit)
+    private val modeToggle = icon(R.drawable.ic_mode_clip)
     private val eye = icon(R.drawable.ic_eye)
     private val quickSettings = icon(R.drawable.ic_tune)
     private val dismiss = icon(R.drawable.ic_close)
@@ -171,10 +191,14 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
      * Ordered so that each mode's own subset reads sensibly, since a mode simply hides the rest: leave
      * first, then the things that create steps, then the one that destroys them, then undo, then the
      * two ways of looking at the script.
+     *
+     * The mode button is first, directly under the grip, and that position matters. It is the one button
+     * that changes what the others *mean*, so it must not shift when the set around it changes — reading
+     * the column top-down then goes "which noun, then what to do with it".
      */
     private val scrollingButtons = listOf(
-        primary, playFrom, secondary, edit, insertStep, duplicateStep, insertGlobal, insertPause,
-        insertWait, deleteStep, undo, stepPanelToggle, stepListToggle, newClip, save, load,
+        modeToggle, primary, playFrom, secondary, edit, editFlow, insertStep, duplicateStep, insertGlobal,
+        insertPause, insertWait, deleteStep, undo, stepPanelToggle, stepListToggle, newClip, save, load,
         newFlow, deleteFlow, eye, quickSettings, dismiss, collapse,
     )
 
@@ -224,6 +248,8 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         newClip.setOnClickListener { actions.onNewClip() }
         newFlow.setOnClickListener { actions.onNewFlow() }
         deleteFlow.setOnClickListener { actions.onDeleteFlow() }
+        editFlow.setOnClickListener { actions.onEditFlow() }
+        modeToggle.setOnClickListener { actions.onToggleMode() }
 
         attachDrag(grip, onTap = null)
         attachDrag(ball) {
@@ -257,6 +283,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         stepListOpen: Boolean,
         stepPanelOpen: Boolean,
         flowMode: Boolean,
+        hasFlow: Boolean,
     ) {
         val hasSteps = workspaceSize > 0
         val recording = mode == Mode.RECORDING
@@ -306,11 +333,22 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         // There is no save button in flow mode either. Editing a flow writes it straight back — it is a
         // list of references with nothing accumulating in it — so the act does not exist.
         val idle = !editing && !recording && !flowMode
+        // Under the grip in every mode that has it, because a button that reinterprets the others cannot
+        // move around. Absent while recording or editing: those are states *inside* clip mode, and
+        // leaving one of them is what the record and pencil buttons are already for.
+        modeToggle.visibility = visibleWhen(idle || flowMode)
+        modeToggle.setImageResource(if (flowMode) R.drawable.ic_mode_flow else R.drawable.ic_mode_clip)
+        // Shows the mode you are *in*, not the one you would go to. A toggle icon that shows its
+        // destination is ambiguous the moment you look at it without remembering which way round it is.
+        modeToggle.contentDescription = context.getString(
+            if (flowMode) R.string.action_mode_flow else R.string.action_mode_clip
+        )
+
         primary.visibility = visibleWhen(idle || flowMode)
         playFrom.visibility = visibleWhen(idle)
-        // The way out of flow mode: recording is never blocked, it just switches back. Unloading a flow
-        // costs nothing, because a flow is already saved.
-        secondary.visibility = visibleWhen(!editing)
+        // Clip mode only. It used to be visible in flow mode as "the way out", which made recording a
+        // hidden mode change — the mode button is the way out now, and it is the only one.
+        secondary.visibility = visibleWhen(!editing && !flowMode)
         insertPause.visibility = visibleWhen(recording || editing)
         insertWait.visibility = visibleWhen(recording || editing)
         insertGlobal.visibility = visibleWhen(recording || editing)
@@ -325,13 +363,13 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         deleteStep.visibility = visibleWhen(editing)
         newClip.visibility = visibleWhen(idle)
         save.visibility = visibleWhen(idle)
-        // One load button for both modes, and one dialog behind it listing clips *and* flows. Loading is
-        // a single act with a single meaning, because exactly one of the two is ever loaded — so what you
-        // pick is what decides the mode. Gating this on idle alone is what made flow mode unreachable:
-        // there was no way into it from a toolbar that only ever offered clips.
+        // One button, and behind it a dialog listing only the current mode's kind. It used to list both,
+        // which under an explicit mode is a hole: picking a flow from clip mode would empty the workspace
+        // without ever passing the mode button, so the one thing that asks before discarding is skipped.
         load.visibility = visibleWhen(idle || flowMode)
         newFlow.visibility = visibleWhen(flowMode)
         deleteFlow.visibility = visibleWhen(flowMode)
+        editFlow.visibility = visibleWhen(flowMode)
         quickSettings.visibility = visibleWhen(idle || flowMode)
         dismiss.visibility = visibleWhen(idle || flowMode)
 
@@ -339,8 +377,12 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         primary.contentDescription = context.getString(
             if (flowMode) R.string.action_play_flow else R.string.action_play
         )
-        setActionEnabled(primary, if (flowMode) true else hasSteps)
+        // Flow mode with nothing loaded is now a reachable state — it is where creating your first flow
+        // starts from — so this can no longer be hardcoded true.
+        setActionEnabled(primary, if (flowMode) hasFlow else hasSteps)
         setActionEnabled(playFrom, hasSteps)
+        setActionEnabled(editFlow, hasFlow)
+        setActionEnabled(deleteFlow, hasFlow)
 
         secondary.setImageResource(if (recording) R.drawable.ic_stop else R.drawable.ic_record)
         // Recording tints red so it is obvious at a glance that touches are being intercepted.
@@ -544,6 +586,8 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         newClip.contentDescription = context.getString(R.string.action_new_clip)
         newFlow.contentDescription = context.getString(R.string.action_new_flow)
         deleteFlow.contentDescription = context.getString(R.string.action_delete_flow)
+        editFlow.contentDescription = context.getString(R.string.action_edit_flow)
+        modeToggle.contentDescription = context.getString(R.string.action_mode_clip)
         eye.contentDescription = context.getString(R.string.action_density)
         quickSettings.contentDescription = context.getString(R.string.action_quick_settings)
         dismiss.contentDescription = context.getString(R.string.action_dismiss)

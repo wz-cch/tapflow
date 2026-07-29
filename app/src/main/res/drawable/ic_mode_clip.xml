@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Tinted programmatically by the overlay views, so no tint attribute here.
+     Clip mode: one card with a touch path across it — a single recording, which is what this mode's
+     buttons act on. Deliberately "one of something" against ic_mode_flow's "several", because the pair
+     has to be told apart at 44dp with no label. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M4,5h16v2h-16zM4,17h16v2h-16z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M7,10.5m-2,0a2,2 0 1,0 4,0a2,2 0 1,0 -4,0" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M17,13.5m-2,0a2,2 0 1,0 4,0a2,2 0 1,0 -4,0" />
+</vector>

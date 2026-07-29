@@ -35,21 +35,27 @@ object Workspace {
     val size: Int get() = steps.value.size
 
     /**
-     * Brings back the draft, but only if it held unsaved work.
+     * Brings back the draft if it held unsaved work, and says whether it did.
      *
      * A saved workspace is already a clip, so restoring it looks like the app opening a file by
      * itself. The draft is here to stop a long recording being lost, nothing more.
+     *
+     * Returning true is the caller's cue to ask whether the recovery was wanted. It can be asked
+     * *after* the fact, rather than before restoring, precisely because restoring is the safe direction:
+     * the steps are in memory either way, so an unanswered question loses nothing, and the alternative —
+     * leaving them on disk until answered — races the first thing that writes the draft.
      */
-    fun restore() {
+    fun restore(): Boolean {
         val snapshot = Repo.readWorkspace()
         if (!snapshot.dirty) {
             clear()
-            return
+            return false
         }
         steps.value = snapshot.steps
         sourceClipId = snapshot.sourceClipId
         screen = snapshot.screen
         dirty.value = true
+        return true
     }
 
     fun append(step: Step, capturedOn: ScreenSpec) {

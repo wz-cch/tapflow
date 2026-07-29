@@ -53,12 +53,11 @@
     <string name="flow_node_repeat">×%1$d</string>
     <string name="flow_node_interval">every %1$d ms</string>
     <string name="flow_node_settings_title">Clip %1$d</string>
-    <string name="home_flow_loaded">LOADED</string>
+    <string name="home_loaded">LOADED</string>
     <string name="flow_summary">%1$d clips · about %2$s</string>
     <string name="flow_new_title">New flow</string>
     <string name="flow_new_confirm">Create</string>
     <string name="flow_name_label">Flow name</string>
-    <string name="flow_unsaved_warning">Loading a flow clears the workspace — %1$d unsaved actions will be lost.</string>
     <string name="flow_delete_title">Delete “%1$s”? A flow cannot be undone.</string>
     <string name="toast_flow_created">Created and loaded “%1$s”</string>
     <string name="toast_flow_loaded">Loaded “%1$s”</string>
@@ -144,8 +143,6 @@
     <string name="home_version">version %1$s</string>
 
     <!-- Clip actions -->
-    <string name="flow_action_load">Load and make it what play runs</string>
-    <string name="clip_action_load">Load into workspace</string>
     <string name="clip_action_rename">Rename</string>
     <string name="clip_action_delete">Delete</string>
     <string name="clip_rename_title">Rename clip</string>
@@ -218,11 +215,6 @@
     <string name="save_as_new">Save as a new clip instead of replacing it</string>
     <string name="load_title">Load clip</string>
     <string name="load_empty">No clips saved yet.</string>
-    <string name="load_unsaved_warning">The workspace has %1$d unsaved actions. Loading replaces them.</string>
-    <string name="new_title">Start a new clip</string>
-    <string name="new_body">This clears the %1$d actions on screen. Anything unsaved is lost.</string>
-    <string name="new_body_empty">The workspace is already empty.</string>
-    <string name="new_confirm">Clear</string>
     <string name="toast_workspace_cleared">Workspace cleared</string>
 
     <!-- Diagnostics -->
@@ -276,4 +268,20 @@
     <string name="value_times">%1$d×</string>
     <string name="value_multiplier">%1$s×</string>
 
+
+    <!-- Mode, and the one shared question every discard asks. -->
+    <string name="action_mode_clip">Clip mode — tap to switch to flows</string>
+    <string name="action_mode_flow">Flow mode — tap to switch to clips</string>
+    <string name="action_edit_flow">Arrange this flow</string>
+    <string name="toast_mode_clip">Clip mode</string>
+    <string name="toast_mode_flow">Flow mode</string>
+    <string name="discard_warning">There are unsaved changes. They will be lost.</string>
+    <string name="recover_title">Last session ended unexpectedly. Recover the unsaved actions?</string>
+    <string name="recover_keep">Recover</string>
+    <string name="recover_discard">Discard</string>
+    <string name="home_start_fresh">Start without loading</string>
+    <string name="flow_action_arrange">Arrange</string>
+    <string name="home_mode_clip">Clip mode</string>
+    <string name="home_mode_flow">Flow mode</string>
+    <string name="toast_service_off">Turn the accessibility service on first.</string>
 </resources>

@@ -12,6 +12,17 @@ import kotlinx.serialization.encodeToString
 import java.io.File
 
 /**
+ * Which noun the toolbar is working on.
+ *
+ * Explicit state, rather than "is a flow loaded" — which is what this used to be, spelled
+ * `currentFlowId != null`. Deriving it had three costs. There was no way to *be* in flow mode with
+ * nothing loaded, so creating the first flow was unreachable. Every load and unload changed mode as a
+ * side effect, which meant every one of them was a hidden mode change someone had to remember to get
+ * right. And "switch mode" could not be expressed at all, because mode was not a thing you could set.
+ */
+enum class AppMode { CLIP, FLOW }
+
+/**
  * The single source of truth.
  *
  * MainActivity and TapFlowService live in the same process, so both sides share the StateFlows on
@@ -21,7 +32,7 @@ object Repo {
 
     private const val TAG = "Repo"
     private const val PREFS = "tapflow"
-    private const val KEY_CURRENT_FLOW = "current_flow_id"
+    private const val KEY_MODE = "app_mode"
     private const val KEY_CURRENT_CLIP = "current_clip_id"
     private const val KEY_OVERLAY_ON = "overlay_on"
 
@@ -44,7 +55,16 @@ object Repo {
     private val _settings = MutableStateFlow(Settings.DEFAULT)
     val settings: StateFlow<Settings> = _settings.asStateFlow()
 
-    /** Which flow the toolbar play button runs. */
+    /**
+     * Which noun the toolbar works on. See [AppMode].
+     *
+     * The only piece of this state that survives a restart. What was *loaded* in the mode deliberately
+     * does not: coming back into the mode you left costs nothing to remember and matches where you were,
+     * whereas reopening a file by itself is the thing an app should not do — and reloading is one tap.
+     */
+    val mode = MutableStateFlow(AppMode.CLIP)
+
+    /** Which flow the toolbar play button runs. Not persisted — see [mode]. */
     val currentFlowId = MutableStateFlow<String?>(null)
 
     /** Which clip is loaded into the workspace; the save key overwrites it by default. */
@@ -59,7 +79,8 @@ object Repo {
         appContext = context.applicationContext
         prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-        currentFlowId.value = prefs.getString(KEY_CURRENT_FLOW, null)
+        mode.value = runCatching { AppMode.valueOf(prefs.getString(KEY_MODE, "").orEmpty()) }
+            .getOrDefault(AppMode.CLIP)
         currentClipId.value = prefs.getString(KEY_CURRENT_CLIP, null)
         overlayEnabled.value = prefs.getBoolean(KEY_OVERLAY_ON, false)
 
@@ -118,9 +139,8 @@ object Repo {
     /**
      * The loaded flow, or null.
      *
-     * No falling back to the first flow, which is what this used to do. This id is now the *mode*: a flow
-     * being loaded is exactly what makes the toolbar a flow toolbar and the play button play a flow. A
-     * fallback would put the app into flow mode the moment any flow existed.
+     * No falling back to the first flow, which is what this used to do. Null is a real state — flow mode
+     * with nothing picked yet — and a fallback would make the play button run a flow nobody chose.
      */
     fun currentFlow(): Flow? = flowById(currentFlowId.value)
 
@@ -169,9 +189,17 @@ object Repo {
 
     // --- Preferences ---
 
+    /**
+     * Both of these are single writes with no rules attached. The rules about what may be loaded
+     * alongside what live in engine/Session.kt, which is the only thing that should be calling them.
+     */
+    fun setMode(next: AppMode) {
+        mode.value = next
+        prefs.edit().putString(KEY_MODE, next.name).apply()
+    }
+
     fun setCurrentFlow(id: String?) {
         currentFlowId.value = id
-        prefs.edit().putString(KEY_CURRENT_FLOW, id).apply()
     }
 
     fun setCurrentClip(id: String?) {

@@ -30,15 +30,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.tapflow.android.data.AppMode
 import com.tapflow.android.data.Clip
 import com.tapflow.android.data.Flow
 import com.tapflow.android.data.PauseStep
 import com.tapflow.android.data.Repo
+import com.tapflow.android.engine.Session
 import com.tapflow.android.engine.Workspace
 import com.tapflow.android.text.clipSummary
 import com.tapflow.android.text.flowSummary
 import com.tapflow.android.text.defaultClipName
+import com.tapflow.android.ui.DiscardConfirmDialog
 import com.tapflow.android.ui.TapFlowTheme
+import com.tapflow.android.ui.guardDiscard
 
 /**
  * The operations that need a keyboard or a list: save, load, start a new one, write a pause note, and the
@@ -61,7 +65,7 @@ import com.tapflow.android.ui.TapFlowTheme
  */
 class WorkspaceDialogActivity : ComponentActivity() {
 
-    enum class Mode { SAVE, LOAD, NEW, NOTE, NEW_FLOW }
+    enum class Mode { SAVE, LOAD, NOTE, NEW_FLOW }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -79,7 +83,6 @@ class WorkspaceDialogActivity : ComponentActivity() {
                 when (mode) {
                     Mode.SAVE -> SaveDialog(::finish) { name, asNew -> save(name, asNew) }
                     Mode.LOAD -> LoadDialog(::finish, { clip -> load(clip) }) { flow -> loadFlow(flow) }
-                    Mode.NEW -> NewDialog(::finish) { startNew() }
                     Mode.NOTE -> {
                         val step = Workspace.stepById(intent.getStringExtra(EXTRA_STEP_ID)) as? PauseStep
                         if (step == null) finish() else NoteDialog(step, ::finish) { note -> saveNote(step, note) }
@@ -101,10 +104,7 @@ class WorkspaceDialogActivity : ComponentActivity() {
     }
 
     private fun load(clip: Clip) {
-        // Loading a clip means the workspace is the thing being worked on, so any flow is unloaded. Free
-        // in this direction: a flow is already saved.
-        Repo.setCurrentFlow(null)
-        Workspace.load(clip)
+        Session.loadClip(clip)
         toast(getString(R.string.toast_loaded, clip.name))
         finish()
     }
@@ -118,38 +118,18 @@ class WorkspaceDialogActivity : ComponentActivity() {
         finish()
     }
 
-    /**
-     * Creates a flow and loads it, so the toolbar is already pointing at it when you go back.
-     *
-     * Loading clears the workspace, which is why the dialog says so first when there is unsaved work.
-     */
+    /** Creates a flow and loads it, so the toolbar is already pointing at it when you go back. */
     private fun createFlow(name: String) {
         val flow = Flow(name = name.trim(), clips = emptyList(), createdAt = System.currentTimeMillis())
         Repo.upsertFlow(flow)
-        Workspace.clear()
-        Repo.setCurrentFlow(flow.id)
+        Session.loadFlow(flow)
         toast(getString(R.string.toast_flow_created, flow.name))
         finish()
     }
 
-    /**
-     * Loads a flow, which unloads the workspace.
-     *
-     * The two are exclusive on purpose: only one thing is ever loaded, so the toolbar's play button has
-     * exactly one meaning and there is no "which is current" to get wrong. This direction is the one that
-     * can destroy work, so it is the one that warns.
-     */
     private fun loadFlow(flow: Flow) {
-        Workspace.clear()
-        Repo.setCurrentFlow(flow.id)
+        Session.loadFlow(flow)
         toast(getString(R.string.toast_flow_loaded, flow.name))
-        finish()
-    }
-
-    private fun startNew() {
-        Repo.setCurrentFlow(null)
-        Workspace.clear()
-        toast(getString(R.string.toast_workspace_cleared))
         finish()
     }
 
@@ -207,13 +187,12 @@ private fun SaveDialog(onDismiss: () -> Unit, onSave: (name: String, asNew: Bool
 }
 
 /**
- * Loads one thing, and what you pick decides the mode.
+ * Loads one thing, of whichever kind the current mode is about.
  *
- * Clips and flows in one dialog rather than two, because loading is one act with one meaning: exactly one
- * of the two is ever loaded (SPEC 10.5), so "load" needs no noun and the toolbar needs only one button for
- * it. Two separate load buttons would also have had to share an icon in the same mode, which is the
- * ambiguity that keeping them mode-exclusive was meant to avoid — and that exclusivity is what made flow
- * mode unreachable in the first place, since you cannot load a flow from a toolbar that only offers clips.
+ * Only that kind is listed. It used to show clips *and* flows in one dialog, from a time when picking one
+ * was what set the mode — but with the mode explicit, offering the other kind here is a hole: picking a
+ * flow from clip mode would empty the workspace without ever passing the mode button, which is the one
+ * place that asks before discarding. So the noun follows the mode, and this dialog only ever offers one.
  */
 @Composable
 private fun LoadDialog(
@@ -224,46 +203,35 @@ private fun LoadDialog(
     val resources = androidx.compose.ui.platform.LocalContext.current.resources
     val clips = Repo.clips.value
     val flows = Repo.flows.value
-    val dirty = Workspace.dirty.value
+    val flowMode = Repo.mode.value == AppMode.FLOW
+    // Whichever kind was picked, held until the discard question is answered.
+    var pending by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    // Both kinds, not just clips. What is at risk is the *workspace*, and loading either one empties it —
+    // it is not the picked thing that might be unsaved. Today a dirty workspace cannot coexist with flow
+    // mode, so the flow branch happens never to fire; guarding on "happens to be unreachable" is how a
+    // guard goes missing the moment the surrounding rules move.
+    fun pick(load: () -> Unit) = guardDiscard(load) { pending = load }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.load_title)) },
         text = {
-            if (clips.isEmpty() && flows.isEmpty()) {
+            val empty = if (flowMode) flows.isEmpty() else clips.isEmpty()
+            if (empty) {
                 Text(stringResource(R.string.load_empty))
             } else {
-                Column {
-                    // Loading replaces what is on screen, so say so before it happens rather than after.
-                    if (dirty) {
-                        Text(
-                            stringResource(R.string.load_unsaved_warning, Workspace.size),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                        Spacer(Modifier.height(8.dp))
-                    }
-                    LazyColumn(Modifier.heightIn(max = 360.dp)) {
-                        if (flows.isNotEmpty()) {
-                            item {
-                                SectionLabel(stringResource(R.string.home_tab_flows))
-                            }
-                            items(flows, key = { "flow-" + it.id }) { flow ->
-                                PickRow(
-                                    title = flow.name,
-                                    subtitle = flowSummary(resources, flow, clips),
-                                ) { onPickFlow(flow) }
+                LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                    if (flowMode) {
+                        items(flows, key = { it.id }) { flow ->
+                            PickRow(flow.name, flowSummary(resources, flow, clips)) {
+                                pick { onPickFlow(flow) }
                             }
                         }
-                        if (clips.isNotEmpty()) {
-                            item {
-                                SectionLabel(stringResource(R.string.home_tab_clips))
-                            }
-                            items(clips, key = { "clip-" + it.id }) { clip ->
-                                PickRow(
-                                    title = clip.name,
-                                    subtitle = clipSummary(resources, clip),
-                                ) { onPickClip(clip) }
+                    } else {
+                        items(clips, key = { it.id }) { clip ->
+                            PickRow(clip.name, clipSummary(resources, clip)) {
+                                pick { onPickClip(clip) }
                             }
                         }
                     }
@@ -274,16 +242,10 @@ private fun LoadDialog(
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.dialog_cancel)) }
         },
     )
-}
 
-@Composable
-private fun SectionLabel(text: String) {
-    Text(
-        text,
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(top = 12.dp, bottom = 2.dp),
-    )
+    pending?.let { load ->
+        DiscardConfirmDialog(onDismiss = { pending = null }) { load() }
+    }
 }
 
 @Composable
@@ -307,28 +269,6 @@ private fun PickRow(title: String, subtitle: String, onClick: () -> Unit) {
         )
     }
 }
-
-@Composable
-private fun NewDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
-    val count = Workspace.size
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.new_title)) },
-        text = {
-            Text(
-                if (count == 0) stringResource(R.string.new_body_empty)
-                else stringResource(R.string.new_body, count)
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = onConfirm) { Text(stringResource(R.string.new_confirm)) }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.dialog_cancel)) }
-        },
-    )
-}
-
 
 /**
  * Types the note shown when a replay stops on this step.
@@ -371,41 +311,32 @@ private fun NoteDialog(step: PauseStep, onDismiss: () -> Unit, onSave: (String) 
 }
 
 /**
- * Names a new flow.
+ * Names a new flow, then loads it.
  *
- * Creating one loads it, and loading clears the workspace — so the warning belongs here, before the name
- * is even typed, rather than as a surprise afterwards.
+ * Loading switches to flow mode, which empties the workspace — so the shared discard question comes after
+ * the name is typed, on confirm. It used to be a red line inside this dialog, before the name was even
+ * entered; the same words as everywhere else, at the moment it actually applies, is worth more.
  */
 @Composable
 private fun NewFlowDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) {
     var name by remember { mutableStateOf("") }
-    val dirty = Workspace.dirty.value
+    var confirming by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.flow_new_title)) },
         text = {
-            Column {
-                if (dirty) {
-                    Text(
-                        stringResource(R.string.flow_unsaved_warning, Workspace.size),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                }
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text(stringResource(R.string.flow_name_label)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text(stringResource(R.string.flow_name_label)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
         },
         confirmButton = {
             TextButton(
-                onClick = { onCreate(name) },
+                onClick = { guardDiscard({ onCreate(name) }) { confirming = true } },
                 enabled = name.isNotBlank(),
             ) { Text(stringResource(R.string.flow_new_confirm)) }
         },
@@ -413,5 +344,9 @@ private fun NewFlowDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) {
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.dialog_cancel)) }
         },
     )
+
+    if (confirming) {
+        DiscardConfirmDialog(onDismiss = { confirming = false }) { onCreate(name) }
+    }
 }
 
