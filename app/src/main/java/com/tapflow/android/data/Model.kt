@@ -263,6 +263,26 @@ fun GestureStep.withStartAt(x: Float, y: Float): GestureStep {
     )
 }
 
+/**
+ * Scales every sample of every stroke about the screen origin.
+ *
+ * Used when expanding a flow: each clip was recorded on its own screen, while the player takes a single
+ * recorded screen for a whole run, so the coordinates are brought to a common frame first. Running one
+ * clip inside a flow then behaves exactly like running it on its own, which is all "faithfully" means
+ * here — this is the same linear scaling the dispatcher already applies, just applied per clip.
+ *
+ * Not to be confused with remapping between genuinely different devices. That is a harder problem and it
+ * belongs where a clip is converted and saved, not in the middle of a run.
+ */
+fun GestureStep.scaledBy(sx: Float, sy: Float): GestureStep {
+    if (sx == 1f && sy == 1f) return this
+    return copy(
+        strokes = strokes.map { stroke ->
+            stroke.copy(points = stroke.points.map { it.copy(x = it.x * sx, y = it.y * sy) })
+        }
+    )
+}
+
 private const val MIN_DIRECTION_LENGTH_SQUARED = 1f
 
 // There is deliberately no synthesise-a-tap-at-a-position helper. The toolbar's add button used to
@@ -372,46 +392,50 @@ data class Clip(
 }
 
 // ---------------------------------------------------------------------------
-// Layer 3 — flow: several clips chained into one run (M3).
+// Layer 3 — flow: several clips chained into one run.
+//
+// This layer has exactly one type. It used to have four, three of which restated concepts layer 1 already
+// owned; see ClipNode for what went and why.
 // ---------------------------------------------------------------------------
 
-@Serializable
-sealed interface Node
-
-@Serializable
-@SerialName("clip")
-data class ClipNode(val clipId: String, val repeat: Int = 1) : Node
-
-@Serializable
-@SerialName("wait")
-data class WaitNode(val ms: Long) : Node
-
 /**
- * Wait for given text to appear on screen before continuing.
- * On timeout it enters PAUSED rather than aborting, so the user can take over.
+ * One clip's place in a flow.
+ *
+ * A flow is a list of these and nothing else — that is the whole of layer 3. The same shape as layer 2
+ * one level up: a container of members, each member carrying a lead-in delay and a repeat count, the
+ * container carrying a loop count. So the knobs here are deliberately the same three a step has.
+ *
+ * There used to be a WaitNode, a GlobalNode and an AwaitTextNode alongside this, and they were duplicates
+ * of [PauseStep] and [GlobalStep] one layer up — WaitNode and PauseStep were the same field rendered with
+ * the same string. Layer 3 had a vocabulary of its own for concepts layer 1 already owned. A flow's
+ * members are clips; to wait between two of them use [delayBefore], and to press back between them put a
+ * [GlobalStep] at the end of the preceding clip.
+ *
+ * That also retires the `pauseAfter` flag this file used to anticipate needing. The problem it was for —
+ * "same clip reused across flows, pausing in one but not the other" — is what [delayBefore] solves, and
+ * more generally, being a length rather than a boolean.
+ *
+ * The conditional wait returns at M4 as a *step*, not a node: waiting for text is more useful in the
+ * middle of a clip than only between clips, and "nodes are steps" is why it belongs down there.
+ *
+ * @param delayBefore how long to wait before this clip starts. 0 leaves the clip's own first-step delay
+ *   alone; anything else replaces it, because that recorded value was never measured against a
+ *   predecessor — the first step of a recording has none — so it carries nothing worth keeping.
+ * @param repeat how many times to run this clip in place.
+ * @param repeatIntervalMs gap between those runs. Its own field for the same reason it is at the step
+ *   level: [delayBefore] is the gap *before* the clip, this is the gap *between* repetitions of it, and
+ *   one field cannot mean both.
  */
 @Serializable
-@SerialName("await")
-data class AwaitTextNode(
-    val text: String,
-    val matchMode: MatchMode = MatchMode.CONTAINS,
-    val timeoutMs: Long = 15_000,
-) : Node
-
-@Serializable
-@SerialName("global")
-data class GlobalNode(val kind: GlobalKind) : Node
-
-// There is deliberately NO pause node at the flow layer. To stop between clips, put a PauseStep at
-// the end of the preceding clip — the app has exactly one pause mechanism. If it turns out that
-// "same clip reused across flows, pausing in one but not the other" actually happens in practice,
-// add a pauseAfter flag to ClipNode then. Do not build it up front.
-
-@Serializable
-enum class MatchMode {
-    @SerialName("contains") CONTAINS,
-    @SerialName("exact") EXACT,
-    @SerialName("view_id") VIEW_ID,
+@SerialName("clip")
+data class ClipNode(
+    val clipId: String,
+    val delayBefore: Long = 0,
+    val repeat: Int = 1,
+    val repeatIntervalMs: Long = 0,
+) {
+    /** Repetitions beyond the first, which is what the interval is paid for. */
+    val extraPasses: Int get() = (repeat - 1).coerceAtLeast(0)
 }
 
 /**
@@ -432,16 +456,22 @@ data class WorkspaceSnapshot(
     val dirty: Boolean = false,
 )
 
+/**
+ * Several clips chained into one run.
+ *
+ * Holds no speed and no start delay of its own. Both exist in Settings already, and two places holding
+ * one number is two places for it to disagree.
+ *
+ * There is also no "unsaved" state to speak of: a flow is a list of references, so editing one writes it
+ * straight back. That is why the toolbar has no save button in flow mode — the act does not exist.
+ */
 @Serializable
 data class Flow(
     val id: String = newId(),
     val name: String,
-    val nodes: List<Node>,
+    val clips: List<ClipNode>,
     /** 0 means loop forever until stopped. */
     val loopCount: Int = 1,
-    /** Countdown after pressing play, so there is time to switch to the target app. */
-    val startDelayMs: Long = 3000,
-    val speed: Float = 1f,
     val createdAt: Long,
     val updatedAt: Long = createdAt,
 )

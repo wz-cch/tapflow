@@ -31,9 +31,6 @@
     <string name="global_notifications">通知欄</string>
 
     <!-- 文字比對方式 -->
-    <string name="match_contains">包含</string>
-    <string name="match_exact">完全相符</string>
-    <string name="match_view_id">元件 ID</string>
 
     <!-- 標記顯示密度 -->
     <string name="density_all">顯示全部</string>
@@ -42,10 +39,31 @@
 
     <!-- 流程節點 -->
     <string name="node_clip_repeat">%1$s ×%2$d</string>
-    <string name="node_clip_missing">(片段已刪除)</string>
-    <string name="node_await_text">等待畫面出現「%1$s」</string>
+    <string name="node_clip_gone">(片段已不存在)</string>
 
     <!-- 片段 -->
+    <string name="flow_editor_empty">這條流程還沒有片段。在下面加一個。</string>
+    <string name="flow_editor_add">加入片段</string>
+    <string name="flow_loop_body">整條流程跑幾次。0 是一直跑到你停它。</string>
+    <string name="flow_node_plain">跑一次,沒有前置延遲</string>
+    <string name="flow_node_delay">先等 %1$d ms</string>
+    <string name="flow_node_repeat">×%1$d</string>
+    <string name="flow_node_interval">每 %1$d ms</string>
+    <string name="flow_node_settings_title">第 %1$d 個片段</string>
+    <string name="home_flow_loaded">已讀取</string>
+    <string name="flow_summary">%1$d 個片段 · 約 %2$s</string>
+    <string name="flow_new_title">新建流程</string>
+    <string name="flow_new_confirm">建立</string>
+    <string name="flow_name_label">流程名稱</string>
+    <string name="flow_load_title">讀取流程</string>
+    <string name="flow_load_empty">還沒有流程。建一條,然後把片段加進去。</string>
+    <string name="flow_unsaved_warning">讀取流程會清掉工作區 —— %1$d 個還沒儲存的動作會不見。</string>
+    <string name="flow_delete_title">要刪除「%1$s」嗎?流程刪掉無法復原。</string>
+    <string name="toast_flow_created">已建立並讀取「%1$s」</string>
+    <string name="toast_flow_loaded">已讀取「%1$s」</string>
+    <string name="toast_flow_deleted">已刪除「%1$s」</string>
+    <string name="toast_flow_empty">這條流程還沒有任何片段</string>
+    <string name="toast_flow_missing_clip">這條流程指到 %1$d 個已經不存在的片段。先打開它修好再執行。</string>
     <string name="clip_default_name">錄製 %1$s</string>
 
     <!-- 工具列按鍵。會當成無障礙描述使用,請保持簡短。 -->
@@ -67,6 +85,10 @@
     <string name="action_edit_mode">編輯模式</string>
     <string name="action_save">儲存片段</string>
     <string name="action_load">讀取片段</string>
+    <string name="action_play_flow">播放這條流程</string>
+    <string name="action_new_flow">新建流程</string>
+    <string name="action_load_flow">讀取流程</string>
+    <string name="action_delete_flow">刪除這條流程</string>
     <string name="action_new_clip">開新的片段</string>
     <string name="action_density">標記顯示密度</string>
     <string name="action_quick_settings">快捷設定</string>
@@ -76,6 +98,7 @@
     <!-- 播放面板 -->
     <string name="transport_loop">輪 %1$d/%2$d</string>
     <string name="transport_loop_infinite">輪 %1$d/∞</string>
+    <string name="transport_clip">片段 %1$d/%2$d</string>
     <string name="transport_step">步 %1$d/%2$d</string>
     <string name="transport_countdown">%1$d…</string>
     <string name="transport_recording">錄製中 · 已錄 %1$d 個動作</string>
@@ -126,6 +149,7 @@
     <string name="clip_action_delete">刪除</string>
     <string name="clip_rename_title">重新命名片段</string>
     <string name="clip_delete_title">要刪除「%1$s」嗎?</string>
+    <string name="clip_delete_body_in_flows">有 %1$d 條流程在用這個片段,刪除後會從它們裡面一併移除。刪除後無法復原。</string>
     <string name="clip_delete_body">刪除後無法復原。</string>
     <string name="dialog_confirm">確定</string>
     <string name="dialog_cancel">取消</string>

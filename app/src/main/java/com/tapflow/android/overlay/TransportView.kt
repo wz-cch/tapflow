@@ -107,6 +107,18 @@ class TransportView(context: Context, private val actions: Actions) : LinearLayo
             mode == Mode.PAUSED -> pausePrompt ?: context.getString(R.string.action_pause)
             progress != null -> buildString {
                 append(loopText(progress))
+                // Only above one. A flow of a single clip should read exactly like running that clip on
+                // its own, and "1 / 1" in front of the step counter is noise, not information.
+                if (progress.totalClips > 1) {
+                    append("   ")
+                    append(
+                        context.getString(
+                            R.string.transport_clip,
+                            progress.clip,
+                            progress.totalClips,
+                        )
+                    )
+                }
                 // Step 0 means "between passes, in the gap before the next one starts". There is no step
                 // running, and printing "0 / 100" would read as a broken counter rather than as a wait.
                 if (progress.step > 0) {

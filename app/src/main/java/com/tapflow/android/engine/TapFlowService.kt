@@ -433,6 +433,8 @@ class TapFlowService : AccessibilityService() {
             }
         }
         scope.launch { Workspace.steps.collect { syncOverlay() } }
+        scope.launch { Repo.currentFlowId.collect { syncOverlay() } }
+        scope.launch { Repo.flows.collect { syncOverlay() } }
         scope.launch { Repo.settings.collect { syncOverlay() } }
         scope.launch { EngineState.mode.collect { syncOverlay() } }
         scope.launch { EngineState.toolbarForm.collect { syncOverlay() } }
@@ -488,6 +490,7 @@ class TapFlowService : AccessibilityService() {
             isolateSelection = EngineState.isolateSelection.value,
             stepListOpen = EngineState.stepListOpen.value,
             stepPanelOpen = EngineState.paramPanelOpen.value,
+            flowMode = flowMode,
         )
         host.update(toolbar, toolbarParams)
 
@@ -883,6 +886,10 @@ class TapFlowService : AccessibilityService() {
         Diag.clear()
         Diag.log("record start")
 
+        // Recording is the way out of flow mode. Blocking it there would be obstructive, and there is
+        // nothing to protect: the flow is saved, so switching costs nothing.
+        leaveFlowMode()
+
         exitEditing()
         EngineState.toolbarForm.value = ToolbarForm.EXPANDED
         toolbar.ballIntent = BallIntent.EXPAND
@@ -982,7 +989,14 @@ class TapFlowService : AccessibilityService() {
         return ScreenSpec(size.x, size.y, host.rotation())
     }
 
+    /** Whether a flow is loaded, which is the same thing as being in flow mode. */
+    private val flowMode: Boolean get() = Repo.currentFlowId.value != null
+
     private fun startPlayback() {
+        if (flowMode) startFlowPlayback() else startWorkspacePlayback()
+    }
+
+    private fun startWorkspacePlayback() {
         val steps = Workspace.steps.value
         if (steps.isEmpty()) return
         Diag.clear()
@@ -991,6 +1005,50 @@ class TapFlowService : AccessibilityService() {
         startFromIndex = 0
         exitEditing()
         player.play(steps, Workspace.screen, settings.defaultLoopCount, from)
+    }
+
+    /**
+     * Runs the loaded flow.
+     *
+     * Expanded into a step list and handed to the same player, so a flow inherits everything a recording
+     * has — the gap between loops, pausing when a touch interrupts, per-step repeats. The coordinates come
+     * out of the expansion already scaled, hence the null recorded screen: there is nothing left to scale.
+     *
+     * A flow's own loop count wins over the global one. That is the container's knob, and the point of
+     * putting it on the flow was that this flow runs this many times.
+     *
+     * A missing clip refuses the whole run rather than skipping the row. Deleting a clip prunes it from
+     * every flow, so this should be unreachable — but a flow that quietly runs four of its five clips
+     * fails while looking like it succeeded, which is the worse of the two failures.
+     */
+    private fun startFlowPlayback() {
+        val flow = Repo.currentFlow() ?: return
+        val plan = FlowPlan.expand(flow, Repo.clips.value, currentScreen())
+
+        if (plan.missing.isNotEmpty()) {
+            toast(getString(R.string.toast_flow_missing_clip, plan.missing.size))
+            return
+        }
+        if (plan.steps.isEmpty()) {
+            toast(getString(R.string.toast_flow_empty))
+            return
+        }
+
+        Diag.clear()
+        Diag.log("playback start: flow '${flow.name}', ${flow.clips.size} clip(s) -> ${plan.steps.size} step(s)")
+        exitEditing()
+        player.play(plan.steps, recordedScreen = null, loops = flow.loopCount, plan = plan)
+    }
+
+    /**
+     * Puts the workspace back in charge, unloading any flow.
+     *
+     * Free in this direction and so done without asking: a flow is already saved, so unloading one loses
+     * nothing. The opposite direction is not free — loading a flow clears the workspace — which is why
+     * that one warns first, in the app where there is room to explain.
+     */
+    private fun leaveFlowMode() {
+        if (flowMode) Repo.setCurrentFlow(null)
     }
 
     /**
@@ -1687,6 +1745,34 @@ class TapFlowService : AccessibilityService() {
         override fun onDeleteSelected() = deleteSelected()
 
         override fun onSave() = openWorkspaceDialog(WorkspaceDialogActivity.Mode.SAVE)
+
+        /**
+         * Naming a flow needs a keyboard, so it goes the same way saving a clip does — an activity, because
+         * every overlay here is FLAG_NOT_FOCUSABLE and cannot raise one.
+         */
+        override fun onNewFlow() = openWorkspaceDialog(WorkspaceDialogActivity.Mode.NEW_FLOW)
+
+        override fun onLoadFlow() = openWorkspaceDialog(WorkspaceDialogActivity.Mode.LOAD_FLOW)
+
+        /**
+         * Deletes the loaded flow, after asking.
+         *
+         * Asked on an overlay rather than in an activity: a yes/no question needs no keyboard, so there is
+         * no reason to push the app underneath into the background for it. Asked at all because a flow has
+         * no undo — `↩` restores steps, and a deleted flow is gone.
+         */
+        override fun onDeleteFlow() {
+            val flow = Repo.currentFlow() ?: return
+            openOptionPad(
+                OptionRequest(
+                    title = getString(R.string.flow_delete_title, flow.name),
+                    labels = listOf(getString(R.string.clip_action_delete)),
+                ) {
+                    Repo.deleteFlow(flow.id)
+                    toast(getString(R.string.toast_flow_deleted, flow.name))
+                }
+            )
+        }
 
         override fun onLoad() = openWorkspaceDialog(WorkspaceDialogActivity.Mode.LOAD)
 

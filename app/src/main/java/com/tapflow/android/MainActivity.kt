@@ -9,11 +9,12 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.mutableStateOf
 import com.tapflow.android.data.Repo
 import com.tapflow.android.ui.DiagnosticsScreen
+import com.tapflow.android.ui.FlowEditorScreen
 import com.tapflow.android.ui.HomeScreen
 import com.tapflow.android.ui.SettingsScreen
 import com.tapflow.android.ui.TapFlowTheme
 
-private enum class Screen { HOME, SETTINGS, DIAGNOSTICS }
+private enum class Screen { HOME, SETTINGS, DIAGNOSTICS, FLOW }
 
 class MainActivity : ComponentActivity() {
 
@@ -24,6 +25,9 @@ class MainActivity : ComponentActivity() {
      */
     private val screen = mutableStateOf(Screen.HOME)
 
+    /** Which flow the editor is on. Alongside [screen] for the same reason: it survives recomposition. */
+    private val editingFlowId = mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Repo.init(this)
@@ -32,12 +36,16 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             TapFlowTheme {
-                // Two screens do not justify a navigation library, and pulling one in would mean a
-                // back stack to configure for something a single enum covers.
+                // Four screens still do not justify a navigation library, and pulling one in would mean
+                // a back stack to configure for something a single enum covers.
                 when (screen.value) {
                     Screen.HOME -> HomeScreen(
                         onOpenSettings = { screen.value = Screen.SETTINGS },
                         onOpenDiagnostics = { screen.value = Screen.DIAGNOSTICS },
+                        onOpenFlow = { id ->
+                            editingFlowId.value = id
+                            screen.value = Screen.FLOW
+                        },
                     )
 
                     Screen.SETTINGS -> {
@@ -48,6 +56,16 @@ class MainActivity : ComponentActivity() {
                     Screen.DIAGNOSTICS -> {
                         BackHandler { screen.value = Screen.HOME }
                         DiagnosticsScreen(onBack = { screen.value = Screen.HOME })
+                    }
+
+                    Screen.FLOW -> {
+                        val id = editingFlowId.value
+                        if (id == null) {
+                            screen.value = Screen.HOME
+                        } else {
+                            BackHandler { screen.value = Screen.HOME }
+                            FlowEditorScreen(flowId = id, onBack = { screen.value = Screen.HOME })
+                        }
                     }
                 }
             }

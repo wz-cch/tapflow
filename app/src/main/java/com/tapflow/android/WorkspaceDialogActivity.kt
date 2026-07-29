@@ -31,23 +31,29 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.tapflow.android.data.Clip
+import com.tapflow.android.data.Flow
 import com.tapflow.android.data.PauseStep
 import com.tapflow.android.data.Repo
 import com.tapflow.android.engine.Workspace
 import com.tapflow.android.text.clipSummary
+import com.tapflow.android.text.flowSummary
 import com.tapflow.android.text.defaultClipName
 import com.tapflow.android.ui.TapFlowTheme
 
 /**
- * The workspace operations that need a keyboard: save, load, start a new one, and write a pause note.
+ * The operations that need a keyboard or a list: save, load, start a new one, write a pause note, and the
+ * flow equivalents of new and load.
  *
  * An activity rather than more overlay panels. Every floating window here is FLAG_NOT_FOCUSABLE on
  * purpose — a focusable overlay takes input focus from the app underneath, which is what makes a
  * pause point usable — and a window that cannot take focus cannot raise a keyboard for a text field.
  * An activity gets focus and IME for free, and it is the natural shape for a modal question.
  *
- * One activity with four modes rather than four activities: same theme, same scaffolding, one
+ * One activity with several modes rather than one activity each: same theme, same scaffolding, one
  * manifest entry. Each mode does exactly one thing.
+ *
+ * Deleting a flow is *not* here. That is a yes/no question, it needs no keyboard, and asking it on an
+ * overlay avoids pushing the app underneath into the background for it.
  *
  * The number pad for a timed wait deliberately does *not* come here — digits need no IME, so it stays
  * an overlay and does not push the app being recorded into the background. A note is free text and
@@ -55,7 +61,7 @@ import com.tapflow.android.ui.TapFlowTheme
  */
 class WorkspaceDialogActivity : ComponentActivity() {
 
-    enum class Mode { SAVE, LOAD, NEW, NOTE }
+    enum class Mode { SAVE, LOAD, NEW, NOTE, NEW_FLOW, LOAD_FLOW }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -78,6 +84,9 @@ class WorkspaceDialogActivity : ComponentActivity() {
                         val step = Workspace.stepById(intent.getStringExtra(EXTRA_STEP_ID)) as? PauseStep
                         if (step == null) finish() else NoteDialog(step, ::finish) { note -> saveNote(step, note) }
                     }
+
+                    Mode.NEW_FLOW -> NewFlowDialog(::finish) { name -> createFlow(name) }
+                    Mode.LOAD_FLOW -> LoadFlowDialog(::finish) { flow -> loadFlow(flow) }
                 }
             }
         }
@@ -93,6 +102,9 @@ class WorkspaceDialogActivity : ComponentActivity() {
     }
 
     private fun load(clip: Clip) {
+        // Loading a clip means the workspace is the thing being worked on, so any flow is unloaded. Free
+        // in this direction: a flow is already saved.
+        Repo.setCurrentFlow(null)
         Workspace.load(clip)
         toast(getString(R.string.toast_loaded, clip.name))
         finish()
@@ -107,7 +119,36 @@ class WorkspaceDialogActivity : ComponentActivity() {
         finish()
     }
 
+    /**
+     * Creates a flow and loads it, so the toolbar is already pointing at it when you go back.
+     *
+     * Loading clears the workspace, which is why the dialog says so first when there is unsaved work.
+     */
+    private fun createFlow(name: String) {
+        val flow = Flow(name = name.trim(), clips = emptyList(), createdAt = System.currentTimeMillis())
+        Repo.upsertFlow(flow)
+        Workspace.clear()
+        Repo.setCurrentFlow(flow.id)
+        toast(getString(R.string.toast_flow_created, flow.name))
+        finish()
+    }
+
+    /**
+     * Loads a flow, which unloads the workspace.
+     *
+     * The two are exclusive on purpose: only one thing is ever loaded, so the toolbar's play button has
+     * exactly one meaning and there is no "which is current" to get wrong. This direction is the one that
+     * can destroy work, so it is the one that warns.
+     */
+    private fun loadFlow(flow: Flow) {
+        Workspace.clear()
+        Repo.setCurrentFlow(flow.id)
+        toast(getString(R.string.toast_flow_loaded, flow.name))
+        finish()
+    }
+
     private fun startNew() {
+        Repo.setCurrentFlow(null)
         Workspace.clear()
         toast(getString(R.string.toast_workspace_cleared))
         finish()
@@ -278,6 +319,105 @@ private fun NoteDialog(step: PauseStep, onDismiss: () -> Unit, onSave: (String) 
             TextButton(onClick = { onSave(note) }) { Text(stringResource(R.string.dialog_confirm)) }
         },
         dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.dialog_cancel)) }
+        },
+    )
+}
+
+/**
+ * Names a new flow.
+ *
+ * Creating one loads it, and loading clears the workspace — so the warning belongs here, before the name
+ * is even typed, rather than as a surprise afterwards.
+ */
+@Composable
+private fun NewFlowDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) {
+    var name by remember { mutableStateOf("") }
+    val dirty = Workspace.dirty.value
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.flow_new_title)) },
+        text = {
+            Column {
+                if (dirty) {
+                    Text(
+                        stringResource(R.string.flow_unsaved_warning, Workspace.size),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text(stringResource(R.string.flow_name_label)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onCreate(name) },
+                enabled = name.isNotBlank(),
+            ) { Text(stringResource(R.string.flow_new_confirm)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.dialog_cancel)) }
+        },
+    )
+}
+
+@Composable
+private fun LoadFlowDialog(onDismiss: () -> Unit, onPick: (Flow) -> Unit) {
+    val resources = androidx.compose.ui.platform.LocalContext.current.resources
+    val flows = Repo.flows.value
+    val clips = Repo.clips.value
+    val dirty = Workspace.dirty.value
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.flow_load_title)) },
+        text = {
+            if (flows.isEmpty()) {
+                Text(stringResource(R.string.flow_load_empty))
+            } else {
+                Column {
+                    if (dirty) {
+                        Text(
+                            stringResource(R.string.flow_unsaved_warning, Workspace.size),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                    }
+                    LazyColumn(Modifier.heightIn(max = 320.dp)) {
+                        items(flows, key = { it.id }) { flow ->
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onPick(flow) }
+                                    .padding(vertical = 10.dp)
+                            ) {
+                                Text(
+                                    flow.name,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    flowSummary(resources, flow, clips),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.dialog_cancel)) }
         },
     )

@@ -138,16 +138,16 @@ Shizuku 提供一個 ADB 權限等級的行程,可以繞過 `AccessibilityServic
 
 ~~`GlobalStep` 做得出來但加不進去~~ —— **已補**,`⎌+` 見 [SPEC §9.8](SPEC.md)。它同時補上一個錄製缺口:無障礙 overlay 看不到導覽列,所以返回 / 首頁 / 近期永遠不可能被錄下來,只能插入。
 
-- **[SPEC §8] 解析度 / 方向不符時的提示與暫停** —— 目前只做線性座標縮放,方向對不上不會警告,直接用錯的座標播下去
+- **[SPEC §8] 解析度 / 方向的處理** —— 目前只做線性座標縮放,方向對不上不會警告。**不做「只是警告」那一版** —— 決定改成 resize / remap,而它屬於匯出匯入那個工具:轉完要存的時候算一次,不是每次執行都算。所以這一項現在綁在下面那個網頁編輯器方向上
 
-### B. M3 — 流程與人工介入
+### B. ~~M3 — 流程~~ 已完成
 
-資料層與儲存**已經在了**(`Flow` / `Node` 型別、`flows.json`、`Repo.flows`),缺的是上面兩層:
-
-- **`FlowEditorScreen`** —— 主 app 的流程編排畫面(檔案不存在)
-- **`FlowRunner`** —— 串接片段的狀態機、兩層迴圈(不存在)
-- **`ClipDetailScreen`** —— 片段詳情 / 匯出(不存在;改名與刪除目前掛在 `HomeScreen` 的選單裡)
-- `home_tab_flows` / `home_no_flows` 兩個 string 就是為這期留著的
+- ~~流程層收成只有 `ClipNode`,補上 `delayBefore` / `repeat` / `repeatIntervalMs`~~ —— `WaitNode` / `GlobalNode` / `AwaitTextNode` 是下一層概念的複製品,拿掉([SPEC §5.3](SPEC.md))
+- ~~流程展開成步驟清單交給既有 `Player`~~ —— **沒有 `FlowRunner`**。寫第二個執行器等於把每圈間隔、碰到暫停、單步重複、從第 N 步開始再實作一次
+- ~~flow mode 的按鍵組(9 顆)~~ —— 它的對象是 clip 而不是 node,所以薄([SPEC §10.4](SPEC.md))
+- ~~流程與工作區互斥~~ —— [SPEC §10.5](SPEC.md)
+- ~~編排畫面 + 首頁流程區塊~~ —— `home_tab_flows` / `home_no_flows` 用掉了
+- **`ClipDetailScreen` 決定不做** —— 匯出暫緩,而改名與刪除本來就在 `HomeScreen` 的選單裡,再開一個畫面只是多一層
 
 ### C. M4 — 條件等待與匯出匯入
 
