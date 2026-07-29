@@ -141,6 +141,7 @@
     <string name="home_version">版本 %1$s</string>
 
     <!-- 片段操作 -->
+    <string name="flow_action_load">讀取(按播放就跑這條)</string>
     <string name="clip_action_load">載入到工作區</string>
     <string name="clip_action_rename">重新命名</string>
     <string name="clip_action_delete">刪除</string>

@@ -166,7 +166,6 @@ fun HomeScreen(
                         clips = clips,
                         loaded = flow.id == currentFlowId,
                         onOpen = { onOpenFlow(flow.id) },
-                        onDelete = { Repo.deleteFlow(flow.id) },
                     )
                 }
             }
@@ -349,6 +348,9 @@ private fun ClipRow(clip: Clip) {
                     text = { Text(stringResource(R.string.clip_action_load)) },
                     onClick = {
                         menuOpen = false
+                        // Unload any flow: exactly one of the two is ever loaded, so play has one
+                        // meaning. Free in this direction, since a flow is already saved.
+                        Repo.setCurrentFlow(null)
                         Workspace.load(clip)
                         Toast.makeText(
                             context,
@@ -457,12 +459,28 @@ private fun FlowRow(
     clips: List<Clip>,
     loaded: Boolean,
     onOpen: () -> Unit,
-    onDelete: () -> Unit,
 ) {
-    val resources = LocalContext.current.resources
+    val context = LocalContext.current
+    var menuOpen by remember { mutableStateOf(false) }
+    var renaming by remember { mutableStateOf(false) }
+    var confirmingDelete by remember { mutableStateOf(false) }
+    var confirmingLoad by remember { mutableStateOf(false) }
+
+    fun loadNow() {
+        Workspace.clear()
+        Repo.setCurrentFlow(flow.id)
+        Toast.makeText(
+            context,
+            context.getString(R.string.toast_flow_loaded, flow.name),
+            Toast.LENGTH_SHORT,
+        ).show()
+    }
+
     Card(Modifier.fillMaxWidth().clickable { onOpen() }) {
         Row(
-            Modifier.padding(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, top = 10.dp, bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
@@ -473,11 +491,12 @@ private fun FlowRow(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    flowSummary(resources, flow, clips),
+                    flowSummary(context.resources, flow, clips),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+
             if (loaded) {
                 Text(
                     stringResource(R.string.home_flow_loaded),
@@ -485,29 +504,87 @@ private fun FlowRow(
                     color = MaterialTheme.colorScheme.primary,
                 )
             }
-            var confirming by remember { mutableStateOf(false) }
-            IconButton(onClick = { confirming = true }) {
-                Text("−", style = MaterialTheme.typography.titleMedium)
+
+            IconButton(onClick = { menuOpen = true }) {
+                Icon(Icons.Filled.MoreVert, contentDescription = null)
             }
-            if (confirming) {
-                AlertDialog(
-                    onDismissRequest = { confirming = false },
-                    title = { Text(stringResource(R.string.flow_delete_title, flow.name)) },
-                    confirmButton = {
-                        TextButton(onClick = { confirming = false; onDelete() }) {
-                            Text(stringResource(R.string.dialog_confirm))
-                        }
+
+            // The same three a clip row offers, which is what "flows work like clips" has to mean if it
+            // means anything. Load was missing here, and it is the only way into flow mode from the app —
+            // tapping the row opens the editor, which is a different thing entirely.
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.flow_action_load)) },
+                    onClick = {
+                        menuOpen = false
+                        // Loading a flow clears the workspace, so unsaved work gets a question first.
+                        if (Workspace.dirty.value) confirmingLoad = true else loadNow()
                     },
-                    dismissButton = {
-                        TextButton(onClick = { confirming = false }) {
-                            Text(stringResource(R.string.dialog_cancel))
-                        }
-                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.clip_action_rename)) },
+                    onClick = { menuOpen = false; renaming = true },
+                )
+                HorizontalDivider()
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.clip_action_delete)) },
+                    onClick = { menuOpen = false; confirmingDelete = true },
                 )
             }
         }
     }
+
+    if (confirmingLoad) {
+        AlertDialog(
+            onDismissRequest = { confirmingLoad = false },
+            title = { Text(stringResource(R.string.flow_action_load)) },
+            text = { Text(stringResource(R.string.flow_unsaved_warning, Workspace.size)) },
+            confirmButton = {
+                TextButton(onClick = { confirmingLoad = false; loadNow() }) {
+                    Text(stringResource(R.string.dialog_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmingLoad = false }) {
+                    Text(stringResource(R.string.dialog_cancel))
+                }
+            },
+        )
+    }
+
+    if (renaming) {
+        RenameDialog(
+            initial = flow.name,
+            onDismiss = { renaming = false },
+            onConfirm = { name ->
+                renaming = false
+                if (name.isNotBlank()) {
+                    Repo.upsertFlow(
+                        flow.copy(name = name.trim(), updatedAt = System.currentTimeMillis())
+                    )
+                }
+            },
+        )
+    }
+
+    if (confirmingDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmingDelete = false },
+            title = { Text(stringResource(R.string.flow_delete_title, flow.name)) },
+            confirmButton = {
+                TextButton(onClick = { confirmingDelete = false; Repo.deleteFlow(flow.id) }) {
+                    Text(stringResource(R.string.dialog_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmingDelete = false }) {
+                    Text(stringResource(R.string.dialog_cancel))
+                }
+            },
+        )
+    }
 }
+
 
 @Composable
 private fun RenameDialog(initial: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {

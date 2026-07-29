@@ -144,6 +144,7 @@
     <string name="home_version">version %1$s</string>
 
     <!-- Clip actions -->
+    <string name="flow_action_load">Load and make it what play runs</string>
     <string name="clip_action_load">Load into workspace</string>
     <string name="clip_action_rename">Rename</string>
     <string name="clip_action_delete">Delete</string>
