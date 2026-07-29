@@ -375,8 +375,12 @@ class CanvasView(context: Context) : View(context) {
                 return marker to if (toEnd < toStart) Handle.END else Handle.START
             }
 
-            marker.boundsInto(hitBox, radius * 2f)
-            if (hitBox.contains(x, y)) return marker to Handle.BODY
+            // Only when there is a line to enclose. Without one the ring above already covers the whole
+            // target, and an extra box would make the corners hittable without being drawn — which is the
+            // invisible-target problem the ring exists to remove.
+            if (marker.boundsInto(hitBox, radius * 2f) && hitBox.contains(x, y)) {
+                return marker to Handle.BODY
+            }
         }
         return null
     }

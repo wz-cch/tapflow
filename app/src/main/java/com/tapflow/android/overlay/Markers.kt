@@ -81,17 +81,20 @@ data class Marker(
     val endY: Float get() = paths.firstOrNull()?.lastOrNull()?.second ?: anchorY
 
     /**
-     * Bounding box of everything this marker draws, written into [out] to avoid allocating per frame.
+     * Box around the line this marker draws, written into [out] to avoid allocating per frame.
      *
      * This is the body: touch inside it and you move the whole gesture, which is honest because what you
      * touched *is* the whole gesture. A rectangle rather than the distance to the curve — the reason the
      * original spec dropped a body handle was the cost and ambiguity of hit-testing a path, and a box has
      * neither. It is also drawable, so the target stops being invisible.
      *
-     * @param minSize the box never measures less than this across, so a horizontal swipe does not become
-     *   a zero-height line and a single tap still gets a frame.
+     * @param minSize a real box never measures less than this across, so a purely horizontal swipe does
+     *   not become a zero-height line.
+     * @return whether there is a line here at all. False for a single point and for a derived marker,
+     *   which have no extent to enclose: their touch ring is the whole target, and a box the same size as
+     *   that ring would be a second outline around the same thing saying nothing new.
      */
-    fun boundsInto(out: RectF, minSize: Float) {
+    fun boundsInto(out: RectF, minSize: Float): Boolean {
         var left = anchorX
         var top = anchorY
         var right = anchorX
@@ -104,11 +107,15 @@ data class Marker(
                 if (y > bottom) bottom = y
             }
         }
-        out.set(left, top, right, bottom)
 
+        val hasLine = (right - left) >= minSize || (bottom - top) >= minSize
+        if (!hasLine) return false
+
+        out.set(left, top, right, bottom)
         val growX = ((minSize - out.width()) / 2f).coerceAtLeast(0f)
         val growY = ((minSize - out.height()) / 2f).coerceAtLeast(0f)
         out.inset(-growX, -growY)
+        return true
     }
 
     /**
@@ -362,47 +369,54 @@ class MarkerPainter(context: Context) {
     }
 
     /**
-     * What can be taken hold of, drawn.
+     * The selected step's touch targets, drawn.
      *
-     * Three targets, each looking like what it does: a box round the whole gesture (move it), and a ring
-     * on each end that can be told apart (change that end). The dot itself stays small in every mode,
-     * because it marks one exact pixel and drawing it large would be a lie about that precision — an
-     * earlier attempt simply scaled every marker up by half and it did not help, since the problem was
-     * never the size but that the head looked like "the start" while behaving like "the whole thing".
+     * Two different things get called a frame here and they are not the same idea:
+     *
+     * - a **touch ring** on each point — the dot marks one exact pixel and is far too small to aim at, so
+     *   the ring is what you actually press. Start, end and a lone point are all the same case
+     * - a **line box** enclosing the path, which is the "move the whole thing" target
+     *
+     * So a single point gets a ring and no box: there is no line to enclose, and a box the same size as
+     * the ring would be a second outline around the same thing saying nothing new.
+     *
+     * The ring means "you can touch this", not "you can drag this" — which is why a pause, a wait and a
+     * system key get one too. They cannot be dragged, but they very much have to be tappable: selecting
+     * one is the only way to delete it. An earlier version withheld their rings on the grounds that a ring
+     * promised a grip they do not have, and that read the ring's job wrongly.
      *
      * Corner brackets rather than a full rectangle, in the manner of a detection box: they mark the extent
      * without laying a line over the path inside it.
      *
-     * A derived marker gets the box but no rings. It cannot be dragged at all — its position is computed
-     * from its neighbours — so a ring would advertise a grip it does not have. The box alone reads as
-     * "selected", which is true and is what deletion acts on.
+     * The dot itself is never enlarged, in any mode. It marks one exact pixel and drawing it big would be
+     * a lie about that precision — an earlier attempt simply scaled every marker up by half, which did not
+     * help, because the problem was never size but that the badge looked like "the start" while behaving
+     * like "the whole thing".
      */
     private fun drawSelection(canvas: Canvas, marker: Marker, handleRadiusPx: Float) {
-        marker.boundsInto(selectionBox, handleRadiusPx * 2f)
-
         stroke.color = colorHighlight
-        stroke.strokeWidth = dp(2f)
 
-        val arm = (minOf(selectionBox.width(), selectionBox.height()) * 0.28f)
-            .coerceAtMost(dp(16f))
-        val left = selectionBox.left
-        val right = selectionBox.right
-        val top = selectionBox.top
-        val bottom = selectionBox.bottom
+        if (marker.boundsInto(selectionBox, handleRadiusPx * 2f)) {
+            stroke.strokeWidth = dp(2f)
+            val arm = (minOf(selectionBox.width(), selectionBox.height()) * 0.28f)
+                .coerceAtMost(dp(16f))
+            val left = selectionBox.left
+            val right = selectionBox.right
+            val top = selectionBox.top
+            val bottom = selectionBox.bottom
 
-        canvas.drawLine(left, top, left + arm, top, stroke)
-        canvas.drawLine(left, top, left, top + arm, stroke)
-        canvas.drawLine(right, top, right - arm, top, stroke)
-        canvas.drawLine(right, top, right, top + arm, stroke)
-        canvas.drawLine(left, bottom, left + arm, bottom, stroke)
-        canvas.drawLine(left, bottom, left, bottom - arm, stroke)
-        canvas.drawLine(right, bottom, right - arm, bottom, stroke)
-        canvas.drawLine(right, bottom, right, bottom - arm, stroke)
+            canvas.drawLine(left, top, left + arm, top, stroke)
+            canvas.drawLine(left, top, left, top + arm, stroke)
+            canvas.drawLine(right, top, right - arm, top, stroke)
+            canvas.drawLine(right, top, right, top + arm, stroke)
+            canvas.drawLine(left, bottom, left + arm, bottom, stroke)
+            canvas.drawLine(left, bottom, left, bottom - arm, stroke)
+            canvas.drawLine(right, bottom, right - arm, bottom, stroke)
+            canvas.drawLine(right, bottom, right, bottom - arm, stroke)
+        }
 
-        if (!marker.isDraggable) return
-
-        // The start always has a ring: on a tap it is the only target there is, and moving that one point
-        // is the same act as moving the whole step, so the degenerate case needs no special rule.
+        // The start always has a ring. On a lone point it is the only target there is, and moving that one
+        // point is the same act as moving the whole step, so the degenerate case needs no rule of its own.
         stroke.strokeWidth = dp(1.5f)
         canvas.drawCircle(marker.anchorX, marker.anchorY, handleRadiusPx, stroke)
         if (marker.hasEndHandle) {
