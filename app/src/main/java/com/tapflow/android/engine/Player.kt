@@ -1,6 +1,7 @@
 package com.tapflow.android.engine
 
 import android.content.res.Resources
+import com.tapflow.android.R
 import com.tapflow.android.data.PauseStep
 import com.tapflow.android.data.RepeatableStep
 import com.tapflow.android.data.ScreenSpec
@@ -115,7 +116,10 @@ class Player(
                                 // rather than only between steps.
                                 gate()
                             }
-                            dispatcher.perform(step, scale, current)
+                            if (dispatcher.perform(step, scale, current) == GestureOutcome.CANCELLED) {
+                                interrupted(index + 1)
+                                gate()
+                            }
                         }
                     }
                 }
@@ -126,6 +130,33 @@ class Player(
                 EngineState.reset()
             }
         }
+    }
+
+    /**
+     * A dispatched gesture was cancelled part way, so stop rather than carry on.
+     *
+     * The framework cancels every in-flight injected gesture the moment real input arrives — injected and
+     * real touches are not merged, real input simply wins — so on a working device this almost always
+     * means a finger landed on the screen. It is an inference, not a signal: the other causes are ones
+     * this app controls and avoids (it never dispatches two gestures at once, and deliberately does not
+     * move or resize the canvas around a replay), and the missing-injector case is told apart by its
+     * timing before it ever reaches here.
+     *
+     * Pausing rather than reporting a failure, because **continuing would be wrong**. That step did not
+     * land, so every step after it would run against a screen that never received it. This used to log
+     * the cancellation and walk straight on to the next step, with a toast that read as though the system
+     * or the target app were at fault.
+     *
+     * The interrupted step is not retried. A cancellation that arrives part way through a swipe cannot be
+     * re-issued safely — half of it may already have been delivered — which is the same reason
+     * [GestureDispatcher] declines to retry one. The prompt names the step so it can be redone by hand
+     * with "start from step N" if that is what is wanted.
+     */
+    private fun interrupted(stepNumber: Int) {
+        Diag.log("player: step $stepNumber cancelled part way, pausing (a real touch is the likely cause)")
+        EngineState.pausePrompt.value =
+            resources.getString(R.string.pause_touch_interrupted, stepNumber)
+        pauseRequested.value = true
     }
 
     fun pause() {

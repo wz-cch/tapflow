@@ -21,6 +21,7 @@
     <string name="step_global">系統動作:%1$s</string>
     <string name="step_pause">⏸ 暫停點</string>
     <string name="step_pause_with_note">⏸ 暫停點:%1$s</string>
+    <string name="pause_touch_interrupted">第 %1$d 步被中斷 —— 觸控會取消注入的手勢。按繼續會從下一步接著跑。</string>
     <string name="pause_default_prompt">已暫停,請手動處理後按繼續</string>
 
     <!-- 系統動作 -->

@@ -1132,6 +1132,13 @@ class TapFlowService : AccessibilityService() {
             return
         }
 
+        // While replaying, a cancellation is almost always a finger landing on the screen, and the player
+        // pauses with a prompt that says so — see Player.interrupted. A toast on top of that would report
+        // the same thing twice, and report it as a fault. It is not counted as a failure either: the run
+        // of failures exists to tell "one cancelled gesture" from "every gesture cancelled", which is a
+        // question about the system, not about the user's hand.
+        if (outcome == GestureOutcome.CANCELLED && EngineState.isReplaying) return
+
         consecutiveGestureFailures++
         val now = SystemClock.uptimeMillis()
         if (now - lastGestureWarningAt < GESTURE_WARNING_INTERVAL_MS) return
