@@ -42,6 +42,15 @@
     <string name="node_clip_gone">(片段已不存在)</string>
 
     <!-- 片段 -->
+    <string name="flow_editor_empty">這條流程還沒有片段。在下面加一個。</string>
+    <string name="flow_editor_add">加入片段</string>
+    <string name="flow_loop_body">整條流程跑幾次。0 是一直跑到你停它。</string>
+    <string name="flow_node_plain">跑一次,沒有前置延遲</string>
+    <string name="flow_node_delay">先等 %1$d ms</string>
+    <string name="flow_node_repeat">×%1$d</string>
+    <string name="flow_node_interval">每 %1$d ms</string>
+    <string name="flow_node_settings_title">第 %1$d 個片段</string>
+    <string name="home_flow_loaded">已讀取</string>
     <string name="flow_summary">%1$d 個片段 · 約 %2$s</string>
     <string name="flow_new_title">新建流程</string>
     <string name="flow_new_confirm">建立</string>
@@ -140,6 +149,7 @@
     <string name="clip_action_delete">刪除</string>
     <string name="clip_rename_title">重新命名片段</string>
     <string name="clip_delete_title">要刪除「%1$s」嗎?</string>
+    <string name="clip_delete_body_in_flows">有 %1$d 條流程在用這個片段,刪除後會從它們裡面一併移除。刪除後無法復原。</string>
     <string name="clip_delete_body">刪除後無法復原。</string>
     <string name="dialog_confirm">確定</string>
     <string name="dialog_cancel">取消</string>

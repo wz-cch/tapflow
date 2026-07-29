@@ -45,6 +45,15 @@
     <string name="node_clip_gone">(clip no longer exists)</string>
 
     <!-- Clips -->
+    <string name="flow_editor_empty">No clips in this flow yet. Add one below.</string>
+    <string name="flow_editor_add">Add a clip</string>
+    <string name="flow_loop_body">How many times the whole flow runs. 0 runs until you stop it.</string>
+    <string name="flow_node_plain">runs once, no lead-in</string>
+    <string name="flow_node_delay">wait %1$d ms first</string>
+    <string name="flow_node_repeat">×%1$d</string>
+    <string name="flow_node_interval">every %1$d ms</string>
+    <string name="flow_node_settings_title">Clip %1$d</string>
+    <string name="home_flow_loaded">LOADED</string>
     <string name="flow_summary">%1$d clips · about %2$s</string>
     <string name="flow_new_title">New flow</string>
     <string name="flow_new_confirm">Create</string>
@@ -143,6 +152,7 @@
     <string name="clip_action_delete">Delete</string>
     <string name="clip_rename_title">Rename clip</string>
     <string name="clip_delete_title">Delete “%1$s”?</string>
+    <string name="clip_delete_body_in_flows">%1$d flow(s) use this clip. Deleting it removes it from them too. This cannot be undone.</string>
     <string name="clip_delete_body">This cannot be undone.</string>
     <string name="dialog_confirm">OK</string>
     <string name="dialog_cancel">Cancel</string>

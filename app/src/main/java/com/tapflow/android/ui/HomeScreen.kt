@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -51,20 +52,28 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tapflow.android.BuildConfig
 import com.tapflow.android.R
 import com.tapflow.android.data.Clip
+import com.tapflow.android.data.Flow
 import com.tapflow.android.data.Repo
+import com.tapflow.android.text.flowSummary
 import com.tapflow.android.engine.EngineState
 import com.tapflow.android.engine.Workspace
 import com.tapflow.android.text.clipSummary
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(onOpenSettings: () -> Unit, onOpenDiagnostics: () -> Unit) {
+fun HomeScreen(
+    onOpenSettings: () -> Unit,
+    onOpenDiagnostics: () -> Unit,
+    onOpenFlow: (String) -> Unit,
+) {
     val context = LocalContext.current
     val service = rememberServiceState()
     val status = service.status
     val overlayEnabled by Repo.overlayEnabled.collectAsStateWithLifecycle()
     val needsOverlayPermission by EngineState.needsOverlayPermission.collectAsStateWithLifecycle()
     val clips by Repo.clips.collectAsStateWithLifecycle()
+    val flows by Repo.flows.collectAsStateWithLifecycle()
+    val currentFlowId by Repo.currentFlowId.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -130,6 +139,33 @@ fun HomeScreen(onOpenSettings: () -> Unit, onOpenDiagnostics: () -> Unit) {
             } else {
                 items(clips, key = { it.id }) { clip ->
                     ClipRow(clip)
+                }
+            }
+
+            item {
+                Text(
+                    stringResource(R.string.home_tab_flows),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(top = 16.dp),
+                )
+            }
+
+            if (flows.isEmpty()) {
+                item {
+                    Text(
+                        stringResource(R.string.home_no_flows),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            } else {
+                items(flows, key = { it.id }) { flow ->
+                    FlowRow(
+                        flow = flow,
+                        clips = clips,
+                        loaded = flow.id == currentFlowId,
+                        onOpen = { onOpenFlow(flow.id) },
+                    )
                 }
             }
 
@@ -326,7 +362,15 @@ private fun ClipRow(clip: Clip) {
         AlertDialog(
             onDismissRequest = { confirmingDelete = false },
             title = { Text(stringResource(R.string.clip_delete_title, clip.name)) },
-            text = { Text(stringResource(R.string.clip_delete_body)) },
+            text = {
+                // Deleting a clip edits every flow that used it, so say how many before it happens
+                // rather than letting a flow quietly get shorter.
+                val used = Repo.flowsUsing(clip.id)
+                Text(
+                    if (used == 0) stringResource(R.string.clip_delete_body)
+                    else stringResource(R.string.clip_delete_body_in_flows, used)
+                )
+            },
             confirmButton = {
                 TextButton(onClick = { confirmingDelete = false; Repo.deleteClip(clip.id) }) {
                     Text(stringResource(R.string.dialog_confirm))
@@ -338,6 +382,46 @@ private fun ClipRow(clip: Clip) {
                 }
             },
         )
+    }
+}
+
+/**
+ * One flow in the home list.
+ *
+ * Tapping it opens the editor. There is no play button here: playing is the toolbar's job, in the target
+ * app, which is where you actually want to be when a flow runs. The badge says whether this is the flow the
+ * toolbar will play — with a flow and the workspace being mutually exclusive, that is the whole answer to
+ * "what happens when I press play".
+ */
+@Composable
+private fun FlowRow(flow: Flow, clips: List<Clip>, loaded: Boolean, onOpen: () -> Unit) {
+    val resources = LocalContext.current.resources
+    Card(Modifier.fillMaxWidth().clickable { onOpen() }) {
+        Row(
+            Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    flow.name,
+                    style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    flowSummary(resources, flow, clips),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (loaded) {
+                Text(
+                    stringResource(R.string.home_flow_loaded),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
     }
 }
 

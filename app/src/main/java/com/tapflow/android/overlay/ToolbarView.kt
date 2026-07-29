@@ -176,8 +176,8 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
      */
     private val scrollingButtons = listOf(
         primary, playFrom, secondary, edit, insertStep, duplicateStep, insertGlobal, insertPause,
-        insertWait, deleteStep, undo, stepPanelToggle, stepListToggle, newClip, save, load, eye,
-        quickSettings, dismiss, collapse,
+        insertWait, deleteStep, undo, stepPanelToggle, stepListToggle, newClip, save, load,
+        newFlow, loadFlow, deleteFlow, eye, quickSettings, dismiss, collapse,
     )
 
     private val allButtons = listOf(grip) + scrollingButtons
@@ -318,7 +318,9 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         insertWait.visibility = visibleWhen(recording || editing)
         insertGlobal.visibility = visibleWhen(recording || editing)
         undo.visibility = visibleWhen(recording || editing)
-        edit.visibility = visibleWhen(idle)
+        // Both the way in and the way out, so it has to survive editing — gating it on idle alone left
+        // edit mode with no exit on the toolbar at all.
+        edit.visibility = visibleWhen(idle || editing)
         stepListToggle.visibility = visibleWhen(editing)
         stepPanelToggle.visibility = visibleWhen(editing)
         insertStep.visibility = visibleWhen(editing)
