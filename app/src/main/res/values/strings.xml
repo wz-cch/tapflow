@@ -58,8 +58,6 @@
     <string name="flow_new_title">New flow</string>
     <string name="flow_new_confirm">Create</string>
     <string name="flow_name_label">Flow name</string>
-    <string name="flow_load_title">Load a flow</string>
-    <string name="flow_load_empty">No flows yet. Create one and add clips to it.</string>
     <string name="flow_unsaved_warning">Loading a flow clears the workspace — %1$d unsaved actions will be lost.</string>
     <string name="flow_delete_title">Delete “%1$s”? A flow cannot be undone.</string>
     <string name="toast_flow_created">Created and loaded “%1$s”</string>
@@ -90,7 +88,6 @@
     <string name="action_load">Load clip</string>
     <string name="action_play_flow">Play this flow</string>
     <string name="action_new_flow">New flow</string>
-    <string name="action_load_flow">Load a flow</string>
     <string name="action_delete_flow">Delete this flow</string>
     <string name="action_new_clip">Start a new clip</string>
     <string name="action_density">Marker density</string>
