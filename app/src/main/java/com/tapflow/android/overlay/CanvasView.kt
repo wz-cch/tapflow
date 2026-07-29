@@ -21,9 +21,18 @@ import kotlin.math.hypot
 /** What the canvas is currently for. */
 enum class CanvasMode { READ_ONLY, RECORDING, EDIT }
 
-/** Which part of a marker was grabbed. */
+/**
+ * Which part of a marker was grabbed.
+ *
+ * Every one means what it looks like, which is the point. The old pair did not: the badge sat *on* the
+ * start, so it looked like "the start point" while behaving like "the whole gesture" — and no amount of
+ * making it bigger fixed that, because the problem was the meaning.
+ */
 enum class Handle {
-    /** The numbered badge: moves the whole gesture. */
+    /** The numbered badge, which sits on the first sample: changes where the gesture starts. */
+    START,
+
+    /** Anywhere inside the bounding box: moves the whole gesture. */
     BODY,
 
     /** A swipe's arrow tip: changes its direction and length, keeping the curve shape. */
@@ -119,6 +128,20 @@ class CanvasView(context: Context) : View(context) {
             invalidate()
         }
 
+    /**
+     * Radius of a grab ring, in pixels, from the user's setting.
+     *
+     * One number for drawing and for hit-testing, deliberately: the ring exists to *make the grab radius
+     * visible*, so if the two ever differed the drawing would be lying. The marker dot is unaffected and
+     * stays small in every mode, because it points at one exact pixel.
+     */
+    var handleRadiusPx: Float = 0f
+        set(value) {
+            if (field == value) return
+            field = value
+            invalidate()
+        }
+
     /** Black layer opacity for idling with the screen on but unreadable. 0 disables it. */
     var dimAlpha: Float = 0f
         set(value) {
@@ -158,6 +181,9 @@ class CanvasView(context: Context) : View(context) {
 
     private val livePath = Path()
     private val panelRect = RectF()
+
+    /** Reused so hit-testing allocates nothing per touch event. */
+    private val hitBox = RectF()
     private val origin = IntArray(2)
 
     private var highlightUntil = 0L
@@ -271,6 +297,10 @@ class CanvasView(context: Context) : View(context) {
                 grab = hitTest(x, y)
                     ?.takeIf { (marker, _) -> marker.isDraggable }
                     ?.let { (marker, handle) ->
+                        // Three handles, two reference points. END is measured from the arrow tip; START
+                        // and BODY both from the anchor, because the anchor *is* the start, and moving the
+                        // anchor is what translating the whole gesture means. So grabbing the far corner of
+                        // the box still moves it by the drag delta rather than teleporting it to the touch.
                         val anchorX = if (handle == Handle.END) marker.endX else marker.anchorX
                         val anchorY = if (handle == Handle.END) marker.endY else marker.anchorY
                         Grab(marker.stepId, handle, x - anchorX, y - anchorY)
@@ -306,46 +336,50 @@ class CanvasView(context: Context) : View(context) {
         hypot(x - editDownX, y - editDownY) > editSlop
 
     /**
-     * Finds the marker under a point.
+     * Finds the marker and the part of it under a point.
      *
-     * Searched newest first because later markers are painted on top, so the one the user can see is
-     * the one that gets picked.
+     * Searched newest first because later markers are painted on top, so the one the user can see is the
+     * one that gets picked. Within a marker there are up to three targets, and each is the thing it looks
+     * like: a ring on each end changes that end, and anywhere else inside the bounding box moves the whole
+     * gesture — which is honest, because what you touched *is* the whole gesture.
      *
-     * Between a marker's two grab points, **the nearer one wins.** It used to test the end handle first
-     * and return on a hit, with both using the same radius — and that made the body unreachable on any
-     * swipe shorter than the radius. `GestureStep.SWIPE_TRAVEL_PX` is 24 raw pixels, so on a 3× screen a
-     * travel of eight dp already counts as a swipe; its end then sits well inside the body's radius and
-     * took every touch. Short swipes could not be moved at all. Nearest-wins keeps both halves reachable
-     * for any swipe whose ends are distinguishable, and degrades gracefully when they are not.
+     * Between the two rings **the nearer one wins**, and the rings beat the box. An earlier version tested
+     * the end first and returned on a hit, with both sharing one radius, which made the body unreachable
+     * on any swipe shorter than that radius: `GestureStep.SWIPE_TRAVEL_PX` is 24 raw pixels, so on a 3x
+     * screen a travel of eight dp already counts as a swipe, and its end sat inside the other target and
+     * took every touch.
+     *
+     * A tap has one ring and no box worth speaking of, so it can only be moved — and moving its single
+     * point is the same act as moving the whole step. The degenerate case needs no rule of its own.
      */
     private fun hitTest(x: Float, y: Float): Pair<Marker, Handle>? {
-        // Deliberately *not* scaled with the drawing. 26dp is a 52dp target, already past the 48dp a
-        // finger needs — the problem was never the hit area, it was that a 20dp disc understated it and
-        // you aim at what you can see. Growing this as well would only make adjacent derived markers,
-        // spaced 46dp apart, start swallowing each other's touches.
-        val radius = dp(HIT_RADIUS_DP)
+        val radius = handleRadiusPx
         for (marker in visibleMarkers().asReversed()) {
-            val toBody = hypot(x - marker.anchorX, y - marker.anchorY)
+            val toStart = hypot(x - marker.anchorX, y - marker.anchorY)
             val toEnd = if (marker.hasEndHandle) {
                 hypot(x - marker.endX, y - marker.endY)
             } else {
                 Float.MAX_VALUE
             }
-            if (minOf(toBody, toEnd) > radius) continue
-            return marker to if (toEnd < toBody) Handle.END else Handle.BODY
+
+            if (minOf(toStart, toEnd) <= radius) {
+                // A derived marker cannot be dragged, so its rings are never drawn and never claimed;
+                // reporting BODY still lets the tap select it, which is how it gets deleted.
+                if (!marker.isDraggable) return marker to Handle.BODY
+                // With no distinguishable end there is nothing to tell "the start" from "the whole
+                // thing", and moving the one point *is* moving the step — so a tap, a long press, a
+                // multi-finger gesture and a swipe too short to have two ends all report BODY. Reporting
+                // START would send a tap through withStartAt, which needs an end to pivot about and would
+                // hand back a two-sample swipe: the step would change type because you nudged it.
+                if (!marker.hasEndHandle) return marker to Handle.BODY
+                return marker to if (toEnd < toStart) Handle.END else Handle.START
+            }
+
+            marker.boundsInto(hitBox, radius * 2f)
+            if (hitBox.contains(x, y)) return marker to Handle.BODY
         }
         return null
     }
-
-    /**
-     * How much bigger markers are drawn while editing.
-     *
-     * Editing is the only mode where a marker is a *touch target*; everywhere else it is a readout. At 1×
-     * the disc is 20dp across while the grab radius is 26dp — so the thing you aim at was smaller than
-     * the thing that actually catches you, and aiming is done by eye. At 1.5× the disc is 30dp inside a
-     * 52dp target, which is the right way round: visibly big, and still forgiving.
-     */
-    private fun editScale(): Float = if (mode == CanvasMode.EDIT) EDIT_MARKER_SCALE else 1f
 
     /**
      * What is on screen, and therefore what can be hit.
@@ -373,7 +407,7 @@ class CanvasView(context: Context) : View(context) {
             if (mode == CanvasMode.RECORDING) canvas.drawColor(scrimColor)
         }
 
-        painter.draw(canvas, visibleMarkers(), highlightNumber, selectedStepId, scale = editScale())
+        painter.draw(canvas, visibleMarkers(), highlightNumber, selectedStepId, scale = 1f, handleRadiusPx = if (mode == CanvasMode.EDIT) handleRadiusPx else 0f)
 
         drawInProgressStrokes(canvas)
 
@@ -437,10 +471,5 @@ class CanvasView(context: Context) : View(context) {
     private companion object {
         const val HIGHLIGHT_MS = 800L
 
-        /** Radius of a grab point. A 52dp target, past the 48dp a finger needs. Never scaled. */
-        const val HIT_RADIUS_DP = 26f
-
-        /** See editScale(). Puts a 30dp disc inside that 52dp target instead of a 20dp one. */
-        const val EDIT_MARKER_SCALE = 1.5f
     }
 }

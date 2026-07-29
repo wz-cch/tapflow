@@ -222,6 +222,47 @@ fun RepeatableStep.withRepeat(repeat: Int, intervalMs: Long): Step = when (this)
     is GlobalStep -> copy(repeat = repeat, repeatIntervalMs = intervalMs)
 }
 
+/**
+ * Moves the *start* of a single-stroke gesture to an absolute position, keeping the end where it is.
+ *
+ * The mirror of [withEndAt]: the same rotate-and-scale, taken about the end instead of the start, so a
+ * curved swipe keeps its shape when its beginning is moved. Multi-finger gestures are left alone, since
+ * there is no single start to speak of.
+ */
+fun GestureStep.withStartAt(x: Float, y: Float): GestureStep {
+    val stroke = strokes.singleOrNull() ?: return this
+    val end = stroke.end
+    val oldDx = stroke.start.x - end.x
+    val oldDy = stroke.start.y - end.y
+    val oldLengthSquared = oldDx * oldDx + oldDy * oldDy
+
+    // Nothing to rotate about, so it becomes a straight two-sample swipe from the new start.
+    if (oldLengthSquared < MIN_DIRECTION_LENGTH_SQUARED) {
+        return copy(
+            strokes = listOf(
+                stroke.copy(points = listOf(Pt(x, y, 0), end.copy(t = stroke.duration.coerceAtLeast(1L))))
+            )
+        )
+    }
+
+    val newDx = x - end.x
+    val newDy = y - end.y
+    val a = (newDx * oldDx + newDy * oldDy) / oldLengthSquared
+    val b = (newDy * oldDx - newDx * oldDy) / oldLengthSquared
+
+    return copy(
+        strokes = listOf(
+            stroke.copy(
+                points = stroke.points.map { point ->
+                    val px = point.x - end.x
+                    val py = point.y - end.y
+                    point.copy(x = end.x + a * px - b * py, y = end.y + b * px + a * py)
+                }
+            )
+        )
+    )
+}
+
 private const val MIN_DIRECTION_LENGTH_SQUARED = 1f
 
 // There is deliberately no synthesise-a-tap-at-a-position helper. The toolbar's add button used to

@@ -68,18 +68,48 @@ data class Marker(
     /**
      * Whether this marker offers a second grab point at its end.
      *
-     * Decided when the marker is built, not derived on demand, because it depends on how far apart the
-     * two points are *in dp* — and only [buildMarkers] knows the display density. `SWIPE_TRAVEL_PX` is
-     * 24 raw pixels, so on a 3x screen a travel of eight dp already counts as a swipe; two grab points
-     * eight dp apart are below what a finger can aim at, and offering both would just hand out one at
-     * random. Such a swipe is body-only, so it can at least be moved reliably; its shape is changed by
-     * re-recording it, which is what that button is for.
+     * Decided when the marker is built, not derived on demand, because the threshold is a length in
+     * pixels that the caller supplies. `SWIPE_TRAVEL_PX` is 24 raw pixels, so on a 3x screen a travel of
+     * eight dp already counts as a swipe; two grab points that close are below what a finger can aim at,
+     * and offering both would just hand out one at random. Such a swipe is body-only, so it can at least
+     * be moved reliably; its shape is changed by re-recording it, which is what that button is for.
      */
     val hasEndHandle: Boolean = false,
 ) {
     /** End of the first stroke — the arrow tip, and the grab point for changing a swipe. */
     val endX: Float get() = paths.firstOrNull()?.lastOrNull()?.first ?: anchorX
     val endY: Float get() = paths.firstOrNull()?.lastOrNull()?.second ?: anchorY
+
+    /**
+     * Bounding box of everything this marker draws, written into [out] to avoid allocating per frame.
+     *
+     * This is the body: touch inside it and you move the whole gesture, which is honest because what you
+     * touched *is* the whole gesture. A rectangle rather than the distance to the curve — the reason the
+     * original spec dropped a body handle was the cost and ambiguity of hit-testing a path, and a box has
+     * neither. It is also drawable, so the target stops being invisible.
+     *
+     * @param minSize the box never measures less than this across, so a horizontal swipe does not become
+     *   a zero-height line and a single tap still gets a frame.
+     */
+    fun boundsInto(out: RectF, minSize: Float) {
+        var left = anchorX
+        var top = anchorY
+        var right = anchorX
+        var bottom = anchorY
+        for (path in paths) {
+            for ((x, y) in path) {
+                if (x < left) left = x
+                if (x > right) right = x
+                if (y < top) top = y
+                if (y > bottom) bottom = y
+            }
+        }
+        out.set(left, top, right, bottom)
+
+        val growX = ((minSize - out.width()) / 2f).coerceAtLeast(0f)
+        val growY = ((minSize - out.height()) / 2f).coerceAtLeast(0f)
+        out.inset(-growX, -growY)
+    }
 
     /**
      * Whether dragging this marker would mean anything.
@@ -107,6 +137,7 @@ fun buildMarkers(
     screenWidth: Float,
     screenHeight: Float,
     displayDensity: Float,
+    endHandleMinPx: Float,
 ): List<Marker> {
     val gestures = steps.map { it as? GestureStep }
     val spacing = DERIVED_SPACING_DP * displayDensity
@@ -130,7 +161,7 @@ fun buildMarkers(
                     paths = step.strokes.map { stroke -> stroke.points.map { it.x to it.y } },
                     hasEndHandle = step.kind == GestureKind.SWIPE &&
                         single != null &&
-                        separation >= END_HANDLE_MIN_DP * displayDensity,
+                        separation >= endHandleMinPx,
                 )
             }
 
@@ -164,13 +195,10 @@ fun buildMarkers(
 /** Roughly a fingertip apart, so consecutive derived markers stay separately tappable. */
 private const val DERIVED_SPACING_DP = 46f
 
-/**
- * How far a swipe's end must be from its start before both become grab points.
- *
- * Below this the two are closer together than a finger can distinguish, so the marker offers only its
- * body — a predictable result beats a coin toss between "move it" and "reshape it".
- */
-private const val END_HANDLE_MIN_DP = 32f
+// How far a swipe's ends must be apart before both get their own handle is not a constant here: it is
+// one grab-ring diameter, and that is a user setting (Settings.editHandleDp). Below it the two rings
+// would have no territory of their own, so the marker offers only its body — a predictable result beats
+// a coin toss between "move it" and "reshape it".
 
 /**
  * Where to draw a step that has no coordinates of its own.
@@ -302,10 +330,18 @@ class MarkerPainter(context: Context) {
 
     private val reusablePath = Path()
 
+    /** Reused so drawing a selection allocates nothing per frame. */
+    private val selectionBox = RectF()
+
     /**
      * @param highlightNumber the step currently being replayed, drawn larger and in the accent
      *   colour so it is obvious where the automation has got to.
      * @param selectedStepId the step being edited, given a corner frame and grab handles.
+     */
+    /**
+     * @param handleRadiusPx radius of a grab ring, or 0 to draw no selection affordance at all. Non-zero
+     *   only while editing: everywhere else a marker is a readout, not something you can take hold of, and
+     *   a ring there would promise a grip that does not exist.
      */
     fun draw(
         canvas: Canvas,
@@ -313,26 +349,46 @@ class MarkerPainter(context: Context) {
         highlightNumber: Int?,
         selectedStepId: String?,
         scale: Float,
+        handleRadiusPx: Float,
     ) {
         drawLinks(canvas, markers)
         markers.forEach { marker ->
             val highlighted = marker.number == highlightNumber
             drawMarker(canvas, marker, highlighted, scale)
-            if (marker.stepId == selectedStepId) drawSelection(canvas, marker, scale)
+            if (marker.stepId == selectedStepId && handleRadiusPx > 0f) {
+                drawSelection(canvas, marker, handleRadiusPx)
+            }
         }
     }
 
-    /** Corner frame plus a ring on each grab point, so what can be dragged is visible. */
-    private fun drawSelection(canvas: Canvas, marker: Marker, scale: Float) {
-        val reach = dp(30f) * scale
-        stroke.color = colorHighlight
-        stroke.strokeWidth = dp(2f) * scale
+    /**
+     * What can be taken hold of, drawn.
+     *
+     * Three targets, each looking like what it does: a box round the whole gesture (move it), and a ring
+     * on each end that can be told apart (change that end). The dot itself stays small in every mode,
+     * because it marks one exact pixel and drawing it large would be a lie about that precision — an
+     * earlier attempt simply scaled every marker up by half and it did not help, since the problem was
+     * never the size but that the head looked like "the start" while behaving like "the whole thing".
+     *
+     * Corner brackets rather than a full rectangle, in the manner of a detection box: they mark the extent
+     * without laying a line over the path inside it.
+     *
+     * A derived marker gets the box but no rings. It cannot be dragged at all — its position is computed
+     * from its neighbours — so a ring would advertise a grip it does not have. The box alone reads as
+     * "selected", which is true and is what deletion acts on.
+     */
+    private fun drawSelection(canvas: Canvas, marker: Marker, handleRadiusPx: Float) {
+        marker.boundsInto(selectionBox, handleRadiusPx * 2f)
 
-        val arm = dp(9f) * scale
-        val left = marker.anchorX - reach
-        val right = marker.anchorX + reach
-        val top = marker.anchorY - reach
-        val bottom = marker.anchorY + reach
+        stroke.color = colorHighlight
+        stroke.strokeWidth = dp(2f)
+
+        val arm = (minOf(selectionBox.width(), selectionBox.height()) * 0.28f)
+            .coerceAtMost(dp(16f))
+        val left = selectionBox.left
+        val right = selectionBox.right
+        val top = selectionBox.top
+        val bottom = selectionBox.bottom
 
         canvas.drawLine(left, top, left + arm, top, stroke)
         canvas.drawLine(left, top, left, top + arm, stroke)
@@ -343,8 +399,14 @@ class MarkerPainter(context: Context) {
         canvas.drawLine(right, bottom, right - arm, bottom, stroke)
         canvas.drawLine(right, bottom, right, bottom - arm, stroke)
 
+        if (!marker.isDraggable) return
+
+        // The start always has a ring: on a tap it is the only target there is, and moving that one point
+        // is the same act as moving the whole step, so the degenerate case needs no special rule.
+        stroke.strokeWidth = dp(1.5f)
+        canvas.drawCircle(marker.anchorX, marker.anchorY, handleRadiusPx, stroke)
         if (marker.hasEndHandle) {
-            canvas.drawCircle(marker.endX, marker.endY, dp(13f) * scale, stroke)
+            canvas.drawCircle(marker.endX, marker.endY, handleRadiusPx, stroke)
         }
     }
 

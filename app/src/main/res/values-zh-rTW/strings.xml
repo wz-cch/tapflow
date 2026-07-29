@@ -227,6 +227,10 @@
     <string name="settings_replay_each">逐手勢補發</string>
     <string name="settings_replay_each_body">錄到的每個手勢會立刻送回下層 app,畫面才會前進。關掉就是純盲錄:畫面完全不動,但快速滑動比較準。</string>
     <string name="settings_replay_delay">補發後等待</string>
+    <string name="settings_section_editing">編輯</string>
+    <string name="settings_edit_handle">抓取外圈大小</string>
+    <string name="settings_edit_handle_body">選取標記時畫出來的外圈,也就是要碰多近才抓得到。調大比較好按;圓點本身維持小,因為它標的是一個精確的像素。</string>
+    <string name="value_dp">%1$d dp</string>
     <string name="settings_section_appearance">外觀</string>
     <string name="settings_ui_scale">工具列大小</string>
     <string name="settings_ui_opacity">工具列不透明度</string>

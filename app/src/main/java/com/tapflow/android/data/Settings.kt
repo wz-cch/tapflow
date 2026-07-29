@@ -67,6 +67,21 @@ data class Settings(
     /** How long to wait after a replayed gesture for the target app to finish animating. */
     val replayDelayMs: Long = 80,
 
+    // --- Editing ---
+    /**
+     * Diameter, in dp, of a grab handle while editing.
+     *
+     * One number decides three things, which is why it is a setting and not three constants. It is the
+     * ring drawn on the selected marker; it is the radius that ring makes visible, so grabbing and
+     * selecting use the same figure by construction; and it is the separation two endpoints need before
+     * both get their own ring, since below one diameter apart they would have no territory of their own.
+     *
+     * A setting rather than a tuned constant because fingers differ and the right value is not findable
+     * on paper. The default is the radius the code used before it was adjustable, so nothing changes for
+     * anyone who leaves it alone.
+     */
+    val editHandleDp: Int = 52,
+
     // --- Appearance ---
     val uiScale: Float = 1f,
     val uiOpacity: Float = 1f,
@@ -97,6 +112,8 @@ data class Settings(
         const val JITTER_TIME_MAX = 50
         const val MAX_LOOP_COUNT = 9999
         val SPEED_RANGE = 0.25f..4f
+        /** Small enough to still point at a coordinate, large enough for a thumb. */
+        val EDIT_HANDLE_RANGE = 36f..96f
         val UI_SCALE_RANGE = 0.7f..1.5f
         val UI_OPACITY_RANGE = 0.3f..1.0f
     }
