@@ -48,6 +48,18 @@ data class Settings(
     val speed: Float = 1f,
     /** Countdown after pressing play. */
     val startDelayMs: Long = 3000,
+    /**
+     * Gap between one pass over the script and the next, when it loops.
+     *
+     * Its own quantity, and not the first step's [Step.delayBefore] — that one is the lead-in *before step
+     * one*, recorded as a default rather than measured against anything, so leaving it to separate the
+     * passes made them run all but back to back. The same distinction [RepeatableStep.repeatIntervalMs]
+     * draws for a single step, one level up.
+     *
+     * Also not [startDelayMs]: that countdown exists so you can switch to the target app, which happens
+     * once. Reusing it here would put a three-second wait between every pass of a hundred-loop run.
+     */
+    val loopIntervalMs: Long = 500,
 
     // --- Randomisation ---
     /**
