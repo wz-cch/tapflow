@@ -84,6 +84,15 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         fun onSave()
         fun onLoad()
         fun onNewClip()
+
+        /**
+         * Flow mode's three. Same icons as the clip versions, and deliberately so: the noun follows the
+         * mode, and doubling the icons would make the column longer without making it clearer. What tells
+         * you which noun is in force is the play button, which is a different icon in flow mode.
+         */
+        fun onNewFlow()
+        fun onLoadFlow()
+        fun onDeleteFlow()
         fun onCycleDensity()
         fun onToggleQuickSettings()
         fun onDismiss()
@@ -150,6 +159,9 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
     private val newClip = icon(R.drawable.ic_new_clip)
     private val save = icon(R.drawable.ic_save)
     private val load = icon(R.drawable.ic_folder_open)
+    private val newFlow = icon(R.drawable.ic_new_clip)
+    private val loadFlow = icon(R.drawable.ic_folder_open)
+    private val deleteFlow = icon(R.drawable.ic_remove)
     private val eye = icon(R.drawable.ic_eye)
     private val quickSettings = icon(R.drawable.ic_tune)
     private val dismiss = icon(R.drawable.ic_close)
@@ -212,6 +224,9 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         save.setOnClickListener { actions.onSave() }
         load.setOnClickListener { actions.onLoad() }
         newClip.setOnClickListener { actions.onNewClip() }
+        newFlow.setOnClickListener { actions.onNewFlow() }
+        loadFlow.setOnClickListener { actions.onLoadFlow() }
+        deleteFlow.setOnClickListener { actions.onDeleteFlow() }
 
         attachDrag(grip, onTap = null)
         attachDrag(ball) {
@@ -244,6 +259,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         isolateSelection: Boolean,
         stepListOpen: Boolean,
         stepPanelOpen: Boolean,
+        flowMode: Boolean,
     ) {
         val hasSteps = workspaceSize > 0
         val recording = mode == Mode.RECORDING
@@ -285,27 +301,43 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         //
         // The eye and the collapse handle are missing from this list on purpose: both are useful in
         // every mode, so they are simply always visible.
-        primary.visibility = visibleWhen(!editing && !recording)
-        playFrom.visibility = visibleWhen(!editing && !recording)
+        // Flow mode is a fourth set, and a thin one. Clip mode's object is a *node* — so it needs
+        // dragging, durations, re-recording, insertion, duplication, a whole column of them. Flow mode's
+        // object is a *clip*: you cannot edit a node or save a node here, so none of that appears. The
+        // two are not the same kind of mode with different contents; they work on things one level apart.
+        //
+        // There is no save button in flow mode either. Editing a flow writes it straight back — it is a
+        // list of references with nothing accumulating in it — so the act does not exist.
+        val idle = !editing && !recording && !flowMode
+        primary.visibility = visibleWhen(idle || flowMode)
+        playFrom.visibility = visibleWhen(idle)
+        // The way out of flow mode: recording is never blocked, it just switches back. Unloading a flow
+        // costs nothing, because a flow is already saved.
         secondary.visibility = visibleWhen(!editing)
         insertPause.visibility = visibleWhen(recording || editing)
         insertWait.visibility = visibleWhen(recording || editing)
         insertGlobal.visibility = visibleWhen(recording || editing)
         undo.visibility = visibleWhen(recording || editing)
-        edit.visibility = visibleWhen(!recording)
+        edit.visibility = visibleWhen(idle)
         stepListToggle.visibility = visibleWhen(editing)
         stepPanelToggle.visibility = visibleWhen(editing)
         insertStep.visibility = visibleWhen(editing)
         duplicateStep.visibility = visibleWhen(editing)
         deleteStep.visibility = visibleWhen(editing)
-        newClip.visibility = visibleWhen(!editing && !recording)
-        save.visibility = visibleWhen(!editing && !recording)
-        load.visibility = visibleWhen(!editing && !recording)
-        quickSettings.visibility = visibleWhen(!editing && !recording)
-        dismiss.visibility = visibleWhen(!editing && !recording)
+        newClip.visibility = visibleWhen(idle)
+        save.visibility = visibleWhen(idle)
+        load.visibility = visibleWhen(idle)
+        newFlow.visibility = visibleWhen(flowMode)
+        loadFlow.visibility = visibleWhen(flowMode)
+        deleteFlow.visibility = visibleWhen(flowMode)
+        quickSettings.visibility = visibleWhen(idle || flowMode)
+        dismiss.visibility = visibleWhen(idle || flowMode)
 
-        primary.setImageResource(R.drawable.ic_play)
-        setActionEnabled(primary, hasSteps)
+        primary.setImageResource(if (flowMode) R.drawable.ic_play_flow else R.drawable.ic_play)
+        primary.contentDescription = context.getString(
+            if (flowMode) R.string.action_play_flow else R.string.action_play
+        )
+        setActionEnabled(primary, if (flowMode) true else hasSteps)
         setActionEnabled(playFrom, hasSteps)
 
         secondary.setImageResource(if (recording) R.drawable.ic_stop else R.drawable.ic_record)
@@ -320,7 +352,6 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
                 else -> R.string.action_record
             }
         )
-        primary.contentDescription = context.getString(R.string.action_play)
         setActionEnabled(secondary, true)
 
         edit.imageTintList = android.content.res.ColorStateList.valueOf(
@@ -509,6 +540,9 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         save.contentDescription = context.getString(R.string.action_save)
         load.contentDescription = context.getString(R.string.action_load)
         newClip.contentDescription = context.getString(R.string.action_new_clip)
+        newFlow.contentDescription = context.getString(R.string.action_new_flow)
+        loadFlow.contentDescription = context.getString(R.string.action_load_flow)
+        deleteFlow.contentDescription = context.getString(R.string.action_delete_flow)
         eye.contentDescription = context.getString(R.string.action_density)
         quickSettings.contentDescription = context.getString(R.string.action_quick_settings)
         dismiss.contentDescription = context.getString(R.string.action_dismiss)

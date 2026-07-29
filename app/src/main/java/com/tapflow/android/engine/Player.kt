@@ -41,10 +41,20 @@ class Player(
      * @param startIndex first step of the *first* pass. Later passes always start from the beginning:
      *   "start at 47 and run three times" almost never means skipping 1–46 on every pass, it means
      *   picking up where the problem was and then behaving normally.
+     * @param plan set when the steps came from expanding a flow, so progress can be reported as "clip 2
+     *   of 5, step 10 of 30" instead of one number counted across the whole flow. Null for a recording,
+     *   where there is only one thing being run and the global index is the answer.
      */
-    fun play(steps: List<Step>, recordedScreen: ScreenSpec?, loops: Int, startIndex: Int = 0) {
+    fun play(
+        steps: List<Step>,
+        recordedScreen: ScreenSpec?,
+        loops: Int,
+        startIndex: Int = 0,
+        plan: FlowPlan.Expanded? = null,
+    ) {
         if (isActive || steps.isEmpty()) return
         pauseRequested.value = false
+        cursor = plan?.let { Cursor(it) }
 
         Diag.log("player: play ${steps.size} step(s), loops=$loops, recordedScreen=$recordedScreen")
         job = scope.launch {
@@ -62,6 +72,7 @@ class Player(
                     // forever, where without it the script simply hammers the app continuously.
                     if (loop > 1) {
                         val current = settings()
+                        // Step 0: between passes, nothing running. The transport reads it as a wait.
                         EngineState.progress.value = Progress(loop, loops, 0, steps.size)
                         delay(Timing.replayDelay(current.loopIntervalMs, current))
                         // So pause and stop land during the gap rather than only at the next step.
@@ -71,8 +82,7 @@ class Player(
                     for ((index, step) in steps.withIndex()) {
                         if (index < from) continue
                         val passes = (step as? RepeatableStep)?.repeat?.coerceAtLeast(1) ?: 1
-                        EngineState.progress.value =
-                            Progress(loop, loops, index + 1, steps.size, 1, passes)
+                        report(loop, loops, index, steps.size, 1, passes)
                         Diag.log(
                             "player: loop $loop step ${index + 1}/${steps.size} " +
                                 step::class.java.simpleName +
@@ -109,8 +119,7 @@ class Player(
                             // interval is what stops ten taps arriving close enough together for the app
                             // below to read them as one multi-tap — or to drop them.
                             if (pass > 1) {
-                                EngineState.progress.value =
-                                    Progress(loop, loops, index + 1, steps.size, pass, passes)
+                                report(loop, loops, index, steps.size, pass, passes)
                                 delay(Timing.replayDelay(interval, current))
                                 // Checked every pass, so pause and stop work in the middle of a repeat
                                 // rather than only between steps.
@@ -130,6 +139,70 @@ class Player(
                 EngineState.reset()
             }
         }
+    }
+
+    /**
+     * Where a global step index falls in an expanded flow.
+     *
+     * Walks forward from the previous answer rather than searching, because playback only ever moves
+     * forwards through the list, so this is a single comparison per step in the common case.
+     */
+    private class Cursor(val plan: FlowPlan.Expanded) {
+        private var segment = 0
+        private var segmentStart = 0
+
+        fun locate(index: Int): Pair<Int, Int> {
+            if (index < segmentStart) {
+                segment = 0
+                segmentStart = 0
+            }
+            while (segment < plan.segments.lastIndex &&
+                index >= segmentStart + plan.segments[segment].stepCount
+            ) {
+                segmentStart += plan.segments[segment].stepCount
+                segment++
+            }
+            val here = plan.segments.getOrNull(segment) ?: return 0 to 0
+            return here.clipPosition to here.stepCount
+        }
+
+        fun stepWithin(index: Int): Int = index - segmentStart + 1
+    }
+
+    private var cursor: Cursor? = null
+
+    /**
+     * Publishes progress, expressed in whatever unit the run has.
+     *
+     * A recording counts steps across the whole run. A flow counts them **within the current clip**, and
+     * adds the clip's own position — which is why a flow of one clip reads exactly like running that clip
+     * on its own, once the transport hides a total of 1.
+     */
+    private fun report(
+        loop: Int,
+        loops: Int,
+        index: Int,
+        total: Int,
+        repeatPass: Int,
+        repeatTotal: Int,
+    ) {
+        val here = cursor
+        if (here == null) {
+            EngineState.progress.value =
+                Progress(loop, loops, index + 1, total, repeatPass, repeatTotal)
+            return
+        }
+        val (clipPosition, stepsInClip) = here.locate(index)
+        EngineState.progress.value = Progress(
+            loop = loop,
+            totalLoops = loops,
+            step = here.stepWithin(index),
+            totalSteps = stepsInClip,
+            repeatPass = repeatPass,
+            repeatTotal = repeatTotal,
+            clip = clipPosition,
+            totalClips = here.plan.clipCount,
+        )
     }
 
     /**

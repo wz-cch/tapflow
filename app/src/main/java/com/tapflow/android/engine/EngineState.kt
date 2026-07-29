@@ -26,10 +26,15 @@ enum class Mode { IDLE, RECORDING, COUNTDOWN, PLAYING, PAUSED }
 enum class ToolbarForm { EXPANDED, BALL }
 
 /**
+ * @param step position within whatever the counters below describe — the whole run for a recording, or
+ *   the current clip when a flow is running.
  * @param repeatPass which repetition of the current step is running, 1-based.
  * @param repeatTotal how many repetitions that step has. 1 for an ordinary step, which is why the
  *   transport only shows this pair when it is above 1 — a step repeated ten times with a gap between
  *   each otherwise sits on the same number for ten seconds and reads as frozen.
+ * @param clip 1-based position of the clip being run, or 0 when there is no flow.
+ * @param totalClips how many clips the flow has. **1 is shown as nothing**, deliberately: a flow of one
+ *   clip should read exactly like running that clip on its own, so "1 / 1" would be noise.
  */
 data class Progress(
     val loop: Int,
@@ -38,6 +43,8 @@ data class Progress(
     val totalSteps: Int,
     val repeatPass: Int = 1,
     val repeatTotal: Int = 1,
+    val clip: Int = 0,
+    val totalClips: Int = 0,
 )
 
 /**

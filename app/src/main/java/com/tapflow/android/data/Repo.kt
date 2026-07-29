@@ -84,12 +84,26 @@ object Repo {
         write(clipsFile, _clips.value, "clips")
     }
 
+    /**
+     * Deletes a clip, and takes it out of every flow that referenced it.
+     *
+     * Pruned rather than left as a "clip deleted" placeholder, which is what this used to do. A flow with a
+     * dangling reference is a flow that looks runnable and is not, and the failure would arrive halfway
+     * through a run; removing the row means the flow on screen is the flow that will run. The one thing
+     * lost is "I only wanted to point that row at a different clip", which is two actions instead of one.
+     */
     fun deleteClip(id: String) {
         _clips.value = _clips.value.filterNot { it.id == id }
         write(clipsFile, _clips.value, "clips")
 
-        // Flow nodes referencing this clip are left in place and rendered as "clip deleted" by the
-        // UI. They are not auto-removed: the user may only want to point the node at another clip.
+        val affected = _flows.value.filter { flow -> flow.clips.any { it.clipId == id } }
+        if (affected.isNotEmpty()) {
+            _flows.value = _flows.value.map { flow ->
+                if (flow in affected) flow.copy(clips = flow.clips.filterNot { it.clipId == id }) else flow
+            }
+            write(flowsFile, _flows.value, "flows")
+        }
+
         if (currentClipId.value == id) setCurrentClip(null)
     }
 
@@ -97,7 +111,18 @@ object Repo {
 
     fun flowById(id: String?): Flow? = id?.let { key -> _flows.value.firstOrNull { it.id == key } }
 
-    fun currentFlow(): Flow? = flowById(currentFlowId.value) ?: _flows.value.firstOrNull()
+    /** How many flows use this clip. Shown before deleting, since deleting edits those flows. */
+    fun flowsUsing(clipId: String): Int =
+        _flows.value.count { flow -> flow.clips.any { it.clipId == clipId } }
+
+    /**
+     * The loaded flow, or null.
+     *
+     * No falling back to the first flow, which is what this used to do. This id is now the *mode*: a flow
+     * being loaded is exactly what makes the toolbar a flow toolbar and the play button play a flow. A
+     * fallback would put the app into flow mode the moment any flow existed.
+     */
+    fun currentFlow(): Flow? = flowById(currentFlowId.value)
 
     fun upsertFlow(flow: Flow) {
         val exists = _flows.value.any { it.id == flow.id }
@@ -106,13 +131,16 @@ object Repo {
         } else {
             _flows.value + flow
         }
-        if (currentFlowId.value == null) setCurrentFlow(flow.id)
+        // Deliberately does not load it. Loading a flow clears the workspace, so it has to be something
+        // the user asks for — creating or editing one must never throw away an unsaved recording.
         write(flowsFile, _flows.value, "flows")
     }
 
     fun deleteFlow(id: String) {
         _flows.value = _flows.value.filterNot { it.id == id }
-        if (currentFlowId.value == id) setCurrentFlow(_flows.value.firstOrNull()?.id)
+        // Nothing loaded, rather than whichever flow happens to be first: deleting the loaded flow is not
+        // a request to run a different one.
+        if (currentFlowId.value == id) setCurrentFlow(null)
         write(flowsFile, _flows.value, "flows")
     }
 

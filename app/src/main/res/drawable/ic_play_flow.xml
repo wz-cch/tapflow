@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Tinted programmatically by the overlay views, so no tint attribute here.
+     A play triangle beside stacked rows: run several clips, not one. Deliberately distinct from ic_play,
+     because in flow mode the new/load/delete buttons mean flows rather than clips and the play button is
+     the only always-visible thing that can say which. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M3,5h9v2h-9zM3,11h9v2h-9zM3,17h6v2h-6z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M14,6.5l7,5.5l-7,5.5z" />
+</vector>

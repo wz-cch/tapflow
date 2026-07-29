@@ -2,21 +2,17 @@ package com.tapflow.android.text
 
 import android.content.res.Resources
 import com.tapflow.android.R
-import com.tapflow.android.data.AwaitTextNode
 import com.tapflow.android.data.Clip
 import com.tapflow.android.data.ClipNode
+import com.tapflow.android.data.Flow
 import com.tapflow.android.data.GestureKind
 import com.tapflow.android.data.GestureStep
 import com.tapflow.android.data.GlobalKind
-import com.tapflow.android.data.GlobalNode
 import com.tapflow.android.data.GlobalStep
 import com.tapflow.android.data.MarkerDensity
-import com.tapflow.android.data.MatchMode
-import com.tapflow.android.data.Node
 import com.tapflow.android.data.PauseStep
 import com.tapflow.android.data.RepeatableStep
 import com.tapflow.android.data.Step
-import com.tapflow.android.data.WaitNode
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -100,13 +96,6 @@ fun GlobalKind.label(res: Resources): String = res.getString(
     }
 )
 
-fun MatchMode.label(res: Resources): String = res.getString(
-    when (this) {
-        MatchMode.CONTAINS -> R.string.match_contains
-        MatchMode.EXACT -> R.string.match_exact
-        MatchMode.VIEW_ID -> R.string.match_view_id
-    }
-)
 
 fun MarkerDensity.label(res: Resources): String = res.getString(
     when (this) {
@@ -116,16 +105,15 @@ fun MarkerDensity.label(res: Resources): String = res.getString(
     }
 )
 
-fun Node.label(res: Resources, clips: List<Clip>): String = when (this) {
-    is ClipNode -> {
-        val name = clips.firstOrNull { it.id == clipId }?.name
-            ?: res.getString(R.string.node_clip_missing)
-        if (repeat > 1) res.getString(R.string.node_clip_repeat, name, repeat) else name
-    }
-
-    is WaitNode -> res.getString(R.string.step_wait, secondsText(ms))
-    is AwaitTextNode -> res.getString(R.string.node_await_text, text)
-    is GlobalNode -> res.getString(R.string.step_global, kind.label(res))
+/**
+ * One line for a clip's row in a flow: its name, and the knobs that are not at their defaults.
+ *
+ * A missing clip is not a case here. Deleting a clip removes it from every flow that references it, so a
+ * dangling id cannot survive to be displayed — see Repo.deleteClip.
+ */
+fun ClipNode.label(res: Resources, clips: List<Clip>): String {
+    val name = clips.firstOrNull { it.id == clipId }?.name ?: return res.getString(R.string.node_clip_gone)
+    return if (repeat > 1) res.getString(R.string.node_clip_repeat, name, repeat) else name
 }
 
 /**
@@ -140,6 +128,21 @@ fun clipSummary(res: Resources, clip: Clip): String {
     } else {
         res.getString(R.string.clip_summary, clip.stepCount, duration)
     }
+}
+
+/**
+ * One line for a flow in a list: how many clips, and roughly how long one pass takes.
+ *
+ * The estimate is the sum of each clip's own estimate multiplied by its repeat count, plus the gaps. Same
+ * shape as a clip's estimate one level up — which is the point of the two layers having the same knobs.
+ */
+fun flowSummary(res: Resources, flow: Flow, clips: List<Clip>): String {
+    val total = flow.clips.sumOf { node ->
+        val clip = clips.firstOrNull { it.id == node.clipId } ?: return@sumOf 0L
+        val passes = node.repeat.coerceAtLeast(1)
+        node.delayBefore + clip.estimatedDurationMs * passes + node.extraPasses * node.repeatIntervalMs
+    }
+    return res.getString(R.string.flow_summary, flow.clips.size, formatDuration(total))
 }
 
 private fun formatDuration(ms: Long): String {
