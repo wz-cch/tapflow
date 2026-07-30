@@ -116,12 +116,18 @@ fun HomeScreen(
      * Hands over to the toolbar.
      *
      * Turning the overlay on is part of loading, not a separate step the user has to remember: loading
-     * means "I am about to use this", and the toolbar is how it gets used. Closing is skipped when the
-     * service is not running, because then there would be nothing on screen at all — the permission card
-     * at the top is what that user needs, so leave them looking at it.
+     * means "I am about to use this", and the toolbar is how it gets used.
+     *
+     * The check is `!= DISABLED`, **not** `== RUNNING`, for the same reason the toolbar switch below
+     * uses that form. `ENABLED_NOT_RUNNING` is a routine, temporary state — the process gets killed by
+     * swiping the app off recents, and there is a window right after enabling the service where it has
+     * not bound yet — so treating it as "not enabled" tells someone who *did* enable it that they did
+     * not, which is a dead end. Turning the overlay on records an intention; the service reads it when
+     * it connects. Only a genuinely disabled service is worth staying on this screen for, because then
+     * the card at the top is the thing that helps.
      */
     fun handOver() {
-        if (status != ServiceStatus.RUNNING) {
+        if (status == ServiceStatus.DISABLED) {
             Toast.makeText(context, context.getString(R.string.toast_service_off), Toast.LENGTH_SHORT).show()
             return
         }
