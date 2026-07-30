@@ -37,6 +37,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tapflow.android.R
+import com.tapflow.android.data.FileLibrary
 import com.tapflow.android.data.FolderStore
 import com.tapflow.android.data.Repo
 import com.tapflow.android.data.Settings
@@ -259,37 +260,64 @@ private fun FolderRow() {
         }
     }
 
+    // API 28 and below: the path is fixed, so what can be missing is the permission that lets us create it.
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (!granted) return@rememberLauncherForActivityResult
+        busy = true
+        scope.launch {
+            withContext(Dispatchers.IO) { Repo.useDefaultFolder() }
+            busy = false
+        }
+    }
+
     // Re-probed on arrival: the folder may have gone away since it was last written to, and this screen
     // is one of the few places that can say so before a save fails.
     LaunchedEffect(Unit) {
         if (FolderStore.isConfigured) withContext(Dispatchers.IO) { FolderStore.refreshUsable() }
     }
 
+    val needsPermission = FolderStore.needsPermission
+
     Column(Modifier.padding(top = 12.dp)) {
         Text(stringResource(R.string.folder_setting), style = MaterialTheme.typography.bodyLarge)
+        // The path is always shown where there is a real one, even before permission is granted — knowing
+        // where the clips will go is useful in itself, and it is what you back up.
         Text(
             when {
                 busy -> stringResource(R.string.folder_reading)
+                needsPermission -> stringResource(R.string.folder_permission_title)
                 !FolderStore.isConfigured -> stringResource(R.string.folder_none)
                 !usable -> stringResource(R.string.folder_lost_title)
                 else -> FolderStore.displayName().orEmpty()
             },
             style = MaterialTheme.typography.bodySmall,
-            color = if (FolderStore.isConfigured && !usable && !busy) {
+            color = if (!busy && (needsPermission || (FolderStore.isConfigured && !usable))) {
                 MaterialTheme.colorScheme.error
             } else {
                 MaterialTheme.colorScheme.onSurfaceVariant
             },
         )
         Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { picker.launch(null) }, enabled = !busy) {
+            OutlinedButton(
+                onClick = {
+                    if (FolderStore.picksFolder) picker.launch(null)
+                    else permission.launch(FileLibrary.PERMISSION)
+                },
+                enabled = !busy,
+            ) {
                 Text(
                     stringResource(
-                        if (FolderStore.isConfigured) R.string.folder_change else R.string.folder_pick_action
+                        when {
+                            needsPermission -> R.string.folder_permission_action
+                            FolderStore.isConfigured -> R.string.folder_change
+                            else -> R.string.folder_pick_action
+                        }
                     )
                 )
             }
-            if (FolderStore.isConfigured) {
+            // Only where forgetting means something. On the versions with a fixed path there is no choice
+            // to undo, and a button that clears nothing is worse than no button.
+            if (FolderStore.canForget && FolderStore.isConfigured) {
                 OutlinedButton(onClick = { Repo.forgetFolder() }, enabled = !busy) {
                     Text(stringResource(R.string.folder_clear))
                 }

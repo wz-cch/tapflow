@@ -291,6 +291,9 @@
     <string name="folder_pick_body">Saved clips and flows are kept in a folder you choose, so they survive reinstalling. Pick a subfolder — for example Documents/TapFlow. Android does not allow the root of internal storage or the Download folder.</string>
     <string name="folder_lost_title">The saved folder cannot be reached</string>
     <string name="folder_lost_body">The folder may have been moved or deleted, the card removed, or the permission lost by reinstalling. Choose it again — the files are still there.</string>
+    <string name="folder_permission_title">Allow access to storage</string>
+    <string name="folder_permission_body">Saved clips are kept in a TapFlow folder in shared storage, so they survive reinstalling. This version of Android needs file access to create it.</string>
+    <string name="folder_permission_action">Allow</string>
     <string name="folder_pick_action">Choose folder</string>
     <string name="folder_reading">Reading the folder…</string>
     <string name="folder_setting">Folder for saved clips</string>

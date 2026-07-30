@@ -1055,13 +1055,41 @@ ACTION_CANCEL        丟棄該手勢
 
 **問題**:`filesDir` 會隨卸載一起消失,所以重裝就沒了。而 Android 內建的 `allowBackup` **本來就是開著的**卻救不了 —— 還原只發生在安裝的那一刻(由 Play 或設定精靈觸發,手動裝 APK 那條路不會跑),備份資料綁簽章憑證(debug 與 release 不同),而上傳時機是「充電 + 閒置 + 非計費網路,大約一天一次」。
 
+### 12.0 兩個機制,按版本切,不是「試 SAF 失敗才退回」
+
+**API 29 起 → SAF**(使用者授權的資料夾);**API 28 以下 → `WRITE_EXTERNAL_STORAGE` + 真實路徑。**
+
+不是相容性補丁,是平台真的提供兩種不同的東西:**scoped storage 從 Android 10(API 29)才開始**,在那之前 `WRITE_EXTERNAL_STORAGE` 就是對共用儲存空間的完整讀寫。
+
+分界線放在 28/29 而不是 29/30,因為 Android 10 雖然還能要求 legacy 存取,但那個旗標 Android 11 就不看了 —— 把界線釘在平台真正改變的地方,可以避免一個「行為取決於一個可能被拒絕的請求」的後端。
+
+**舊的那個後端比新的簡單,這跟直覺相反,值得寫下來:**
+
+| SAF 要處理的 | File 後端 |
+|---|---|
+| id → Uri 對照表 | 不需要,路徑就是位置 |
+| `"wt"` 截斷坑 | `writeText` 本來就截斷 |
+| `createDirectory` 生出 `clips (1)` | `mkdirs()` 對已存在目錄是 no-op |
+| 卸載收回授權 | 沒有授權可收 |
+| **外層要使用者自己建** | **我們可以建** |
+
+最後一列是重點:那個限制**只是 SAF 的限制**。
+
+**而這是被實機逼出來的,不是預先設計的。** 一台 Android 7 上 `ACTION_OPEN_DOCUMENT_TREE` 只列得出「最近」—— 而「最近」列的是檔案,對挑資料夾的選擇器來說永遠是空的 —— 於是整個功能在那台**無法設定**。試過 `SHOW_ADVANCED`(那是選擇器 ⋮ 選單「顯示內部儲存空間」對應的 extra)沒有用,那台的 DocumentsUI 沒有把 `ExternalStorageProvider` 的根目錄露出來。而**沒有別的槓桿**:可持久化的授權只能由選擇器的回傳結果產生,不能自己組一個 tree Uri;`EXTRA_INITIAL_URI` 是 API 26 才有的。
+
+**API 28 以下的路徑是固定的 `/sdcard/TapFlow`,由我們建立。** 「可以自己挑資料夾」從來不是目標 —— 目標是重裝不消失、而且放在使用者能自己備份的地方,一個已知路徑兩件都滿足。可以挑是 SAF 的授權模型逼出來的,而這個後端沒有那個模型。
+
+**不放在 `Android/data/<package>` 底下。** 那裡不需要權限,但會隨 app 一起刪掉,正好抵銷掉整件事的目的。
+
+兩邊的磁碟配置**完全相同**(`clips/<名稱>.json`),所以資料夾在兩台裝置之間可以直接複製。
+
 ### 12.1 一份,不是兩份
 
 **使用者指定的資料夾裡的那一份就是唯一一份。** 不做內部鏡像 —— 鏡像會製造一個兩份不一致而且沒有人能裁決的狀態:資料夾看起來權威,卻可能比 app 顯示的舊,而重裝後從它還原就靜默拿到舊資料。一份就沒有這個狀態。
 
 ```
-使用者選的資料夾/          ← 外層一定是他自己建、自己選的
-├─ clips/簽到腳本.json      ← clips/ 與 flows/ 由我們建
+資料夾/                     ← API 29+ 是他自己建、自己選;API 28- 是 /sdcard/TapFlow,我們建
+├─ clips/簽到腳本.json       ← clips/ 與 flows/ 兩層都由我們建
 └─ flows/早晨三連.json
 ```
 
@@ -1095,6 +1123,8 @@ ACTION_CANCEL        丟棄該手勢
 **② 先 `findFile` 再 `createDirectory`。** 對已存在的名稱呼叫 `createDirectory`,`ExternalStorageProvider` 會給你 `clips (1)`。一旦分岔成兩個目錄,一半的片段就從清單上消失了。
 
 **③ Android 11+ 不讓你選 `Download`,也不讓你選內部儲存的根目錄。** 所以引導文案必須說「請選一個子資料夾,例如 `Documents/TapFlow`」—— 選了被拒絕的位置,使用者會讀成這個 app 壞了。
+
+這三個坑**都只存在於 SAF 那一邊**(§12.0)。
 
 ### 12.4 為什麼不在首次啟動就強制指定
 
@@ -1169,7 +1199,10 @@ tapflow/
          │   ├─ Model.kt                 Pt / Stroke / Step / Clip / Flow / ClipNode
          │   ├─ Settings.kt              全域設定
          │   ├─ Repo.kt                  StateFlow 狀態 + JSON 持久化
-         │   ├─ FolderStore.kt           使用者指定資料夾裡的存檔,唯一一份(§12.1)
+         │   ├─ LibraryStore.kt          存檔後端的介面,兩個實作(§12.0)
+         │   ├─ FolderStore.kt           門面:按 Android 版本挑後端
+         │   ├─ SafLibrary.kt            API 29+:使用者授權的資料夾
+         │   ├─ FileLibrary.kt           API 28-:/sdcard/TapFlow,真實路徑
          │   └─ JsonConfig.kt            共用 Json(classDiscriminator = "type")
          ├─ text/
          │   └─ StepText.kt              使用者可見字串的格式化,吃 Resources

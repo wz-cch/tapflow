@@ -42,6 +42,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.tapflow.android.data.AppMode
+import com.tapflow.android.data.FileLibrary
 import com.tapflow.android.data.FolderStore
 import com.tapflow.android.data.Clip
 import com.tapflow.android.data.Flow
@@ -217,6 +218,17 @@ private fun LibraryGate(needsFolder: Boolean, onGiveUp: () -> Unit, content: @Co
         }
     }
 
+    // API 28 and below: nothing is picked, so what is missing is the runtime permission. Granting it is
+    // also what makes the folder creatable, which is why this leads straight into the same probe.
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (!granted) return@rememberLauncherForActivityResult
+        checking = true
+        scope.launch {
+            withContext(Dispatchers.IO) { Repo.useDefaultFolder() }
+            checking = false
+        }
+    }
+
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             if (FolderStore.isConfigured && FolderStore.refreshUsable() && !Repo.libraryLoaded.value) {
@@ -229,7 +241,12 @@ private fun LibraryGate(needsFolder: Boolean, onGiveUp: () -> Unit, content: @Co
     when {
         checking -> BusyDialog()
         usable -> content()
-        else -> PickFolderDialog(onPick = { picker.launch(null) }, onDismiss = onGiveUp)
+        else -> FixStorageDialog(
+            onFix = {
+                if (FolderStore.picksFolder) picker.launch(null) else permission.launch(FileLibrary.PERMISSION)
+            },
+            onDismiss = onGiveUp,
+        )
     }
 }
 
@@ -249,25 +266,53 @@ private fun BusyDialog() {
 }
 
 /**
- * Asks for the folder.
+ * Says what is wrong with the storage and offers the one thing that fixes it.
  *
- * The body has to name a *subfolder* rather than just saying "pick a folder", because Android 11 and
- * up refuse the root of internal storage and refuse Download outright. A user who picks one of those
- * gets a system refusal and reads it as this app being broken.
+ * Three different things can be wrong and they need three different sentences, so this asks the store
+ * rather than assuming. On the versions that use the picker, the body has to name a *subfolder* — Android
+ * 11 and up refuse the root of internal storage and refuse Download outright, and a user who picks one of
+ * those gets a system refusal and reads it as this app being broken. On the versions that do not, there is
+ * no folder to describe at all: what is missing is permission, and the path is ours to create.
  */
 @Composable
-private fun PickFolderDialog(onPick: () -> Unit, onDismiss: () -> Unit) {
-    val configured = FolderStore.isConfigured
+private fun FixStorageDialog(onFix: () -> Unit, onDismiss: () -> Unit) {
+    val needsPermission = FolderStore.needsPermission
+    val lost = FolderStore.isConfigured && !needsPermission
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text(stringResource(if (configured) R.string.folder_lost_title else R.string.folder_pick_title))
+            Text(
+                stringResource(
+                    when {
+                        needsPermission -> R.string.folder_permission_title
+                        lost -> R.string.folder_lost_title
+                        else -> R.string.folder_pick_title
+                    }
+                )
+            )
         },
         text = {
-            Text(stringResource(if (configured) R.string.folder_lost_body else R.string.folder_pick_body))
+            Column {
+                Text(
+                    stringResource(
+                        when {
+                            needsPermission -> R.string.folder_permission_body
+                            lost -> R.string.folder_lost_body
+                            else -> R.string.folder_pick_body
+                        }
+                    )
+                )
+            }
         },
         confirmButton = {
-            TextButton(onClick = onPick) { Text(stringResource(R.string.folder_pick_action)) }
+            TextButton(onClick = onFix) {
+                Text(
+                    stringResource(
+                        if (needsPermission) R.string.folder_permission_action
+                        else R.string.folder_pick_action
+                    )
+                )
+            }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.dialog_cancel)) }
