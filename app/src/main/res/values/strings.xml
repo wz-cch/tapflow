@@ -284,4 +284,19 @@
     <string name="home_mode_clip">Clip mode</string>
     <string name="home_mode_flow">Flow mode</string>
     <string name="toast_service_off">Turn the accessibility service on first.</string>
+
+    <!-- The library folder the user picks (SPEC 12). -->
+    <string name="settings_section_storage">Storage</string>
+    <string name="folder_pick_title">Choose a folder for saved clips</string>
+    <string name="folder_pick_body">Saved clips and flows are kept in a folder you choose, so they survive reinstalling. Pick a subfolder — for example Documents/TapFlow. Android does not allow the root of internal storage or the Download folder.</string>
+    <string name="folder_lost_title">The saved folder cannot be reached</string>
+    <string name="folder_lost_body">The folder may have been moved or deleted, the card removed, or the permission lost by reinstalling. Choose it again — the files are still there.</string>
+    <string name="folder_pick_action">Choose folder</string>
+    <string name="folder_reading">Reading the folder…</string>
+    <string name="folder_setting">Folder for saved clips</string>
+    <string name="folder_none">Not set yet</string>
+    <string name="folder_change">Change</string>
+    <string name="folder_clear">Clear</string>
+    <string name="toast_save_failed">Could not save — the folder is unreachable. Nothing was lost; choose the folder and save again.</string>
+    <string name="home_no_folder">No folder chosen yet. Saving or loading will ask for one.</string>
 </resources>

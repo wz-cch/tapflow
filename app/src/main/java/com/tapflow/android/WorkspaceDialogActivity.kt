@@ -4,6 +4,8 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,17 +14,23 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -30,7 +38,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.tapflow.android.data.AppMode
+import com.tapflow.android.data.FolderStore
 import com.tapflow.android.data.Clip
 import com.tapflow.android.data.Flow
 import com.tapflow.android.data.PauseStep
@@ -43,6 +55,7 @@ import com.tapflow.android.text.defaultClipName
 import com.tapflow.android.ui.DiscardConfirmDialog
 import com.tapflow.android.ui.TapFlowTheme
 import com.tapflow.android.ui.guardDiscard
+import com.tapflow.android.ui.wroteToLibrary
 
 /**
  * The operations that need a keyboard or a list: save, load, start a new one, write a pause note, and the
@@ -80,27 +93,52 @@ class WorkspaceDialogActivity : ComponentActivity() {
 
         setContent {
             TapFlowTheme {
-                when (mode) {
-                    Mode.SAVE -> SaveDialog(::finish) { name, asNew -> save(name, asNew) }
-                    Mode.LOAD -> LoadDialog(::finish, { clip -> load(clip) }) { flow -> loadFlow(flow) }
-                    Mode.NOTE -> {
-                        val step = Workspace.stepById(intent.getStringExtra(EXTRA_STEP_ID)) as? PauseStep
-                        if (step == null) finish() else NoteDialog(step, ::finish) { note -> saveNote(step, note) }
-                    }
+                // Saving and loading are the only two things that touch the library folder, and both
+                // arrive here — which is why the folder picker never has to be raised from the
+                // accessibility service. Doing it from there would need FLAG_ACTIVITY_NEW_TASK and
+                // would push whatever is being recorded into the background.
+                // NEW_FLOW writes to the folder too, so it needs the gate as much as save does.
+                val needsFolder = mode != Mode.NOTE
+                LibraryGate(needsFolder = needsFolder, onGiveUp = ::finish) {
+                    when (mode) {
+                        Mode.SAVE -> SaveDialog(::finish) { name, asNew -> save(name, asNew) }
+                        Mode.LOAD -> LoadDialog(::finish, { clip -> load(clip) }) { flow -> loadFlow(flow) }
+                        Mode.NOTE -> {
+                            val step = Workspace.stepById(intent.getStringExtra(EXTRA_STEP_ID)) as? PauseStep
+                            if (step == null) finish() else NoteDialog(step, ::finish) { note -> saveNote(step, note) }
+                        }
 
-                    Mode.NEW_FLOW -> NewFlowDialog(::finish) { name -> createFlow(name) }
+                        Mode.NEW_FLOW -> NewFlowDialog(::finish) { name -> createFlow(name) }
+                    }
                 }
             }
         }
     }
 
+    /**
+     * Saves, and says which of the three things happened.
+     *
+     * A failure deliberately does not close this screen: the folder is unreachable, the workspace is
+     * still dirty, and offering the picker again here is the whole remedy. Closing would leave the
+     * user holding an unsaved recording with nothing on screen explaining it.
+     */
     private fun save(name: String, asNew: Boolean) {
-        val clip = Workspace.commit(name, System.currentTimeMillis(), asNew)
-        toast(
-            if (clip == null) getString(R.string.toast_nothing_to_save)
-            else getString(R.string.toast_saved, clip.name)
-        )
-        finish()
+        when (val result = Workspace.commit(name, System.currentTimeMillis(), asNew)) {
+            is Workspace.Saved.Ok -> {
+                toast(getString(R.string.toast_saved, result.clip.name))
+                finish()
+            }
+
+            Workspace.Saved.Nothing -> {
+                toast(getString(R.string.toast_nothing_to_save))
+                finish()
+            }
+
+            // No finish(), and no extra state to make the gate come back: the failed write already
+            // cleared FolderStore.usable, and the gate observes it — so this screen turns into "pick
+            // the folder again" on its own.
+            Workspace.Saved.Failed -> toast(getString(R.string.toast_save_failed))
+        }
     }
 
     private fun load(clip: Clip) {
@@ -118,10 +156,15 @@ class WorkspaceDialogActivity : ComponentActivity() {
         finish()
     }
 
-    /** Creates a flow and loads it, so the toolbar is already pointing at it when you go back. */
+    /**
+     * Creates a flow and loads it, so the toolbar is already pointing at it when you go back.
+     *
+     * Stops on a failed write rather than loading a flow that was never stored. Not closing is the point:
+     * the gate takes over and offers the folder again, which is the only thing that would help.
+     */
     private fun createFlow(name: String) {
         val flow = Flow(name = name.trim(), clips = emptyList(), createdAt = System.currentTimeMillis())
-        Repo.upsertFlow(flow)
+        if (!wroteToLibrary { Repo.upsertFlow(flow) }) return
         Session.loadFlow(flow)
         toast(getString(R.string.toast_flow_created, flow.name))
         finish()
@@ -139,6 +182,97 @@ class WorkspaceDialogActivity : ComponentActivity() {
         const val EXTRA_MODE = "com.tapflow.android.WORKSPACE_MODE"
         const val EXTRA_STEP_ID = "com.tapflow.android.STEP_ID"
     }
+}
+
+/**
+ * Stands in front of anything that touches the library folder.
+ *
+ * Three states, and each one exists because it actually happens. **Not configured** is the first save
+ * or load, which is where asking belongs — not at first launch, where a folder picker in front of an
+ * app nobody has tried yet is a toll gate. **Configured but unreachable** is a reinstall (the grant
+ * goes with the app while the files stay), a deleted folder, or an ejected card. **Checking** is the
+ * IO those two answers need, which is why it cannot be a plain `if`.
+ *
+ * The library is read here as well, once, off the main thread. Reading it at startup would have put a
+ * folder-wide scan on whichever thread happened to bind the service, for a list that recording,
+ * editing and replaying never look at.
+ */
+@Composable
+private fun LibraryGate(needsFolder: Boolean, onGiveUp: () -> Unit, content: @Composable () -> Unit) {
+    if (!needsFolder) {
+        content()
+        return
+    }
+
+    val usable by FolderStore.usable.collectAsState()
+    val scope = rememberCoroutineScope()
+    var checking by remember { mutableStateOf(true) }
+
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        checking = true
+        scope.launch {
+            withContext(Dispatchers.IO) { Repo.useFolder(uri) }
+            checking = false
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            if (FolderStore.isConfigured && FolderStore.refreshUsable() && !Repo.libraryLoaded.value) {
+                Repo.loadLibrary()
+            }
+        }
+        checking = false
+    }
+
+    when {
+        checking -> BusyDialog()
+        usable -> content()
+        else -> PickFolderDialog(onPick = { picker.launch(null) }, onDismiss = onGiveUp)
+    }
+}
+
+@Composable
+private fun BusyDialog() {
+    AlertDialog(
+        onDismissRequest = {},
+        text = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(Modifier.size(20.dp))
+                Spacer(Modifier.width(12.dp))
+                Text(stringResource(R.string.folder_reading))
+            }
+        },
+        confirmButton = {},
+    )
+}
+
+/**
+ * Asks for the folder.
+ *
+ * The body has to name a *subfolder* rather than just saying "pick a folder", because Android 11 and
+ * up refuse the root of internal storage and refuse Download outright. A user who picks one of those
+ * gets a system refusal and reads it as this app being broken.
+ */
+@Composable
+private fun PickFolderDialog(onPick: () -> Unit, onDismiss: () -> Unit) {
+    val configured = FolderStore.isConfigured
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(stringResource(if (configured) R.string.folder_lost_title else R.string.folder_pick_title))
+        },
+        text = {
+            Text(stringResource(if (configured) R.string.folder_lost_body else R.string.folder_pick_body))
+        },
+        confirmButton = {
+            TextButton(onClick = onPick) { Text(stringResource(R.string.folder_pick_action)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.dialog_cancel)) }
+        },
+    )
 }
 
 @Composable

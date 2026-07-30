@@ -37,6 +37,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -53,12 +54,15 @@ import com.tapflow.android.BuildConfig
 import com.tapflow.android.R
 import com.tapflow.android.data.AppMode
 import com.tapflow.android.data.Clip
+import com.tapflow.android.data.FolderStore
 import com.tapflow.android.data.Flow
 import com.tapflow.android.data.Repo
 import com.tapflow.android.text.flowSummary
 import com.tapflow.android.engine.EngineState
 import com.tapflow.android.engine.Session
 import com.tapflow.android.text.clipSummary
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * The launch screen.
@@ -94,9 +98,19 @@ fun HomeScreen(
     val currentFlowId by Repo.currentFlowId.collectAsStateWithLifecycle()
     val currentClipId by Repo.currentClipId.collectAsStateWithLifecycle()
     val mode by Repo.mode.collectAsStateWithLifecycle()
+    val folderUsable by FolderStore.usable.collectAsStateWithLifecycle()
     var creatingFlow by remember { mutableStateOf(false) }
     var pendingStart by remember { mutableStateOf(false) }
     var closingToolbar by remember { mutableStateOf(false) }
+
+    // The library is read here rather than at startup, because reading it means walking a folder over
+    // IPC — on whichever thread happens to start the app or bind the service, for a list that
+    // recording, editing and replaying never look at. This screen is the first thing that shows it.
+    LaunchedEffect(folderUsable) {
+        if (FolderStore.isConfigured && !Repo.libraryLoaded.value) {
+            withContext(Dispatchers.IO) { Repo.loadLibrary() }
+        }
+    }
 
     /**
      * Hands over to the toolbar.
@@ -192,6 +206,21 @@ fun HomeScreen(
             item {
                 OutlinedButton(onClick = { guardDiscard(::startFresh) { pendingStart = true } }) {
                     Text(stringResource(R.string.home_start_fresh))
+                }
+            }
+
+            // Said once, above both lists, because it explains both of them being empty. No picker
+            // button here on purpose: the folder gets chosen where it is needed — on the first save or
+            // load — and changed in the settings. A third entry point would just be a third place to
+            // keep consistent.
+            if (!FolderStore.isConfigured) {
+                item {
+                    Text(
+                        stringResource(R.string.home_no_folder),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
                 }
             }
 
@@ -298,7 +327,10 @@ fun HomeScreen(
                 clips = emptyList(),
                 createdAt = System.currentTimeMillis(),
             )
-            Repo.upsertFlow(flow)
+            // Nothing after this if the write did not land. Loading and opening the editor for a flow
+            // that was never written would show an empty screen for a flow that does not exist, and the
+            // first edit would fail for the same reason the create did.
+            if (!context.wroteToLibrary { Repo.upsertFlow(flow) }) return@NewFlowDialog
             creatingFlow = false
             // Loaded as well as created, the same as picking an existing row: "new flow" is flow mode's
             // way in, so it would be odd for it to leave you in clip mode. Then straight into the editor,
@@ -501,7 +533,9 @@ private fun ClipRow(clip: Clip, loaded: Boolean, onLoad: () -> Unit) {
             onConfirm = { name ->
                 renaming = false
                 if (name.isNotBlank()) {
-                    Repo.upsertClip(clip.copy(name = name.trim(), updatedAt = System.currentTimeMillis()))
+                    context.wroteToLibrary {
+                        Repo.upsertClip(clip.copy(name = name.trim(), updatedAt = System.currentTimeMillis()))
+                    }
                 }
             },
         )
@@ -656,9 +690,9 @@ private fun FlowRow(
             onConfirm = { name ->
                 renaming = false
                 if (name.isNotBlank()) {
-                    Repo.upsertFlow(
-                        flow.copy(name = name.trim(), updatedAt = System.currentTimeMillis())
-                    )
+                    context.wroteToLibrary {
+                        Repo.upsertFlow(flow.copy(name = name.trim(), updatedAt = System.currentTimeMillis()))
+                    }
                 }
             },
         )

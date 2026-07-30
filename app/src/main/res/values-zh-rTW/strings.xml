@@ -281,4 +281,19 @@
     <string name="home_mode_clip">片段模式</string>
     <string name="home_mode_flow">流程模式</string>
     <string name="toast_service_off">請先啟用無障礙服務。</string>
+
+    <!-- The library folder the user picks (SPEC 12). -->
+    <string name="settings_section_storage">儲存</string>
+    <string name="folder_pick_title">選一個存放片段的資料夾</string>
+    <string name="folder_pick_body">存好的片段與流程放在你指定的資料夾,重裝 app 也不會消失。請選一個子資料夾,例如 Documents/TapFlow —— Android 不允許選內部儲存的根目錄,也不允許選「下載」。</string>
+    <string name="folder_lost_title">讀不到存放的資料夾</string>
+    <string name="folder_lost_body">資料夾可能被移動或刪除、記憶卡被拔掉,或是重裝之後授權沒了。重新選一次就好 —— 檔案還在。</string>
+    <string name="folder_pick_action">選擇資料夾</string>
+    <string name="folder_reading">正在讀取資料夾…</string>
+    <string name="folder_setting">存放片段的資料夾</string>
+    <string name="folder_none">尚未指定</string>
+    <string name="folder_change">變更</string>
+    <string name="folder_clear">清除</string>
+    <string name="toast_save_failed">存檔失敗 —— 讀不到資料夾。東西沒有不見,選好資料夾再存一次即可。</string>
+    <string name="home_no_folder">還沒指定資料夾。存檔或讀取時會問你。</string>
 </resources>
