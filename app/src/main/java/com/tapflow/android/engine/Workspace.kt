@@ -211,20 +211,38 @@ object Workspace {
     }
 
     /**
+     * What a save attempt did.
+     *
+     * Three outcomes, not two, and keeping [Failed] distinct from [Nothing] is the point. They used to
+     * share a null return, so the day the folder became unreachable the message said "nothing to
+     * save" — which is not merely unhelpful, it is the opposite of what happened.
+     */
+    sealed interface Saved {
+        data class Ok(val clip: Clip) : Saved
+
+        /** Empty workspace, blank name, or no screen geometry ever captured. Nothing was attempted. */
+        data object Nothing : Saved
+
+        /** The library folder refused it. The draft stays dirty, so recovery still holds the work. */
+        data object Failed : Saved
+    }
+
+    /**
      * Commits the workspace to a clip under [name].
      *
      * When [asNew] is false and the workspace came from a clip, that clip is updated in place;
      * otherwise a new one is created. [name] always wins, so renaming while saving works.
      *
-     * Returns null when there is nothing to save, or when no screen geometry was ever captured —
-     * without it replay could not rescale coordinates on another device.
+     * **`dirty` is only cleared once the write has landed.** That is what makes a failed save safe
+     * rather than silent: the workspace stays unsaved, so the draft survives on disk and the
+     * unsaved-work recovery covers it, and the user is asked to pick the folder again.
      */
-    fun commit(name: String, now: Long, asNew: Boolean): Clip? {
+    fun commit(name: String, now: Long, asNew: Boolean): Saved {
         val currentSteps = steps.value
         val capturedOn = screen
-        if (currentSteps.isEmpty() || capturedOn == null) return null
+        if (currentSteps.isEmpty() || capturedOn == null) return Saved.Nothing
 
-        val cleanName = name.trim().ifEmpty { return null }
+        val cleanName = name.trim().ifEmpty { return Saved.Nothing }
         val existing = if (asNew) null else Repo.clipById(sourceClipId)
         val clip = existing?.copy(
             name = cleanName,
@@ -233,12 +251,13 @@ object Workspace {
             updatedAt = now,
         ) ?: Clip(name = cleanName, steps = currentSteps, screen = capturedOn, createdAt = now)
 
-        Repo.upsertClip(clip)
+        if (!Repo.upsertClip(clip)) return Saved.Failed
+
         sourceClipId = clip.id
         Repo.setCurrentClip(clip.id)
         dirty.value = false
         persist()
-        return clip
+        return Saved.Ok(clip)
     }
 
     private fun markDirty() {

@@ -147,18 +147,29 @@ Shizuku 提供一個 ADB 權限等級的行程,可以繞過 `AccessibilityServic
 - ~~flow mode 的按鍵組(9 顆)~~ —— 它的對象是 clip 而不是 node,所以薄([SPEC §10.4](SPEC.md))
 - ~~流程與工作區互斥~~ —— [SPEC §10.5](SPEC.md)
 - ~~編排畫面 + 首頁流程區塊~~ —— `home_tab_flows` / `home_no_flows` 用掉了
+- ~~flow mode 的模式切換與首頁重整~~ —— mode 從 `currentFlowId != null` 推導改成明確狀態([SPEC §10.4–§10.8](SPEC.md))
+- ~~存檔放使用者指定的資料夾~~ —— 重裝不再消失([SPEC §12.1–§12.8](SPEC.md))
 - **`ClipDetailScreen` 決定不做** —— 匯出暫緩,而改名與刪除本來就在 `HomeScreen` 的選單裡,再開一個畫面只是多一層
 
-### C. M4 — 條件等待與匯出匯入
+### C. 工具列的生命週期 —— 討論過,決定分開做
+
+實機用起來發現兩件怪事,兩件都跟儲存無關,所以刻意沒有跟資料夾那批混在一起:
+
+- **重開機之後 TapFlow 自己起來。** 正常應該是使用者去啟動它才出現。現在的成因是 `overlayEnabled` 存在 SharedPreferences 裡,無障礙服務開機重新綁定時看到它是 `true` 就把工具列掛上 —— 也就是「上次開著」被當成「現在要開著」
+- **鎖定畫面下工具列不該出現。** `TYPE_ACCESSIBILITY_OVERLAY` 會蓋在 keyguard 上面,要另外聽鎖定狀態
+
+會牽到工具列的形態與附著邏輯,跟資料夾那批混在一起之後不好回頭找是哪一邊造成的,所以分開。
+
+### D. M4 — 條件等待與匯出匯入
 
 - **`NodeFinder` + `AwaitTextNode` 執行** —— 開 `canRetrieveWindowContent`(不存在)
-- **匯出 / 匯入 JSON** —— 上面那個網頁編輯器方向的前置
+- **匯出 / 匯入 JSON** —— **大部分已經做完了**:使用者指定資料夾裡的 `<名稱>.json` 本身就是匯出格式([SPEC §12.8](SPEC.md))。剩下的是驗證與 resize / remap
 - **多指錄製與重播**:這一項**其實已經在了**。`CanvasView` 收 `ACTION_POINTER_DOWN`、`GestureDispatcher.build()` 逐 stroke 加進 `GestureDescription` 並尊重 `getMaxStrokeCount()`。只是還沒實機驗過,CHANGELOG 的 M1 條目寫的仍是「單指」
 
-### D. 存 / 讀檔那組畫面
+### E. 存 / 讀檔那組畫面
 
 `WorkspaceDialogActivity` 的存 / 讀 / 開新 / 備註四個對話框都在,能用。但 **`💾` 長按 = 另存新片段**這個權宜作法還在(見本文件上方),要一起處理。
 
-### E. 已知無解,不列在這裡
+### F. 已知無解,不列在這裡
 
 [#1](https://github.com/wz-cch/tapflow/issues/1) 注入器卡住、[#2](https://github.com/wz-cch/tapflow/issues/2) `filterTouchesWhenObscured`、[#3](https://github.com/wz-cch/tapflow/issues/3) 服務不重新綁定 —— 都標了 `known-issue`。

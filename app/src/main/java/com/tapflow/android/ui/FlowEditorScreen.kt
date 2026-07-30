@@ -54,10 +54,15 @@ import kotlin.math.roundToInt
  * Every change writes straight back through [Repo.upsertFlow]. A flow is a list of references with nothing
  * accumulating in it, so there is no unsaved state to protect and therefore no save button — the same
  * reason the toolbar has none in flow mode.
+ *
+ * "Straight back" now means a file in the user's folder, so every one of those writes can fail and every
+ * one goes through [wroteToLibrary]. Without it the in-memory flow would be left untouched too, and the
+ * screen would simply not change — a tap that silently did nothing.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FlowEditorScreen(flowId: String, onBack: () -> Unit) {
+    val context = LocalContext.current
     val flows by Repo.flows.collectAsStateWithLifecycle()
     val clips by Repo.clips.collectAsStateWithLifecycle()
     val flow = flows.firstOrNull { it.id == flowId }
@@ -94,7 +99,7 @@ fun FlowEditorScreen(flowId: String, onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             item {
-                LoopRow(flow) { Repo.upsertFlow(it) }
+                LoopRow(flow) { updated -> context.wroteToLibrary { Repo.upsertFlow(updated) } }
             }
 
             if (flow.clips.isEmpty()) {
@@ -114,8 +119,10 @@ fun FlowEditorScreen(flowId: String, onBack: () -> Unit) {
                     clip = clips.firstOrNull { it.id == node.clipId },
                     canMoveUp = index > 0,
                     canMoveDown = index < flow.clips.lastIndex,
-                    onMove = { delta -> Repo.upsertFlow(flow.moved(index, delta)) },
-                    onRemove = { Repo.upsertFlow(flow.copy(clips = flow.clips.minusAt(index))) },
+                    onMove = { delta -> context.wroteToLibrary { Repo.upsertFlow(flow.moved(index, delta)) } },
+                    onRemove = {
+                        context.wroteToLibrary { Repo.upsertFlow(flow.copy(clips = flow.clips.minusAt(index))) }
+                    },
                     onOpenSettings = { editing = index },
                 )
             }
@@ -137,7 +144,7 @@ fun FlowEditorScreen(flowId: String, onBack: () -> Unit) {
             clips = clips,
             onDismiss = { addingClip = false },
         ) { clip ->
-            Repo.upsertFlow(flow.copy(clips = flow.clips + ClipNode(clipId = clip.id)))
+            context.wroteToLibrary { Repo.upsertFlow(flow.copy(clips = flow.clips + ClipNode(clipId = clip.id))) }
             addingClip = false
         }
     }
@@ -152,15 +159,27 @@ fun FlowEditorScreen(flowId: String, onBack: () -> Unit) {
                 node = node,
                 onDismiss = { editing = null },
             ) { updated ->
-                Repo.upsertFlow(flow.copy(clips = flow.clips.replacedAt(index, updated)))
+                context.wroteToLibrary { Repo.upsertFlow(flow.copy(clips = flow.clips.replacedAt(index, updated))) }
                 editing = null
             }
         }
     }
 }
 
+/**
+ * The flow's loop count.
+ *
+ * Writes on release, not on every value change. Saving a flow now means a file in a folder the user
+ * chose, reached through a ContentProvider — so writing per tick would be dozens of round trips for one
+ * drag, and the slider would stutter against its own saves. Dragging updates a local number; letting go
+ * commits it. The clip-node dialog needs none of this: it already keeps its three sliders local and
+ * writes once, on its confirm button.
+ */
 @Composable
 private fun LoopRow(flow: Flow, onChange: (Flow) -> Unit) {
+    var dragging by remember { mutableStateOf<Int?>(null) }
+    val loops = dragging ?: flow.loopCount
+
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -170,8 +189,8 @@ private fun LoopRow(flow: Flow, onChange: (Flow) -> Unit) {
                     style = MaterialTheme.typography.bodyLarge,
                 )
                 Text(
-                    if (flow.loopCount == 0) stringResource(R.string.settings_loop_forever)
-                    else stringResource(R.string.value_times, flow.loopCount),
+                    if (loops == 0) stringResource(R.string.settings_loop_forever)
+                    else stringResource(R.string.value_times, loops),
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
@@ -181,8 +200,12 @@ private fun LoopRow(flow: Flow, onChange: (Flow) -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Slider(
-                value = flow.loopCount.toFloat().coerceIn(0f, 100f),
-                onValueChange = { onChange(flow.copy(loopCount = it.roundToInt())) },
+                value = loops.toFloat().coerceIn(0f, 100f),
+                onValueChange = { dragging = it.roundToInt() },
+                onValueChangeFinished = {
+                    dragging?.let { onChange(flow.copy(loopCount = it)) }
+                    dragging = null
+                },
                 valueRange = 0f..100f,
             )
         }

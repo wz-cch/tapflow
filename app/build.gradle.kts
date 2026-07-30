@@ -60,6 +60,9 @@ android {
 
 dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
+    // The official wrapper over DocumentsContract, for the library folder the user picks. No storage
+    // permission is involved — SAF grants access to that one tree and nothing else.
+    implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     // repeatOnLifecycle, used to poll the accessibility setting only while resumed. It arrives
