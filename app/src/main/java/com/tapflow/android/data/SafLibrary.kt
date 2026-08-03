@@ -126,13 +126,57 @@ class SafLibrary(private val appContext: Context, storedTree: String?) : Library
      * truncated or hand-mangled one is a normal event rather than a corruption bug — and one bad
      * file must cost that one clip, not the whole list. The skip is logged; nothing is deleted.
      */
-    override fun list(kind: LibraryStore.Kind): List<LibraryStore.Entry> {
-        val dir = subfolder(kind, create = false) ?: return emptyList()
-        return dir.listFiles().mapNotNull { file ->
-            if (!file.isFile || file.name?.endsWith(".json") != true) return@mapNotNull null
-            val text = read(file.uri) ?: return@mapNotNull null
-            LibraryStore.Entry(text, file.uri.toString())
+    override fun list(): LibraryStore.Listing {
+        val start = root() ?: return LibraryStore.Listing(emptyList(), 0)
+
+        val entries = ArrayList<LibraryStore.Entry>()
+        val queue = ArrayDeque<DocumentFile>()
+        queue += start
+        var unread = 0
+        var entered = 0
+
+        while (queue.isNotEmpty() && entered < LibraryStore.MAX_DIRECTORIES) {
+            val dir = queue.removeFirst()
+            entered++
+            // Each of these is an IPC round trip to the provider, which is the whole reason both kinds
+            // come out of one walk rather than one call each.
+            val children = runCatching { dir.listFiles() }
+                .onFailure { Log.e(TAG, "Failed to list ${dir.uri}", it) }
+                .getOrNull()
+            if (children == null) {
+                unread++
+                continue
+            }
+            for (child in children) {
+                if (child.isDirectory) {
+                    queue += child
+                    continue
+                }
+                val kind = child.name?.let { LibraryStore.Kind.of(it) } ?: continue
+                val text = read(child.uri)
+                if (text == null) {
+                    unread++
+                    continue
+                }
+                entries += LibraryStore.Entry(kind, text, child.uri.toString())
+            }
         }
+
+        // Whatever the ceiling stopped short of is unread, not absent.
+        if (queue.isNotEmpty()) {
+            Log.w(TAG, "Stopped after $entered directories; ${queue.size} not visited")
+            unread += queue.size
+        }
+        return LibraryStore.Listing(entries, unread)
+    }
+
+    override fun folders(within: String): List<String> {
+        val dir = resolve(within, create = false) ?: return emptyList()
+        return runCatching { dir.listFiles() }.getOrNull().orEmpty()
+            .filter { it.isDirectory }
+            .mapNotNull { it.name }
+            .map { if (within.isEmpty()) it else "$within/$it" }
+            .sorted()
     }
 
     private fun read(uri: Uri): String? = runCatching {
@@ -153,15 +197,21 @@ class SafLibrary(private val appContext: Context, storedTree: String?) : Library
      * workspace stays dirty, so the unsaved-draft recovery already covers the data, and the user is
      * asked to pick the folder again.
      */
-    override fun write(kind: LibraryStore.Kind, id: String, name: String, json: String): Boolean {
+    override fun write(
+        kind: LibraryStore.Kind,
+        id: String,
+        name: String,
+        json: String,
+        folder: String,
+    ): Boolean {
         val existing = located[id]
         if (existing != null && overwrite(existing, json)) {
             isUsable = true
             return true
         }
 
-        val dir = subfolder(kind, create = true) ?: return false
-        val created = runCatching { dir.createFile("application/json", fileName(name)) }
+        val dir = resolve(folder, create = true) ?: return false
+        val created = runCatching { dir.createFile(MIME, fileName(name, kind)) }
             .onFailure { Log.e(TAG, "Failed to create a file for '$name'", it) }
             .getOrNull() ?: return false
 
@@ -213,8 +263,12 @@ class SafLibrary(private val appContext: Context, storedTree: String?) : Library
      */
     override fun rename(id: String, name: String) {
         val uri = located[id] ?: return
+        // Keeps whatever kind the file already has. Derived from the current name rather than passed in,
+        // because renaming cannot change what a file is and taking it as an argument would allow that.
+        val kind = DocumentFile.fromSingleUri(appContext, uri)?.name
+            ?.let { LibraryStore.Kind.of(it) } ?: return
         runCatching {
-            DocumentsContract.renameDocument(appContext.contentResolver, uri, fileName(name))
+            DocumentsContract.renameDocument(appContext.contentResolver, uri, fileName(name, kind))
         }.onFailure { Log.w(TAG, "Could not rename the file for $id; the label is now stale", it) }
             .getOrNull()
             ?.let { located[id] = it }
@@ -231,41 +285,59 @@ class SafLibrary(private val appContext: Context, storedTree: String?) : Library
     }
 
     /**
-     * Finds our subfolder, creating it only if it is genuinely absent.
+     * Walks down to a folder relative to the chosen one, optionally creating the missing parts.
      *
-     * The find has to come first. `createDirectory` on a name that already exists does not return
-     * the existing one on every provider — `ExternalStorageProvider` makes `clips (1)` — and once
-     * the library is split across two directories, half of it disappears from the list.
+     * The find has to come first at every level. `createDirectory` on a name that already exists does not
+     * return the existing one on every provider — `ExternalStorageProvider` makes `Games (1)` — and once
+     * a folder is split in two, half of what is in it disappears from the list.
      */
-    private fun subfolder(kind: LibraryStore.Kind, create: Boolean): DocumentFile? {
-        val root = root() ?: return null
-        val existing = runCatching { root.findFile(kind.folder) }.getOrNull()
-        if (existing != null && existing.isDirectory) return existing
-        if (!create) return null
-        return runCatching { root.createDirectory(kind.folder) }
-            .onFailure { Log.e(TAG, "Failed to create ${kind.folder}/", it) }
-            .getOrNull()
+    private fun resolve(folder: String, create: Boolean): DocumentFile? {
+        var here = root() ?: return null
+        if (folder.isEmpty()) return here
+        for (segment in folder.split('/').filter { it.isNotEmpty() }) {
+            val existing = runCatching { here.findFile(segment) }.getOrNull()
+            if (existing != null && existing.isDirectory) {
+                here = existing
+                continue
+            }
+            if (!create) return null
+            here = runCatching { here.createDirectory(segment) }
+                .onFailure { Log.e(TAG, "Failed to create $segment/", it) }
+                .getOrNull() ?: return null
+        }
+        return here
     }
 
     /**
-     * A clip's name, made safe to be a file name.
+     * A clip's name, made safe to be a file name, carrying the extension that says what it is.
      *
      * No collision handling: two clips may legitimately share a name, and the provider appends its
      * own suffix when one is taken. Whatever it hands back is what we store, because the name on
      * disk is not how anything is found.
      */
-    private fun fileName(name: String): String {
+    private fun fileName(name: String, kind: LibraryStore.Kind): String {
         val cleaned = name
             .map { if (it in ILLEGAL || it.isISOControl()) ' ' else it }
             .joinToString("")
             .trim()
             .take(MAX_NAME)
             .trim()
-        return (cleaned.ifEmpty { FALLBACK }) + ".json"
+        return (cleaned.ifEmpty { FALLBACK }) + kind.extension
     }
 
     private companion object {
         const val TAG = "SafLibrary"
+
+        /**
+         * A MIME type no `MimeTypeMap` knows, so the name we ask for is the name we get.
+         *
+         * `ExternalStorageProvider.createDocument` derives an extension from the MIME type and appends it
+         * when the given name does not already end in it — so `"application/json"` would turn
+         * `Login.clip` into `Login.clip.json`, and a file we wrote but could not then recognise is the
+         * worst outcome available. An unmapped type leaves the name alone. [LibraryStore.Kind.matches]
+         * accepts the appended form anyway, in case some other provider appends regardless.
+         */
+        const val MIME = "application/vnd.tapflow"
 
         /** Reserved on FAT/exFAT as well as ext4, since an SD card is a normal choice of folder. */
         const val ILLEGAL = "/\\:*?\"<>|"
