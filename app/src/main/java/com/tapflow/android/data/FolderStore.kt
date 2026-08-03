@@ -49,9 +49,15 @@ object FolderStore {
     val picksFolder: Boolean get() = saf != null
 
     fun refreshUsable(): Boolean = backend.refreshUsable()
-    fun list(kind: LibraryStore.Kind): List<LibraryStore.Entry> = backend.list(kind)
-    fun write(kind: LibraryStore.Kind, id: String, name: String, json: String): Boolean =
-        backend.write(kind, id, name, json)
+    fun list(): LibraryStore.Listing = backend.list()
+    fun folders(within: String): List<String> = backend.folders(within)
+    fun write(
+        kind: LibraryStore.Kind,
+        id: String,
+        name: String,
+        json: String,
+        folder: String = "",
+    ): Boolean = backend.write(kind, id, name, json, folder)
 
     fun delete(id: String): Boolean = backend.delete(id)
     fun rename(id: String, name: String) = backend.rename(id, name)

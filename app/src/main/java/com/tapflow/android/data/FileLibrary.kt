@@ -57,23 +57,78 @@ class FileLibrary(private val context: Context) : LibraryStore {
         return ok
     }
 
-    override fun list(kind: LibraryStore.Kind): List<LibraryStore.Entry> {
-        val dir = File(root, kind.folder)
-        if (!dir.isDirectory) return emptyList()
-        return dir.listFiles { file -> file.isFile && file.name.endsWith(".json") }
-            .orEmpty()
-            .mapNotNull { file ->
+    /**
+     * Walks the whole folder, both kinds in one pass.
+     *
+     * Breadth-first with an explicit queue rather than recursion, so the directory ceiling is one counter
+     * instead of a depth argument threaded through call frames — and a symlink loop, which `listFiles`
+     * will happily follow, is bounded by the same counter.
+     */
+    override fun list(): LibraryStore.Listing {
+        val start = root
+        if (!start.isDirectory) return LibraryStore.Listing(emptyList(), 0)
+
+        val entries = ArrayList<LibraryStore.Entry>()
+        val queue = ArrayDeque<File>()
+        queue += start
+        var unread = 0
+        var entered = 0
+
+        while (queue.isNotEmpty() && entered < LibraryStore.MAX_DIRECTORIES) {
+            val dir = queue.removeFirst()
+            entered++
+            val children = runCatching { dir.listFiles() }
+                .onFailure { Log.e(TAG, "Failed to list $dir", it) }
+                .getOrNull()
+            if (children == null) {
+                unread++
+                continue
+            }
+            for (child in children) {
+                if (child.isDirectory) {
+                    queue += child
+                    continue
+                }
+                val kind = LibraryStore.Kind.of(child.name) ?: continue
                 // Tolerant on purpose: these files sit where the user can open and copy them, so a
                 // mangled one is an ordinary event and must cost that one clip rather than the list.
-                val text = runCatching { file.readText() }
-                    .onFailure { Log.e(TAG, "Failed to read $file", it) }
-                    .getOrNull() ?: return@mapNotNull null
-                LibraryStore.Entry(text, file.absolutePath)
+                val text = runCatching { child.readText() }
+                    .onFailure { Log.e(TAG, "Failed to read $child", it) }
+                    .getOrNull()
+                if (text == null) {
+                    unread++
+                    continue
+                }
+                entries += LibraryStore.Entry(kind, text, child.absolutePath)
             }
+        }
+
+        // Whatever the ceiling stopped short of is unread, not absent.
+        if (queue.isNotEmpty()) {
+            Log.w(TAG, "Stopped after $entered directories; ${queue.size} not visited")
+            unread += queue.size
+        }
+        return LibraryStore.Listing(entries, unread)
     }
 
-    override fun write(kind: LibraryStore.Kind, id: String, name: String, json: String): Boolean {
-        val dir = File(root, kind.folder)
+    override fun folders(within: String): List<String> {
+        val dir = if (within.isEmpty()) root else File(root, within)
+        if (!dir.isDirectory) return emptyList()
+        return runCatching { dir.listFiles() }.getOrNull().orEmpty()
+            .filter { it.isDirectory }
+            .map { if (within.isEmpty()) it.name else "$within/${it.name}" }
+            .sorted()
+    }
+
+    override fun write(
+        kind: LibraryStore.Kind,
+        id: String,
+        name: String,
+        json: String,
+        folder: String,
+    ): Boolean {
+        val existing = located[id]?.let(::File)
+        val dir = existing?.parentFile ?: if (folder.isEmpty()) root else File(root, folder)
         // mkdirs on an existing directory returns false rather than throwing, so ask about the outcome
         // and not the return value. This is the trap the SAF backend has to work around with a find-first
         // dance, and here it is simply not one.
@@ -83,8 +138,7 @@ class FileLibrary(private val context: Context) : LibraryStore {
             return false
         }
 
-        val existing = located[id]?.let(::File)
-        val target = existing ?: uniqueFile(dir, name)
+        val target = existing ?: uniqueFile(dir, name, kind)
 
         return runCatching {
             // writeText truncates, so there is no shorter-over-longer corruption to guard against.
@@ -107,7 +161,10 @@ class FileLibrary(private val context: Context) : LibraryStore {
 
     override fun rename(id: String, name: String) {
         val from = located[id]?.let(::File) ?: return
-        val to = uniqueFile(from.parentFile ?: return, name)
+        // Keeps the kind it already had. Derived from the old name rather than passed in, because a
+        // rename cannot change what a file is, and asking the caller for the kind would let it.
+        val kind = LibraryStore.Kind.of(from.name) ?: return
+        val to = uniqueFile(from.parentFile ?: return, name, kind)
         runCatching { if (from.renameTo(to)) located[id] = to.absolutePath }
             .onFailure { Log.w(TAG, "Could not rename $from; the label is now stale", it) }
     }
@@ -126,12 +183,12 @@ class FileLibrary(private val context: Context) : LibraryStore {
      * Unlike SAF there is no provider to append a suffix on a collision, so it is done here — two clips
      * are allowed to share a name, and the file name is only a label either way.
      */
-    private fun uniqueFile(dir: File, name: String): File {
+    private fun uniqueFile(dir: File, name: String, kind: LibraryStore.Kind): File {
         val base = safeName(name)
-        var candidate = File(dir, "$base.json")
+        var candidate = File(dir, base + kind.extension)
         var n = 2
         while (candidate.exists()) {
-            candidate = File(dir, "$base ($n).json")
+            candidate = File(dir, "$base ($n)${kind.extension}")
             n++
         }
         return candidate

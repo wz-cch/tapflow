@@ -133,8 +133,8 @@ object Repo {
             return
         }
 
-        val clipFiles = FolderStore.list(LibraryStore.Kind.CLIP)
-        val flowFiles = FolderStore.list(LibraryStore.Kind.FLOW)
+        val listing = FolderStore.list()
+        val (clipFiles, flowFiles) = listing.entries.partition { it.kind == LibraryStore.Kind.CLIP }
 
         _clips.value = clipFiles.mapNotNull { entry ->
             decode<Clip>(entry.json, "clip")?.also { FolderStore.remember(it.id, entry.locator) }
@@ -143,10 +143,13 @@ object Repo {
             decode<Flow>(entry.json, "flow")?.also { FolderStore.remember(it.id, entry.locator) }
         }
 
-        // What was on disk, minus what parsed. Derived rather than tallied inside decode(), which has no
-        // business knowing it is being counted — and a subtraction cannot drift out of step with the list
-        // it describes the way a separate counter can.
-        unreadable.value = (clipFiles.size - _clips.value.size) + (flowFiles.size - _flows.value.size)
+        // Two shortfalls, one number, because from the user's side they are the same event — something is
+        // in the folder and not in the list. What the walk could not read or enter it counted itself; what
+        // it read but could not parse is the subtraction. Derived rather than tallied inside decode(),
+        // which has no business knowing it is being counted, and a subtraction cannot drift out of step
+        // with the list it describes the way a separate counter can.
+        val unparsed = (clipFiles.size - _clips.value.size) + (flowFiles.size - _flows.value.size)
+        unreadable.value = listing.unread + unparsed
         libraryLoaded.value = true
     }
 
