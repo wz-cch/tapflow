@@ -382,6 +382,7 @@ private fun LoadDialog(
     val resources = androidx.compose.ui.platform.LocalContext.current.resources
     val clips = Repo.clips.value
     val flows = Repo.flows.value
+    val unreadable = Repo.unreadable.value
     val flowMode = Repo.mode.value == AppMode.FLOW
     // Whichever kind was picked, held until the discard question is answered.
     var pending by remember { mutableStateOf<(() -> Unit)?>(null) }
@@ -397,20 +398,33 @@ private fun LoadDialog(
         title = { Text(stringResource(R.string.load_title)) },
         text = {
             val empty = if (flowMode) flows.isEmpty() else clips.isEmpty()
-            if (empty) {
-                Text(stringResource(R.string.load_empty))
-            } else {
-                LazyColumn(Modifier.heightIn(max = 360.dp)) {
-                    if (flowMode) {
-                        items(flows, key = { it.id }) { flow ->
-                            PickRow(flow.name, flowSummary(resources, flow, clips)) {
-                                pick { onPickFlow(flow) }
+            Column {
+                // Above the list, and repeated here rather than left to the home screen, because this is
+                // the other place a clip goes missing from — and "nothing was ever saved" reads exactly
+                // like "the file will not parse" while calling for the opposite response.
+                if (unreadable > 0) {
+                    Text(
+                        stringResource(R.string.library_unreadable, unreadable),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    )
+                }
+                if (empty) {
+                    Text(stringResource(R.string.load_empty))
+                } else {
+                    LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                        if (flowMode) {
+                            items(flows, key = { it.id }) { flow ->
+                                PickRow(flow.name, flowSummary(resources, flow, clips)) {
+                                    pick { onPickFlow(flow) }
+                                }
                             }
-                        }
-                    } else {
-                        items(clips, key = { it.id }) { clip ->
-                            PickRow(clip.name, clipSummary(resources, clip)) {
-                                pick { onPickClip(clip) }
+                        } else {
+                            items(clips, key = { it.id }) { clip ->
+                                PickRow(clip.name, clipSummary(resources, clip)) {
+                                    pick { onPickClip(clip) }
+                                }
                             }
                         }
                     }

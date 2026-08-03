@@ -99,6 +99,7 @@ fun HomeScreen(
     val currentClipId by Repo.currentClipId.collectAsStateWithLifecycle()
     val mode by Repo.mode.collectAsStateWithLifecycle()
     val folderUsable by FolderStore.usable.collectAsStateWithLifecycle()
+    val unreadable by Repo.unreadable.collectAsStateWithLifecycle()
     var creatingFlow by remember { mutableStateOf(false) }
     var pendingStart by remember { mutableStateOf(false) }
     var closingToolbar by remember { mutableStateOf(false) }
@@ -225,6 +226,20 @@ fun HomeScreen(
                         stringResource(R.string.home_no_folder),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+            }
+
+            // In the error colour and above both lists, because it explains a gap *in* them. Without it a
+            // damaged file and a clip that was never saved look identical from here — and they call for
+            // opposite responses, since the file is still in the folder.
+            if (unreadable > 0) {
+                item {
+                    Text(
+                        stringResource(R.string.library_unreadable, unreadable),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.padding(top = 8.dp),
                     )
                 }

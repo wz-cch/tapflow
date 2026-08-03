@@ -58,6 +58,17 @@ object Repo {
     /** Whether [loadLibrary] has run against the current folder. */
     val libraryLoaded = MutableStateFlow(false)
 
+    /**
+     * How many files in the folder were there but could not be read, on the last [loadLibrary].
+     *
+     * Skipping one mangled file instead of failing the whole list is right. Doing it **silently** is not,
+     * and that silence is the exact shape of the loss reported on a device: an unclean shutdown, and on
+     * the next launch the library was simply empty with nothing said. It looked like the app had forgotten
+     * rather than like a file being unreadable — and those need completely different responses, because
+     * the file is still sitting in the folder.
+     */
+    val unreadable = MutableStateFlow(0)
+
     private val _settings = MutableStateFlow(Settings.DEFAULT)
     val settings: StateFlow<Settings> = _settings.asStateFlow()
 
@@ -110,22 +121,32 @@ object Repo {
      *
      * A file that will not parse is skipped, not fatal. These live in a folder the user opens and
      * copies around, so one mangled file is an ordinary event — and it must cost that one clip
-     * rather than the list.
+     * rather than the list. How many were skipped goes into [unreadable], because skipping quietly is
+     * indistinguishable from never having saved it.
      */
     fun loadLibrary() {
         if (!FolderStore.refreshUsable()) {
             _clips.value = emptyList()
             _flows.value = emptyList()
+            unreadable.value = 0
             libraryLoaded.value = false
             return
         }
 
-        _clips.value = FolderStore.list(LibraryStore.Kind.CLIP).mapNotNull { entry ->
+        val clipFiles = FolderStore.list(LibraryStore.Kind.CLIP)
+        val flowFiles = FolderStore.list(LibraryStore.Kind.FLOW)
+
+        _clips.value = clipFiles.mapNotNull { entry ->
             decode<Clip>(entry.json, "clip")?.also { FolderStore.remember(it.id, entry.locator) }
         }
-        _flows.value = FolderStore.list(LibraryStore.Kind.FLOW).mapNotNull { entry ->
+        _flows.value = flowFiles.mapNotNull { entry ->
             decode<Flow>(entry.json, "flow")?.also { FolderStore.remember(it.id, entry.locator) }
         }
+
+        // What was on disk, minus what parsed. Derived rather than tallied inside decode(), which has no
+        // business knowing it is being counted — and a subtraction cannot drift out of step with the list
+        // it describes the way a separate counter can.
+        unreadable.value = (clipFiles.size - _clips.value.size) + (flowFiles.size - _flows.value.size)
         libraryLoaded.value = true
     }
 
@@ -137,6 +158,7 @@ object Repo {
     private fun clearLibraryCache() {
         _clips.value = emptyList()
         _flows.value = emptyList()
+        unreadable.value = 0
         libraryLoaded.value = false
     }
 

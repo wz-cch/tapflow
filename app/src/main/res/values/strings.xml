@@ -303,4 +303,5 @@
     <string name="folder_clear">Clear</string>
     <string name="toast_save_failed">Could not save — the folder is unreachable. Nothing was lost; choose the folder and save again.</string>
     <string name="home_no_folder">No folder chosen yet. Saving or loading will ask for one.</string>
+    <string name="library_unreadable">%1$d file(s) in the folder could not be read, so they are missing from the lists below. They are still on disk — an unclean shutdown can leave a file half-written.</string>
 </resources>
