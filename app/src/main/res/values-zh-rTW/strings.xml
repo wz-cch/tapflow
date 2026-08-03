@@ -273,6 +273,7 @@
     <string name="toast_mode_clip">片段模式</string>
     <string name="toast_mode_flow">流程模式</string>
     <string name="discard_warning">有修改沒儲存,會丟失。</string>
+    <string name="discard_action">丟棄並繼續</string>
     <string name="recover_title">上次未正常關閉,要復原沒存到的動作嗎?</string>
     <string name="recover_keep">復原</string>
     <string name="recover_discard">丟棄</string>
