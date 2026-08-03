@@ -22,6 +22,8 @@
     <string name="step_pause">⏸ 暫停點</string>
     <string name="step_pause_with_note">⏸ 暫停點:%1$s</string>
     <string name="pause_touch_interrupted">第 %1$d 步被中斷 —— 觸控會取消注入的手勢。按繼續會從下一步接著跑。</string>
+    <string name="pause_gesture_failed">第 %1$d 步沒有送到 app。如果這步重要,手動補一下再按繼續。</string>
+    <string name="toast_skipped_steps">跑完了,但有 %1$d 步沒送到 app,被略過。</string>
     <string name="pause_default_prompt">已暫停,請手動處理後按繼續</string>
 
     <!-- 系統動作 -->
@@ -236,6 +238,18 @@
     <string name="settings_speed">速度</string>
     <string name="settings_loop_interval">每圈之間的間隔</string>
     <string name="settings_start_delay">開始前倒數</string>
+    <string name="settings_section_failure">步驟沒送到的時候</string>
+    <string name="settings_on_touch">你碰到螢幕時</string>
+    <string name="settings_on_touch_body">真實觸控會取消注入的手勢 —— Android 不會把兩者合併,那一步只做了一半。這是你要接手,不是故障,所以永遠不重試。</string>
+    <string name="touch_stop">中斷</string>
+    <string name="touch_pause">暫停</string>
+    <string name="touch_ignore">忽略</string>
+    <string name="settings_failure_retries">完全沒送出時重試</string>
+    <string name="settings_failure_retries_body">被系統拒收、或是找不到注入器的手勢,是完全沒送到 app,所以再試是安全的。注入器不見是持續性的,要 toggle 服務才會好,而且每次嘗試大約要一秒。</string>
+    <string name="settings_on_failure">重試用完之後</string>
+    <string name="settings_on_failure_body">少一下點擊沒關係的腳本就選略過,略過幾步會在結束時告訴你。前後有關聯、缺的那一步要手動補的就選暫停。</string>
+    <string name="failure_skip">略過</string>
+    <string name="failure_pause">暫停</string>
     <string name="settings_section_randomise">隨機化</string>
     <string name="settings_jitter_radius">隨機位置半徑</string>
     <string name="settings_jitter_radius_body">每次重播時,整個手勢會在這個半徑內隨機偏移。也避免每次都戳到同一個 pixel。</string>
