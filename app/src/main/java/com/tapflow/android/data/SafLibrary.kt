@@ -130,13 +130,15 @@ class SafLibrary(private val appContext: Context, storedTree: String?) : Library
         val start = root() ?: return LibraryStore.Listing(emptyList(), 0)
 
         val entries = ArrayList<LibraryStore.Entry>()
-        val queue = ArrayDeque<DocumentFile>()
-        queue += start
+        // Each entry is a directory and its path relative to the root. SAF exposes no paths at all, so
+        // this is the only way the browser can know which folder a file came out of.
+        val queue = ArrayDeque<Pair<DocumentFile, String>>()
+        queue += start to ""
         var unread = 0
         var entered = 0
 
         while (queue.isNotEmpty() && entered < LibraryStore.MAX_DIRECTORIES) {
-            val dir = queue.removeFirst()
+            val (dir, here) = queue.removeFirst()
             entered++
             // Each of these is an IPC round trip to the provider, which is the whole reason both kinds
             // come out of one walk rather than one call each.
@@ -148,17 +150,18 @@ class SafLibrary(private val appContext: Context, storedTree: String?) : Library
                 continue
             }
             for (child in children) {
+                val name = child.name
                 if (child.isDirectory) {
-                    queue += child
+                    if (name != null) queue += child to if (here.isEmpty()) name else "$here/$name"
                     continue
                 }
-                val kind = child.name?.let { LibraryStore.Kind.of(it) } ?: continue
+                val kind = name?.let { LibraryStore.Kind.of(it) } ?: continue
                 val text = read(child.uri)
                 if (text == null) {
                     unread++
                     continue
                 }
-                entries += LibraryStore.Entry(kind, text, child.uri.toString())
+                entries += LibraryStore.Entry(kind, text, child.uri.toString(), here)
             }
         }
 

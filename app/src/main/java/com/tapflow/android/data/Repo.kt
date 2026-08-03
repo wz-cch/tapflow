@@ -35,6 +35,7 @@ object Repo {
     private const val KEY_MODE = "app_mode"
     private const val KEY_CURRENT_CLIP = "current_clip_id"
     private const val KEY_OVERLAY_ON = "overlay_on"
+    private const val KEY_SAVE_FOLDER = "save_folder"
 
     private lateinit var appContext: Context
     private lateinit var prefs: SharedPreferences
@@ -69,6 +70,26 @@ object Repo {
      */
     val unreadable = MutableStateFlow(0)
 
+    /**
+     * Which subfolder each saved thing came out of, keyed by id. "" is the root.
+     *
+     * Only the browsing UI reads this, and only to group rows. Nothing about behaviour depends on where a
+     * file sits — a flow finds its clips by id, wherever they are — which is what keeps the folders purely
+     * a way of looking at the library rather than part of its structure.
+     */
+    private val folderOfId = HashMap<String, String>()
+
+    fun folderOf(id: String): String = folderOfId[id] ?: ""
+
+    /**
+     * Where a **new** clip or flow goes, relative to the chosen folder. "" is the root.
+     *
+     * Persisted, because "the folder I am working in" survives closing the app in every file-based tool
+     * there is. It only affects things that do not exist yet: something already saved is overwritten
+     * wherever it already lives, so changing this never moves what you were editing.
+     */
+    val saveFolder = MutableStateFlow("")
+
     private val _settings = MutableStateFlow(Settings.DEFAULT)
     val settings: StateFlow<Settings> = _settings.asStateFlow()
 
@@ -100,6 +121,7 @@ object Repo {
             .getOrDefault(AppMode.CLIP)
         currentClipId.value = prefs.getString(KEY_CURRENT_CLIP, null)
         overlayEnabled.value = prefs.getBoolean(KEY_OVERLAY_ON, false)
+        saveFolder.value = prefs.getString(KEY_SAVE_FOLDER, "").orEmpty()
 
         // Deliberately does not read the library. That is a folder over IPC, and doing it here would
         // put it on whichever thread starts the app or binds the service, for a list nothing needs
@@ -136,11 +158,12 @@ object Repo {
         val listing = FolderStore.list()
         val (clipFiles, flowFiles) = listing.entries.partition { it.kind == LibraryStore.Kind.CLIP }
 
+        folderOfId.clear()
         _clips.value = clipFiles.mapNotNull { entry ->
-            decode<Clip>(entry.json, "clip")?.also { FolderStore.remember(it.id, entry.locator) }
+            decode<Clip>(entry.json, "clip")?.also { remember(it.id, entry) }
         }
         _flows.value = flowFiles.mapNotNull { entry ->
-            decode<Flow>(entry.json, "flow")?.also { FolderStore.remember(it.id, entry.locator) }
+            decode<Flow>(entry.json, "flow")?.also { remember(it.id, entry) }
         }
 
         // Two shortfalls, one number, because from the user's side they are the same event — something is
@@ -153,6 +176,11 @@ object Repo {
         libraryLoaded.value = true
     }
 
+    private fun remember(id: String, entry: LibraryStore.Entry) {
+        FolderStore.remember(id, entry.locator)
+        folderOfId[id] = entry.folder
+    }
+
     private inline fun <reified T> decode(json: String, what: String): T? = runCatching {
         AppJson.decodeFromString<T>(json)
     }.onFailure { Log.e(TAG, "Skipping an unreadable $what file", it) }.getOrNull()
@@ -161,8 +189,15 @@ object Repo {
     private fun clearLibraryCache() {
         _clips.value = emptyList()
         _flows.value = emptyList()
+        folderOfId.clear()
         unreadable.value = 0
         libraryLoaded.value = false
+    }
+
+    /** Where new saves land. Persisted; see [saveFolder]. */
+    fun setSaveFolder(path: String) {
+        saveFolder.value = path
+        prefs.edit().putString(KEY_SAVE_FOLDER, path).apply()
     }
 
     // --- Clips ---
@@ -180,9 +215,16 @@ object Repo {
         val previousName = clipById(clip.id)?.name
         // Content first, label second. Writing overwrites in place and so keeps the old file name; the
         // rename that follows is cosmetic, which is why its failure is not this function's failure.
-        if (!FolderStore.write(LibraryStore.Kind.CLIP, clip.id, clip.name, AppJson.encodeToString(clip))) {
-            return false
-        }
+        // saveFolder only decides where something *new* lands — see LibraryStore.write. An existing clip
+        // is overwritten where it already is, so changing the working folder never moves what is open.
+        val landed = FolderStore.write(
+            LibraryStore.Kind.CLIP,
+            clip.id,
+            clip.name,
+            AppJson.encodeToString(clip),
+            saveFolder.value,
+        )
+        if (!landed) return false
         if (previousName != null && previousName != clip.name) FolderStore.rename(clip.id, clip.name)
 
         val exists = _clips.value.any { it.id == clip.id }
@@ -241,9 +283,14 @@ object Repo {
      */
     fun upsertFlow(flow: Flow): Boolean {
         val previousName = flowById(flow.id)?.name
-        if (!FolderStore.write(LibraryStore.Kind.FLOW, flow.id, flow.name, AppJson.encodeToString(flow))) {
-            return false
-        }
+        val landed = FolderStore.write(
+            LibraryStore.Kind.FLOW,
+            flow.id,
+            flow.name,
+            AppJson.encodeToString(flow),
+            saveFolder.value,
+        )
+        if (!landed) return false
         if (previousName != null && previousName != flow.name) FolderStore.rename(flow.id, flow.name)
 
         val exists = _flows.value.any { it.id == flow.id }

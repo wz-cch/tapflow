@@ -54,7 +54,10 @@ import com.tapflow.android.text.clipSummary
 import com.tapflow.android.text.flowSummary
 import com.tapflow.android.text.defaultClipName
 import com.tapflow.android.ui.DiscardConfirmDialog
+import com.tapflow.android.ui.FolderPickDialog
 import com.tapflow.android.ui.TapFlowTheme
+import com.tapflow.android.ui.folderLabel
+import com.tapflow.android.ui.folderRows
 import com.tapflow.android.ui.guardDiscard
 import com.tapflow.android.ui.wroteToLibrary
 
@@ -329,6 +332,12 @@ private fun SaveDialog(onDismiss: () -> Unit, onSave: (name: String, asNew: Bool
     }
     // Saving over the clip the workspace came from is the expected default; the tick opts out.
     var asNew by remember { mutableStateOf(source == null) }
+    var picking by remember { mutableStateOf(false) }
+
+    // Overwriting lands where the file already is — that is what LibraryStore.write promises, so offering a
+    // choice here would be showing a control that changes nothing. Only a new file has a folder to pick.
+    val overwriting = source != null && !asNew
+    val landsIn = if (overwriting) Repo.folderOf(source!!.id) else Repo.saveFolder.value
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -352,6 +361,21 @@ private fun SaveDialog(onDismiss: () -> Unit, onSave: (name: String, asNew: Bool
                         )
                     }
                 }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    stringResource(R.string.save_lands_in, folderLabel(landsIn)),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (overwriting) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .then(if (overwriting) Modifier else Modifier.clickable { picking = true })
+                        .padding(vertical = 4.dp),
+                )
             }
         },
         confirmButton = {
@@ -363,6 +387,13 @@ private fun SaveDialog(onDismiss: () -> Unit, onSave: (name: String, asNew: Bool
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.dialog_cancel)) }
         },
     )
+
+    if (picking) {
+        FolderPickDialog(
+            initial = Repo.saveFolder.value,
+            onDismiss = { picking = false },
+        ) { Repo.setSaveFolder(it) }
+    }
 }
 
 /**
@@ -380,12 +411,22 @@ private fun LoadDialog(
     onPickFlow: (Flow) -> Unit,
 ) {
     val resources = androidx.compose.ui.platform.LocalContext.current.resources
-    val clips = Repo.clips.value
-    val flows = Repo.flows.value
     val unreadable = Repo.unreadable.value
     val flowMode = Repo.mode.value == AppMode.FLOW
     // Whichever kind was picked, held until the discard question is answered.
     var pending by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    // Starts wherever new saves go, because that is where you were last working.
+    var folder by remember { mutableStateOf(Repo.saveFolder.value) }
+    val subfolders = remember(folder) { FolderStore.folders(folder) }
+    // Filtered from what is already in memory rather than read again per folder. The library is loaded
+    // whole — a flow resolves its clips by id from wherever they are — so reading again would be a second
+    // walk that could disagree with the first.
+    val clips = Repo.clips.value.filter { Repo.folderOf(it.id) == folder }
+    val flows = Repo.flows.value.filter { Repo.folderOf(it.id) == folder }
+    // Only for a flow's summary, which counts clips wherever they live. Filtering that by folder would
+    // make a flow read "2 clips" in one folder and "3" in another.
+    val allClips = Repo.clips.value
 
     // Both kinds, not just clips. What is at risk is the *workspace*, and loading either one empties it —
     // it is not the picked thing that might be unsaved. Today a dirty workspace cannot coexist with flow
@@ -410,21 +451,36 @@ private fun LoadDialog(
                         modifier = Modifier.padding(bottom = 8.dp),
                     )
                 }
-                if (empty) {
-                    Text(stringResource(R.string.load_empty))
-                } else {
-                    LazyColumn(Modifier.heightIn(max = 360.dp)) {
-                        if (flowMode) {
-                            items(flows, key = { it.id }) { flow ->
-                                PickRow(flow.name, flowSummary(resources, flow, clips)) {
-                                    pick { onPickFlow(flow) }
-                                }
+                Text(
+                    folderLabel(folder),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                    folderRows(folder, subfolders) { folder = it }
+                    if (empty) {
+                        // In the list rather than instead of it, because a folder can hold nothing of this
+                        // kind while still having subfolders worth opening.
+                        item {
+                            Text(
+                                stringResource(R.string.load_empty),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(vertical = 12.dp),
+                            )
+                        }
+                    } else if (flowMode) {
+                        items(flows, key = { it.id }) { flow ->
+                            PickRow(flow.name, flowSummary(resources, flow, allClips)) {
+                                pick { onPickFlow(flow) }
                             }
-                        } else {
-                            items(clips, key = { it.id }) { clip ->
-                                PickRow(clip.name, clipSummary(resources, clip)) {
-                                    pick { onPickClip(clip) }
-                                }
+                        }
+                    } else {
+                        items(clips, key = { it.id }) { clip ->
+                            PickRow(clip.name, clipSummary(resources, clip)) {
+                                pick { onPickClip(clip) }
                             }
                         }
                     }

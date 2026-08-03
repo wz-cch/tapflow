@@ -69,13 +69,16 @@ class FileLibrary(private val context: Context) : LibraryStore {
         if (!start.isDirectory) return LibraryStore.Listing(emptyList(), 0)
 
         val entries = ArrayList<LibraryStore.Entry>()
-        val queue = ArrayDeque<File>()
-        queue += start
+        // Each entry is a directory and its path relative to the root. Carried rather than derived from
+        // the absolute path afterwards, so the SAF backend — which has no paths at all — can do the same
+        // thing the same way.
+        val queue = ArrayDeque<Pair<File, String>>()
+        queue += start to ""
         var unread = 0
         var entered = 0
 
         while (queue.isNotEmpty() && entered < LibraryStore.MAX_DIRECTORIES) {
-            val dir = queue.removeFirst()
+            val (dir, here) = queue.removeFirst()
             entered++
             val children = runCatching { dir.listFiles() }
                 .onFailure { Log.e(TAG, "Failed to list $dir", it) }
@@ -86,7 +89,7 @@ class FileLibrary(private val context: Context) : LibraryStore {
             }
             for (child in children) {
                 if (child.isDirectory) {
-                    queue += child
+                    queue += child to if (here.isEmpty()) child.name else "$here/${child.name}"
                     continue
                 }
                 val kind = LibraryStore.Kind.of(child.name) ?: continue
@@ -99,7 +102,7 @@ class FileLibrary(private val context: Context) : LibraryStore {
                     unread++
                     continue
                 }
-                entries += LibraryStore.Entry(kind, text, child.absolutePath)
+                entries += LibraryStore.Entry(kind, text, child.absolutePath, here)
             }
         }
 
