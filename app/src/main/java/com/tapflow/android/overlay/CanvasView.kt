@@ -129,6 +129,18 @@ class CanvasView(context: Context) : View(context) {
         }
 
     /**
+     * True while the step settings card is up, which makes it modal: nothing here reacts.
+     *
+     * The card is a separate window, so without this the canvas would still answer touches everywhere the
+     * card does not physically cover — dragging a marker while its parameters are being typed, and no way
+     * to tell "that marker cannot be dragged" apart from "that marker was under the card".
+     *
+     * Touches are still **consumed** rather than passed through. This view covers the screen while editing,
+     * and letting them fall through would deliver them to the app the script is being written against.
+     */
+    var panelOpen: Boolean = false
+
+    /**
      * Radius of a grab ring, in pixels, from the user's setting.
      *
      * One number for drawing and for hit-testing, deliberately: the ring exists to *make the grab radius
@@ -283,6 +295,13 @@ class CanvasView(context: Context) : View(context) {
     private var editDownY = 0f
 
     private fun handleEditTouch(event: MotionEvent): Boolean {
+        // Consumed and dropped: see panelOpen. Checked before anything else so a card that opens mid-touch
+        // cannot leave a grab half-started.
+        if (panelOpen) {
+            grab = null
+            return true
+        }
+
         getLocationOnScreen(origin)
         val x = event.x + origin[0]
         val y = event.y + origin[1]

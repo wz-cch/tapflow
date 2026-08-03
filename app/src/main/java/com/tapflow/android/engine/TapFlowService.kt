@@ -308,7 +308,7 @@ class TapFlowService : AccessibilityService() {
 
         canvas = CanvasView(this).apply {
             onGesture = { strokes, down, up -> onGestureCaptured(strokes, down, up) }
-            onSelect = { stepId -> select(stepId) }
+            onSelect = { stepId -> selectFromCanvas(stepId) }
             onDragStep = { stepId, handle, x, y -> dragStep(stepId, handle, x, y) }
             onDragEnd = { Workspace.flush() }
             onReplayEcho = { onReplayEcho() }
@@ -557,6 +557,7 @@ class TapFlowService : AccessibilityService() {
         canvas.stepLines = stepLines(steps)
         canvas.highlightNumber = EngineState.progress.value?.step
         canvas.selectedStepId = selectedId
+        canvas.panelOpen = EngineState.paramPanelOpen.value
         canvas.dimAlpha = if (current.dimOverlay && mode == Mode.PLAYING) current.dimAlpha else 0f
         canvas.mode = when {
             mode == Mode.RECORDING -> CanvasMode.RECORDING
@@ -1325,6 +1326,27 @@ class TapFlowService : AccessibilityService() {
     private fun select(stepId: String?) {
         if (stepId == null && EngineState.editing.value) return
         EngineState.selectedStepId.value = stepId
+    }
+
+    /**
+     * Tapping a marker on the canvas: select it, and bring its settings up.
+     *
+     * Only this route opens the card. [select] has seven other callers — deleting lands on a neighbour,
+     * duplicating lands on the copy, the list, the steppers — and none of those is a request to see
+     * parameters, so the open belongs here rather than inside [select].
+     *
+     * Without it a tap could be answered by nothing at all. A gesture marker at least responds to a drag,
+     * but a wait, a pause and a system key are deliberately not draggable — their anchor is derived from
+     * their neighbours, so moving them would move nothing — and on those a touch had no visible effect
+     * whatever. A timed wait's seconds then looked like something the editor could not change. It always
+     * could: the card was the only way in, and nothing on screen said so.
+     *
+     * The card is modal from here (see [CanvasView.panelOpen]). Its ◀ ▶ walk to the neighbouring steps
+     * without closing it, and closing it is what hands the canvas back to dragging.
+     */
+    private fun selectFromCanvas(stepId: String?) {
+        select(stepId)
+        if (stepId != null) openStepPanel()
     }
 
     /**
