@@ -1048,6 +1048,10 @@ class TapFlowService : AccessibilityService() {
      * There is no "save" option here on purpose. Saving a fresh recording needs a name, which needs an
      * activity, which means holding the pending action across a trip out to it and back — for every one of
      * the callers. Cancel and press save is one more tap and no state machine.
+     *
+     * Only the one label. [OptionPadView] draws its own cancel row, so passing another one produced a pad
+     * offering cancel twice — and the label that is left has to name the outcome rather than agree with a
+     * question, because with the cancel gone it carries the whole meaning on its own.
      */
     private fun confirmDiscard(proceed: () -> Unit) {
         if (!Session.needsConfirm) {
@@ -1057,7 +1061,7 @@ class TapFlowService : AccessibilityService() {
         openOptionPad(
             OptionRequest(
                 title = getString(R.string.discard_warning),
-                labels = listOf(getString(R.string.dialog_confirm), getString(R.string.dialog_cancel)),
+                labels = listOf(getString(R.string.discard_action)),
             ) { index -> if (index == 0) proceed() }
         )
     }

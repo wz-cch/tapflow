@@ -276,6 +276,7 @@
     <string name="toast_mode_clip">Clip mode</string>
     <string name="toast_mode_flow">Flow mode</string>
     <string name="discard_warning">There are unsaved changes. They will be lost.</string>
+    <string name="discard_action">Discard and continue</string>
     <string name="recover_title">Last session ended unexpectedly. Recover the unsaved actions?</string>
     <string name="recover_keep">Recover</string>
     <string name="recover_discard">Discard</string>
