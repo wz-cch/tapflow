@@ -43,6 +43,7 @@ import com.tapflow.android.data.ClipNode
 import com.tapflow.android.data.Flow
 import com.tapflow.android.data.Repo
 import com.tapflow.android.data.Settings
+import com.tapflow.android.engine.Session
 import com.tapflow.android.text.clipSummary
 import kotlin.math.roundToInt
 
@@ -62,8 +63,12 @@ import kotlin.math.roundToInt
  * screen would simply not change — a tap that silently did nothing.
  */
 @OptIn(ExperimentalMaterial3Api::class)
+/**
+ * @param onEditClip one of this flow's clips is to be opened for editing. The screen has already loaded it
+ *   and left the breadcrumb; what remains is handing over to the toolbar, which only the activity can do.
+ */
 @Composable
-fun FlowEditorScreen(flowId: String, onBack: () -> Unit) {
+fun FlowEditorScreen(flowId: String, onBack: () -> Unit, onEditClip: () -> Unit) {
     val context = LocalContext.current
     val flows by Repo.flows.collectAsStateWithLifecycle()
     val clips by Repo.clips.collectAsStateWithLifecycle()
@@ -126,6 +131,13 @@ fun FlowEditorScreen(flowId: String, onBack: () -> Unit) {
                         context.wroteToLibrary { Repo.upsertFlow(flow.copy(clips = flow.clips.minusAt(index))) }
                     },
                     onOpenSettings = { editing = index },
+                    // Nothing to confirm. The flow is written on every change here, so it is already on
+                    // disk, and flow mode keeps the workspace empty — so leaving for the clip cannot lose
+                    // anything on either side.
+                    onEditClip = { clip ->
+                        Session.editClipFromFlow(flow.id, clip)
+                        onEditClip()
+                    },
                 )
             }
 
@@ -239,6 +251,7 @@ private fun ClipNodeRow(
     onMove: (Int) -> Unit,
     onRemove: () -> Unit,
     onOpenSettings: () -> Unit,
+    onEditClip: (Clip) -> Unit,
 ) {
     val resources = LocalContext.current.resources
     Card(Modifier.fillMaxWidth()) {
@@ -252,11 +265,22 @@ private fun ClipNodeRow(
                 modifier = Modifier.padding(end = 12.dp),
             )
             Column(Modifier.weight(1f)) {
+                // The name opens the clip; ⚙ opens the node. Two different things on one row, so the one
+                // that leaves this screen is the one that has to look like a link — and it is the name,
+                // because that is the clip rather than its place in this flow.
                 Text(
                     clip?.name ?: stringResource(R.string.node_clip_gone),
                     style = MaterialTheme.typography.bodyLarge,
+                    color = if (clip == null) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    },
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .then(if (clip == null) Modifier else Modifier.clickable { onEditClip(clip) })
+                        .padding(vertical = 2.dp),
                 )
                 Text(
                     nodeDetail(node),

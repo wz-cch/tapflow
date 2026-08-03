@@ -334,6 +334,12 @@ private fun SaveDialog(onDismiss: () -> Unit, onSave: (name: String, asNew: Bool
     var asNew by remember { mutableStateOf(source == null) }
     var picking by remember { mutableStateOf(false) }
 
+    // Hidden while a clip is open from inside a flow, because there it would be a trap: the flow references
+    // its clips by id, so saving as new would leave the flow pointing at the untouched original and the fix
+    // would appear to have done nothing at all. You came here to change *this* clip. A variant belongs to
+    // the home screen, where no flow is waiting on the answer.
+    val insideFlow = Session.returnToFlowId != null
+
     // Overwriting lands where the file already is — that is what LibraryStore.write promises, so offering a
     // choice here would be showing a control that changes nothing. Only a new file has a folder to pick.
     val overwriting = source != null && !asNew
@@ -351,7 +357,7 @@ private fun SaveDialog(onDismiss: () -> Unit, onSave: (name: String, asNew: Bool
                     label = { Text(stringResource(R.string.save_name_label)) },
                     modifier = Modifier.fillMaxWidth(),
                 )
-                if (source != null) {
+                if (source != null && !insideFlow) {
                     Spacer(Modifier.height(4.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = asNew, onCheckedChange = { asNew = it })

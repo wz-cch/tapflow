@@ -83,7 +83,17 @@ class MainActivity : ComponentActivity() {
                                 if (flowEditorExits.value) finish() else screen.value = Screen.HOME
                             }
                             BackHandler { leave() }
-                            FlowEditorScreen(flowId = id, onBack = leave)
+                            FlowEditorScreen(
+                                flowId = id,
+                                onBack = leave,
+                                // The clip is already loaded and the breadcrumb set; this is the handover.
+                                // Same two steps as loading from the home screen, and for the same reason:
+                                // editing happens on the toolbar, on top of the app being scripted.
+                                onEditClip = {
+                                    Repo.setOverlayEnabled(true)
+                                    finish()
+                                },
+                            )
                         }
                     }
                 }

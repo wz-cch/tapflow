@@ -225,6 +225,11 @@
     <string name="folder_save_here">Save here</string>
     <string name="save_lands_in">Saves into: %1$s</string>
     <string name="home_in_folder">🗀 %1$s</string>
+    <string name="action_finish_clip">Finish with this clip and go back to the flow</string>
+    <string name="finish_clip_title">This clip has unsaved changes. Save them before going back to the flow?</string>
+    <string name="finish_clip_save">Save and go back</string>
+    <string name="finish_clip_discard">Go back without saving</string>
+    <string name="toast_flow_gone">That flow no longer exists</string>
     <string name="toast_workspace_cleared">Workspace cleared</string>
 
     <!-- Diagnostics -->
