@@ -148,6 +148,7 @@
     <string name="clip_delete_body">刪除後無法復原。</string>
     <string name="dialog_confirm">確定</string>
     <string name="dialog_cancel">取消</string>
+    <string name="number_entry_range">範圍 %1$d 到 %2$d</string>
 
     <!-- 編輯 -->
     <string name="toast_edit_mode_on">編輯模式。整個螢幕會被攔截 —— 拖曳序號標記可移動;要改數值請開步驟設定。</string>

@@ -151,6 +151,7 @@
     <string name="clip_delete_body">This cannot be undone.</string>
     <string name="dialog_confirm">OK</string>
     <string name="dialog_cancel">Cancel</string>
+    <string name="number_entry_range">Between %1$d and %2$d</string>
 
     <!-- Editing -->
     <string name="toast_edit_mode_on">Editing. The whole screen is captured — drag a numbered marker to move it. Open step settings to change its numbers.</string>
