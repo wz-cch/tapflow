@@ -12,6 +12,12 @@
     -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Saved clips live outside the app so they survive a reinstall. On API 28 and below that is a real
+         path plus this permission; API 29 dropped broad file access, so newer devices use a folder granted
+         through the document picker instead and never see this. -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
 
     <application
         android:name=".App"

@@ -288,6 +288,9 @@
     <string name="folder_pick_body">存好的片段與流程放在你指定的資料夾,重裝 app 也不會消失。請選一個子資料夾,例如 Documents/TapFlow —— Android 不允許選內部儲存的根目錄,也不允許選「下載」。</string>
     <string name="folder_lost_title">讀不到存放的資料夾</string>
     <string name="folder_lost_body">資料夾可能被移動或刪除、記憶卡被拔掉,或是重裝之後授權沒了。重新選一次就好 —— 檔案還在。</string>
+    <string name="folder_permission_title">允許存取儲存空間</string>
+    <string name="folder_permission_body">存好的片段放在共用儲存空間的 TapFlow 資料夾裡,重裝 app 也不會消失。這個 Android 版本需要檔案存取權才能建立它。</string>
+    <string name="folder_permission_action">允許</string>
     <string name="folder_pick_action">選擇資料夾</string>
     <string name="folder_reading">正在讀取資料夾…</string>
     <string name="folder_setting">存放片段的資料夾</string>

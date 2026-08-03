@@ -181,6 +181,21 @@
 - 設定頁的標題對全域步驟顯示**是哪一顆鍵**,不是籠統的「動作」。四種在畫布上長得一樣,標題和列表文字是分辨的地方
 - `GlobalKind.toGlobalActionId()` 從 `GestureDispatcher` 的 private 提為 top-level —— 現在兩處要執行它(重播、以及錄製中插入),同一份對照表不該有兩份
 
+### Fixed — Android 7 完全無法指定資料夾,於是舊版本改走真實路徑
+
+一台 Android 7 上 `ACTION_OPEN_DOCUMENT_TREE` 只列得出「最近」,而「最近」列的是檔案,所以對挑資料夾的選擇器來說永遠是空的 —— 整個功能在那台無法設定,而 Android 11 那台完全正常。試過 `SHOW_ADVANCED` 沒有用,那台的 DocumentsUI 沒把 `ExternalStorageProvider` 的根目錄露出來,而剩下的路都不通:可持久化授權只能由選擇器回傳,`EXTRA_INITIAL_URI` 是 API 26 才有的。
+
+**但 Android 9 以下根本不需要 SAF。** Scoped storage 是 API 29 才開始的,在那之前 `WRITE_EXTERNAL_STORAGE` 就是完整的檔案存取。所以按版本切成兩個後端:
+
+- **API 29+** `SafLibrary` —— 使用者授權的資料夾,照原樣
+- **API 28-** `FileLibrary` —— 固定 `/sdcard/TapFlow`,**由我們建立**,沒有選擇器
+
+分界線在 28/29 而不是 29/30:Android 10 還能要求 legacy 存取,但那個旗標 Android 11 就不看了,釘在平台真正改變的地方才不會有一個「行為取決於可能被拒絕的請求」的後端。
+
+**舊後端比新的簡單**,這跟直覺相反:沒有 id → Uri 對照表(路徑就是位置)、沒有 `"wt"` 截斷坑(`writeText` 本來就截斷)、沒有 `createDirectory` 生出 `clips (1)`、沒有會被卸載收回的授權。而且**我們可以建資料夾** —— 那個「外層要你自己建好」的限制純粹是 SAF 的。
+
+「可以自己挑資料夾」從來不是目標:重裝不消失、放在能自己備份的地方才是,而固定路徑兩件都滿足。代價是舊裝置跳一次執行期權限;manifest 用 `maxSdkVersion="28"` 宣告,新裝置完全不會看到。
+
 ### Added — 存檔放使用者指定的資料夾,重裝不再消失
 
 `filesDir` 隨卸載一起消失,而 Android 內建的 `allowBackup` **本來就開著**卻救不了:還原只發生在安裝那一刻(手動裝 APK 不會觸發),備份綁簽章憑證(debug 與 release 不同),上傳時機是充電 + 閒置 + 非計費網路約一天一次。設計理由寫進 [SPEC §12.1–§12.8](docs/SPEC.md)。

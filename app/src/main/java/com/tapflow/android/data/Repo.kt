@@ -120,11 +120,11 @@ object Repo {
             return
         }
 
-        _clips.value = FolderStore.list(FolderStore.Kind.CLIP).mapNotNull { entry ->
-            decode<Clip>(entry.json, "clip")?.also { FolderStore.remember(it.id, entry.uri) }
+        _clips.value = FolderStore.list(LibraryStore.Kind.CLIP).mapNotNull { entry ->
+            decode<Clip>(entry.json, "clip")?.also { FolderStore.remember(it.id, entry.locator) }
         }
-        _flows.value = FolderStore.list(FolderStore.Kind.FLOW).mapNotNull { entry ->
-            decode<Flow>(entry.json, "flow")?.also { FolderStore.remember(it.id, entry.uri) }
+        _flows.value = FolderStore.list(LibraryStore.Kind.FLOW).mapNotNull { entry ->
+            decode<Flow>(entry.json, "flow")?.also { FolderStore.remember(it.id, entry.locator) }
         }
         libraryLoaded.value = true
     }
@@ -155,7 +155,7 @@ object Repo {
         val previousName = clipById(clip.id)?.name
         // Content first, label second. Writing overwrites in place and so keeps the old file name; the
         // rename that follows is cosmetic, which is why its failure is not this function's failure.
-        if (!FolderStore.write(FolderStore.Kind.CLIP, clip.id, clip.name, AppJson.encodeToString(clip))) {
+        if (!FolderStore.write(LibraryStore.Kind.CLIP, clip.id, clip.name, AppJson.encodeToString(clip))) {
             return false
         }
         if (previousName != null && previousName != clip.name) FolderStore.rename(clip.id, clip.name)
@@ -216,7 +216,7 @@ object Repo {
      */
     fun upsertFlow(flow: Flow): Boolean {
         val previousName = flowById(flow.id)?.name
-        if (!FolderStore.write(FolderStore.Kind.FLOW, flow.id, flow.name, AppJson.encodeToString(flow))) {
+        if (!FolderStore.write(LibraryStore.Kind.FLOW, flow.id, flow.name, AppJson.encodeToString(flow))) {
             return false
         }
         if (previousName != null && previousName != flow.name) FolderStore.rename(flow.id, flow.name)
@@ -258,6 +258,19 @@ object Repo {
         FolderStore.forget()
         prefs.edit().remove(FolderStore.prefsKey()).apply()
         clearLibraryCache()
+    }
+
+    /**
+     * Brings up the fixed folder on the versions that have one. **Does IO.**
+     *
+     * The counterpart to [useFolder] for API 28 and below, where nothing is picked: the runtime permission
+     * has just been granted, so probing creates the folder and the library can be read.
+     */
+    fun useDefaultFolder(): Boolean {
+        clearLibraryCache()
+        if (!FolderStore.refreshUsable()) return false
+        loadLibrary()
+        return libraryLoaded.value
     }
 
     // --- Settings ---
