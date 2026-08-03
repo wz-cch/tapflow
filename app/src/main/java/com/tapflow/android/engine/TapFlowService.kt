@@ -375,6 +375,13 @@ class TapFlowService : AccessibilityService() {
             resources = resources,
             currentScreen = { currentScreen() },
             settings = { settings },
+            // Said once at the end rather than per step, because "skip" was chosen to avoid being
+            // interrupted. Saying nothing at all is the part that is not on offer: skipping is fine while
+            // you believe the taps happened, and a run that skipped most of a script and then reported
+            // finishing is exactly the shape of failure that reads as success.
+            onFinished = { skipped ->
+                if (skipped > 0) toast(getString(R.string.toast_skipped_steps, skipped))
+            },
         )
 
         // Clamping in attachOverlay happens before either view has been measured, so a position

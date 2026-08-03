@@ -21,6 +21,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -38,10 +41,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tapflow.android.R
+import com.tapflow.android.data.FailurePolicy
 import com.tapflow.android.data.FileLibrary
 import com.tapflow.android.data.FolderStore
 import com.tapflow.android.data.Repo
 import com.tapflow.android.data.Settings
+import com.tapflow.android.data.TouchPolicy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -126,6 +131,39 @@ fun SettingsScreen(onBack: () -> Unit) {
                 MsSlider(R.string.settings_loop_interval, settings.loopIntervalMs, 0f, 30_000f, 250f) { ms ->
                     Repo.updateSettings { it.copy(loopIntervalMs = ms) }
                 }
+            }
+
+            item { Section(R.string.settings_section_failure) }
+            item {
+                ChoiceRow(
+                    label = stringResource(R.string.settings_on_touch),
+                    body = stringResource(R.string.settings_on_touch_body),
+                    options = TouchPolicy.entries,
+                    selected = settings.onRealTouch,
+                    labelOf = { stringResource(it.labelRes) },
+                ) { picked -> Repo.updateSettings { s -> s.copy(onRealTouch = picked) } }
+            }
+            item {
+                SliderRow(
+                    label = stringResource(R.string.settings_failure_retries),
+                    body = stringResource(R.string.settings_failure_retries_body),
+                    value = stringResource(R.string.value_times, settings.failureRetries),
+                    position = settings.failureRetries.toFloat(),
+                    range = 0f..Settings.MAX_FAILURE_RETRIES.toFloat(),
+                    steps = Settings.MAX_FAILURE_RETRIES - 1,
+                    typed = TypedNumber(settings.failureRetries, 0..Settings.MAX_FAILURE_RETRIES) { n ->
+                        Repo.updateSettings { s -> s.copy(failureRetries = n) }
+                    },
+                ) { Repo.updateSettings { s -> s.copy(failureRetries = it.roundToInt()) } }
+            }
+            item {
+                ChoiceRow(
+                    label = stringResource(R.string.settings_on_failure),
+                    body = stringResource(R.string.settings_on_failure_body),
+                    options = FailurePolicy.entries,
+                    selected = settings.onGestureFailure,
+                    labelOf = { stringResource(it.labelRes) },
+                ) { picked -> Repo.updateSettings { s -> s.copy(onGestureFailure = picked) } }
             }
 
             item { Section(R.string.settings_section_randomise) }
@@ -428,6 +466,45 @@ private fun SliderRow(
             valueRange = range,
             steps = steps,
         )
+    }
+}
+
+/**
+ * One of a handful of named choices, laid out as a segmented row.
+ *
+ * The first non-boolean, non-numeric setting here, hence a new row type. Segmented rather than a dropdown
+ * because every option is worth reading at once — the whole difficulty with these two settings is knowing
+ * that stopping, pausing and ignoring are three genuinely different outcomes, and a closed dropdown shows
+ * one of them.
+ */
+@Composable
+private fun <T> ChoiceRow(
+    label: String,
+    options: List<T>,
+    selected: T,
+    labelOf: @Composable (T) -> String,
+    body: String? = null,
+    onPick: (T) -> Unit,
+) {
+    Column(Modifier.padding(top = 12.dp)) {
+        Text(label, style = MaterialTheme.typography.bodyLarge)
+        if (body != null) {
+            Text(
+                body,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 6.dp),
+            )
+        }
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            options.forEachIndexed { index, option ->
+                SegmentedButton(
+                    selected = option == selected,
+                    onClick = { onPick(option) },
+                    shape = SegmentedButtonDefaults.itemShape(index, options.size),
+                ) { Text(labelOf(option)) }
+            }
+        }
     }
 }
 

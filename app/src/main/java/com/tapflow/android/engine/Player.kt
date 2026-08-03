@@ -2,11 +2,13 @@ package com.tapflow.android.engine
 
 import android.content.res.Resources
 import com.tapflow.android.R
+import com.tapflow.android.data.FailurePolicy
 import com.tapflow.android.data.PauseStep
 import com.tapflow.android.data.RepeatableStep
 import com.tapflow.android.data.ScreenSpec
 import com.tapflow.android.data.Settings
 import com.tapflow.android.data.Step
+import com.tapflow.android.data.TouchPolicy
 import com.tapflow.android.text.prompt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -28,6 +30,14 @@ class Player(
     private val resources: Resources,
     private val currentScreen: () -> ScreenSpec,
     private val settings: () -> Settings,
+    /**
+     * Called as the run ends, with how many steps were skipped under [FailurePolicy.SKIP].
+     *
+     * A callback rather than a flag on [EngineState] because the tally has exactly one reader at exactly
+     * one moment, and parking it in shared state would mean deciding when to clear it — with [EngineState]
+     * being reset in the same `finally` that would need to have already reported it.
+     */
+    private val onFinished: (skipped: Int) -> Unit = {},
 ) {
 
     private var job: Job? = null
@@ -55,6 +65,7 @@ class Player(
         if (isActive || steps.isEmpty()) return
         pauseRequested.value = false
         cursor = plan?.let { Cursor(it) }
+        skipped = 0
 
         Diag.log("player: play ${steps.size} step(s), loops=$loops, recordedScreen=$recordedScreen")
         job = scope.launch {
@@ -125,10 +136,7 @@ class Player(
                                 // rather than only between steps.
                                 gate()
                             }
-                            if (dispatcher.perform(step, scale, current) == GestureOutcome.CANCELLED) {
-                                interrupted(index + 1)
-                                gate()
-                            }
+                            if (!attempt(step, scale, current, index + 1)) return@launch
                         }
                     }
                 }
@@ -136,6 +144,9 @@ class Player(
                 timerJob?.cancel()
                 timerJob = null
                 pauseRequested.value = false
+                // Before reset, and a plain call rather than anything suspending: this also runs when the
+                // job was cancelled, where a suspending call would be refused.
+                onFinished(skipped)
                 EngineState.reset()
             }
         }
@@ -206,31 +217,99 @@ class Player(
     }
 
     /**
-     * A dispatched gesture was cancelled part way, so stop rather than carry on.
+     * Dispatches one step, retrying and applying the user's policies. False means end the run.
      *
-     * The framework cancels every in-flight injected gesture the moment real input arrives — injected and
-     * real touches are not merged, real input simply wins — so on a working device this almost always
-     * means a finger landed on the screen. It is an inference, not a signal: the other causes are ones
-     * this app controls and avoids (it never dispatches two gestures at once, and deliberately does not
-     * move or resize the canvas around a replay), and the missing-injector case is told apart by its
-     * timing before it ever reaches here.
+     * The two ways a step fails arrive through the same callback and need opposite treatment, which is why
+     * this reads them apart before doing anything:
      *
-     * Pausing rather than reporting a failure, because **continuing would be wrong**. That step did not
-     * land, so every step after it would run against a screen that never received it. This used to log
-     * the cancellation and walk straight on to the next step, with a toast that read as though the system
-     * or the target app were at fault.
+     * - **Cancelled** — the framework cancels an in-flight injected gesture the moment real input arrives,
+     *   because the two streams are not merged and real input wins. So the app below received our gesture
+     *   as far as it had got *and* the finger. Never retried: re-issuing a half-delivered swipe replays
+     *   half of it on top of itself, and the event is a person reaching for the screen rather than a
+     *   malfunction. [TouchPolicy] decides.
+     * - **Refused or injector-missing** — nothing was delivered at all, so retrying is safe and is the
+     *   only one of the three answers that can actually recover. [Settings.failureRetries] then
+     *   [FailurePolicy].
      *
-     * The interrupted step is not retried. A cancellation that arrives part way through a swipe cannot be
-     * re-issued safely — half of it may already have been delivered — which is the same reason
-     * [GestureDispatcher] declines to retry one. The prompt names the step so it can be redone by hand
-     * with "start from step N" if that is what is wanted.
+     * The cause is inferred, not reported: `onCancelled` carries no reason. The remaining causes of a
+     * cancellation are ones this app controls and avoids — it never dispatches two gestures at once, and
+     * deliberately does not move or resize the canvas around a replay — and the missing injector is told
+     * apart by its timing inside [GestureDispatcher] before it reaches here.
+     *
+     * [GestureDispatcher] has two retries of its own, for narrow conditions it can identify: one after
+     * re-registering the service when the injector is missing, and one for a cancellation that arrived too
+     * early to have delivered anything. Those stay where they are — they mend a specific fault rather than
+     * express a preference — and this loop sits above them.
      */
-    private fun interrupted(stepNumber: Int) {
-        Diag.log("player: step $stepNumber cancelled part way, pausing (a real touch is the likely cause)")
-        EngineState.pausePrompt.value =
-            resources.getString(R.string.pause_touch_interrupted, stepNumber)
-        pauseRequested.value = true
+    private suspend fun attempt(
+        step: Step,
+        scale: ScaleSpec,
+        settings: Settings,
+        stepNumber: Int,
+    ): Boolean {
+        val retries = settings.failureRetries.coerceIn(0, Settings.MAX_FAILURE_RETRIES)
+        // Attempt 0 is the step itself; the rest are retries, so 0 retries still runs it once.
+        for (tryIndex in 0..retries) {
+            if (tryIndex > 0) {
+                Diag.log("player: step $stepNumber retry $tryIndex of $retries")
+                // Checked between attempts so stop and pause work during a long run of failing retries,
+                // which on a missing injector is a second each.
+                gate()
+            }
+            when (dispatcher.perform(step, scale, settings)) {
+                GestureOutcome.COMPLETED, GestureOutcome.SKIPPED -> return true
+
+                GestureOutcome.CANCELLED -> return touched(stepNumber, settings)
+
+                // Nothing landed. Fall out of the when and let the loop try again.
+                GestureOutcome.REFUSED, GestureOutcome.INJECTOR_MISSING -> Unit
+            }
+        }
+        return failed(stepNumber, settings)
     }
+
+    /** A real finger interrupted the step. See [TouchPolicy]. */
+    private suspend fun touched(stepNumber: Int, settings: Settings): Boolean {
+        Diag.log("player: step $stepNumber cancelled part way (a real touch is the likely cause) -> ${settings.onRealTouch}")
+        return when (settings.onRealTouch) {
+            TouchPolicy.PAUSE -> {
+                EngineState.pausePrompt.value =
+                    resources.getString(R.string.pause_touch_interrupted, stepNumber)
+                pauseRequested.value = true
+                gate()
+                true
+            }
+
+            TouchPolicy.IGNORE -> true
+
+            TouchPolicy.STOP -> false
+        }
+    }
+
+    /** The gesture never reached the app, and the retries are used up. See [FailurePolicy]. */
+    private suspend fun failed(stepNumber: Int, settings: Settings): Boolean {
+        Diag.log("player: step $stepNumber never landed -> ${settings.onGestureFailure}")
+        return when (settings.onGestureFailure) {
+            FailurePolicy.PAUSE -> {
+                EngineState.pausePrompt.value =
+                    resources.getString(R.string.pause_gesture_failed, stepNumber)
+                pauseRequested.value = true
+                gate()
+                true
+            }
+
+            // Counted, not silent. Skipping is chosen for scripts where one missed tap does not matter,
+            // and that holds only while you believe the taps happened — a run that quietly skipped
+            // thirty-eight of forty steps and then reported finishing is the failure that looks like
+            // success. The tally is reported once, at the end, so it never interrupts.
+            FailurePolicy.SKIP -> {
+                skipped++
+                true
+            }
+        }
+    }
+
+    private var skipped = 0
 
     fun pause() {
         if (isActive) pauseRequested.value = true

@@ -25,6 +25,8 @@
     <string name="step_pause">⏸ Pause point</string>
     <string name="step_pause_with_note">⏸ Pause point: %1$s</string>
     <string name="pause_touch_interrupted">Step %1$d was interrupted — a touch cancels an injected gesture. Resume to carry on from the next step.</string>
+    <string name="pause_gesture_failed">Step %1$d never reached the app. Do it by hand if it matters, then resume.</string>
+    <string name="toast_skipped_steps">Finished, but %1$d step(s) were skipped without reaching the app.</string>
     <string name="pause_default_prompt">Paused — finish by hand, then press resume</string>
 
     <!-- Global actions -->
@@ -239,6 +241,18 @@
     <string name="settings_speed">Speed</string>
     <string name="settings_loop_interval">Gap between loops</string>
     <string name="settings_start_delay">Countdown before starting</string>
+    <string name="settings_section_failure">When a step does not land</string>
+    <string name="settings_on_touch">If you touch the screen</string>
+    <string name="settings_on_touch_body">A real touch cancels the injected gesture — Android never merges the two, and the step is left half done. This is you taking over, not a malfunction, so it is never retried.</string>
+    <string name="touch_stop">Stop</string>
+    <string name="touch_pause">Pause</string>
+    <string name="touch_ignore">Ignore</string>
+    <string name="settings_failure_retries">Retries when nothing was delivered</string>
+    <string name="settings_failure_retries_body">A gesture the system refused, or had no injector for, reached the app not at all — so trying again is safe. A missing injector stays broken until the service is toggled, and each attempt costs about a second.</string>
+    <string name="settings_on_failure">Once the retries are used up</string>
+    <string name="settings_on_failure_body">Skipping is right when a missed tap does not matter, and the count is reported at the end. Pause when the steps depend on each other and the missing one has to be filled in by hand.</string>
+    <string name="failure_skip">Skip</string>
+    <string name="failure_pause">Pause</string>
     <string name="settings_section_randomise">Randomisation</string>
     <string name="settings_jitter_radius">Position jitter radius</string>
     <string name="settings_jitter_radius_body">Offsets the whole gesture by a random amount within this radius on each replay. Also stops every run hitting the exact same pixel.</string>

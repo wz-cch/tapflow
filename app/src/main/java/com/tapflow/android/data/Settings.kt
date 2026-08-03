@@ -1,5 +1,6 @@
 package com.tapflow.android.data
 
+import com.tapflow.android.R
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -27,6 +28,60 @@ enum class MarkerDensity {
             ALL -> Int.MAX_VALUE
             RECENT -> 10
             HIDDEN -> 1
+        }
+}
+
+/**
+ * What a real finger landing part way through an injected gesture does to the run.
+ *
+ * The framework cancels every in-flight injected gesture the moment real input arrives — the two streams
+ * are not merged, real input simply wins — and it reports the cancellation without a reason. So this is not
+ * "a gesture failed": it is the user taking over, and **both** touches reached the app below, ours as far as
+ * it had got plus theirs. That is why none of these three is a retry.
+ *
+ * Other auto-clickers mostly [IGNORE] this, largely because they never detect it. We do, so the choice is
+ * real, and pausing is the default: it is the one that assumes reaching for the screen was deliberate.
+ */
+@Serializable
+enum class TouchPolicy {
+    /** End the run. Continuing means starting over, which is what stopping has always meant here. */
+    @SerialName("stop") STOP,
+
+    /** Hold at this step so the missed one can be done by hand, then carry on. */
+    @SerialName("pause") PAUSE,
+
+    /** Carry straight on, accepting that this step landed partly or not at all. */
+    @SerialName("ignore") IGNORE,
+    ;
+
+    val labelRes: Int
+        get() = when (this) {
+            STOP -> R.string.touch_stop
+            PAUSE -> R.string.touch_pause
+            IGNORE -> R.string.touch_ignore
+        }
+}
+
+/**
+ * What a gesture that never reached the app does, once the retries are used up.
+ *
+ * A different situation from [TouchPolicy] despite looking alike from the outside. Here nothing was
+ * delivered — the description was rejected, or the framework had no injector to hand it to — so there is no
+ * half-applied touch to reason about, and retrying is safe.
+ */
+@Serializable
+enum class FailurePolicy {
+    /** Move on to the next step. The count is reported when the run ends, so it is never silent. */
+    @SerialName("skip") SKIP,
+
+    /** Hold at this step. Right when the steps depend on each other. */
+    @SerialName("pause") PAUSE,
+    ;
+
+    val labelRes: Int
+        get() = when (this) {
+            SKIP -> R.string.failure_skip
+            PAUSE -> R.string.failure_pause
         }
 }
 
@@ -60,6 +115,20 @@ data class Settings(
      * once. Reusing it here would put a three-second wait between every pass of a hundred-loop run.
      */
     val loopIntervalMs: Long = 500,
+
+    // --- When a step does not land ---
+    //
+    // Two settings and not one, because the two triggers are different events that happen to arrive
+    // through the same callback. See TouchPolicy and FailurePolicy. Both default to pausing: a script
+    // whose step 3 never landed and which then ran steps 4 to 40 anyway is the failure that looks like
+    // success, and that is the one worth interrupting for.
+
+    val onRealTouch: TouchPolicy = TouchPolicy.PAUSE,
+
+    /** Extra attempts at a gesture that never landed. 0 gives up at once. */
+    val failureRetries: Int = 1,
+
+    val onGestureFailure: FailurePolicy = FailurePolicy.PAUSE,
 
     // --- Randomisation ---
     /**
@@ -123,6 +192,15 @@ data class Settings(
         const val JITTER_RADIUS_MAX = 150
         const val JITTER_TIME_MAX = 50
         const val MAX_LOOP_COUNT = 9999
+
+        /**
+         * Ceiling on [failureRetries].
+         *
+         * A missing gesture injector is not a passing condition — it stays broken until the service is
+         * toggled or the phone restarted — so retries against it all fail, each costing the framework's
+         * one-second timeout. Ten is already fifteen seconds on one step.
+         */
+        const val MAX_FAILURE_RETRIES = 10
         val SPEED_RANGE = 0.25f..4f
         /** Small enough to still point at a coordinate, large enough for a thumb. */
         val EDIT_HANDLE_RANGE = 36f..96f
