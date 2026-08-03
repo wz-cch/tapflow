@@ -1,5 +1,6 @@
 package com.tapflow.android.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -41,6 +42,7 @@ import com.tapflow.android.data.Clip
 import com.tapflow.android.data.ClipNode
 import com.tapflow.android.data.Flow
 import com.tapflow.android.data.Repo
+import com.tapflow.android.data.Settings
 import com.tapflow.android.text.clipSummary
 import kotlin.math.roundToInt
 
@@ -178,6 +180,7 @@ fun FlowEditorScreen(flowId: String, onBack: () -> Unit) {
 @Composable
 private fun LoopRow(flow: Flow, onChange: (Flow) -> Unit) {
     var dragging by remember { mutableStateOf<Int?>(null) }
+    var entering by remember { mutableStateOf(false) }
     val loops = dragging ?: flow.loopCount
 
     Card(Modifier.fillMaxWidth()) {
@@ -188,11 +191,25 @@ private fun LoopRow(flow: Flow, onChange: (Flow) -> Unit) {
                     modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.bodyLarge,
                 )
+                // Tappable for the same reason as the global loop count, and typing also reaches past the
+                // slider's own ceiling: it stops at 100 where the setting allows more.
                 Text(
                     if (loops == 0) stringResource(R.string.settings_loop_forever)
                     else stringResource(R.string.value_times, loops),
                     style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .clickable { entering = true }
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
                 )
+            }
+            if (entering) {
+                NumberEntryDialog(
+                    title = stringResource(R.string.settings_loop_count),
+                    entry = TypedNumber(flow.loopCount, 0..Settings.MAX_LOOP_COUNT) { entered ->
+                        onChange(flow.copy(loopCount = entered))
+                    },
+                ) { entering = false }
             }
             Text(
                 stringResource(R.string.flow_loop_body),

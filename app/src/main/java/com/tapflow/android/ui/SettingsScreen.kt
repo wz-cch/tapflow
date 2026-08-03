@@ -2,6 +2,7 @@ package com.tapflow.android.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -100,6 +101,12 @@ fun SettingsScreen(onBack: () -> Unit) {
                     position = loops.toFloat(),
                     range = 0f..500f,
                     steps = 0,
+                    // The reason this row needed typing at all. "Forever" is 0, 0 is one pixel at the far
+                    // left of a 500-wide slider, and the label only says "forever" once you have landed
+                    // on it — so the setting existed and could not be found.
+                    typed = TypedNumber(loops, 0..500) { entered ->
+                        Repo.updateSettings { s -> s.copy(defaultLoopCount = entered) }
+                    },
                 ) { Repo.updateSettings { s -> s.copy(defaultLoopCount = it.roundToInt()) } }
             }
             item {
@@ -129,6 +136,9 @@ fun SettingsScreen(onBack: () -> Unit) {
                     value = stringResource(R.string.value_px, settings.jitterRadiusPx),
                     position = settings.jitterRadiusPx.toFloat(),
                     range = 0f..Settings.JITTER_RADIUS_MAX.toFloat(),
+                    typed = TypedNumber(settings.jitterRadiusPx, 0..Settings.JITTER_RADIUS_MAX) { px ->
+                        Repo.updateSettings { s -> s.copy(jitterRadiusPx = px) }
+                    },
                 ) { Repo.updateSettings { s -> s.copy(jitterRadiusPx = it.roundToInt()) } }
             }
             item {
@@ -137,6 +147,11 @@ fun SettingsScreen(onBack: () -> Unit) {
                     value = stringResource(R.string.value_percent, settings.jitterTimePercent),
                     position = settings.jitterTimePercent.toFloat(),
                     range = 0f..Settings.JITTER_TIME_MAX.toFloat(),
+                    // Shown as a percent and stored as a percent, so the field can offer it directly —
+                    // unlike opacity and the dim layer, which display a percent over a 0–1 fraction.
+                    typed = TypedNumber(settings.jitterTimePercent, 0..Settings.JITTER_TIME_MAX) { pct ->
+                        Repo.updateSettings { s -> s.copy(jitterTimePercent = pct) }
+                    },
                 ) { Repo.updateSettings { s -> s.copy(jitterTimePercent = it.roundToInt()) } }
             }
 
@@ -162,6 +177,10 @@ fun SettingsScreen(onBack: () -> Unit) {
                     value = stringResource(R.string.value_dp, settings.editHandleDp),
                     position = settings.editHandleDp.toFloat(),
                     range = Settings.EDIT_HANDLE_RANGE,
+                    typed = TypedNumber(
+                        settings.editHandleDp,
+                        Settings.EDIT_HANDLE_RANGE.start.toInt()..Settings.EDIT_HANDLE_RANGE.endInclusive.toInt(),
+                    ) { dp -> Repo.updateSettings { s -> s.copy(editHandleDp = dp) } },
                 ) { dp ->
                     Repo.updateSettings { s -> s.copy(editHandleDp = (dp / 4f).roundToInt() * 4) }
                 }
@@ -352,9 +371,18 @@ private fun MsSlider(
         value = stringResource(R.string.value_ms, valueMs),
         position = valueMs.toFloat().coerceIn(min, max),
         range = min..max,
+        // Typed values are taken exactly, not snapped to the granularity. The granularity is there so
+        // that *dragging* lands on round numbers; typing is the way round it, and rounding 137 to 150
+        // would ignore the one input that was precise on purpose.
+        typed = TypedNumber(valueMs.toInt(), min.toInt()..max.toInt()) { onChange(it.toLong()) },
     ) { onChange((it / granularityMs).roundToInt() * granularityMs.toLong()) }
 }
 
+/**
+ * @param typed offers the value as something to type as well as drag. Opt-in per row, because it is only
+ *   correct where the number shown *is* the number stored — see [TypedNumber]. The value reads as tappable
+ *   by being in the accent colour, which is the only affordance a one-line row has room for.
+ */
 @Composable
 private fun SliderRow(
     label: String,
@@ -363,12 +391,29 @@ private fun SliderRow(
     range: ClosedFloatingPointRange<Float>,
     body: String? = null,
     steps: Int = 0,
+    typed: TypedNumber? = null,
     onChange: (Float) -> Unit,
 ) {
+    var entering by remember { mutableStateOf(false) }
+
     Column(Modifier.padding(top = 12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-            Text(value, style = MaterialTheme.typography.bodyMedium)
+            if (typed == null) {
+                Text(value, style = MaterialTheme.typography.bodyMedium)
+            } else {
+                Text(
+                    value,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .clickable { entering = true }
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                )
+            }
+        }
+        if (entering && typed != null) {
+            NumberEntryDialog(title = label, entry = typed) { entering = false }
         }
         if (body != null) {
             Text(
