@@ -217,7 +217,14 @@
     <string name="save_name_label">Name</string>
     <string name="save_as_new">Save as a new clip instead of replacing it</string>
     <string name="load_title">Load clip</string>
-    <string name="load_empty">No clips saved yet.</string>
+    <string name="load_empty">Nothing of this kind in this folder.</string>
+    <string name="folder_up">Up one folder</string>
+    <string name="folder_root">Chosen folder</string>
+    <string name="folder_pick_where">Where to save</string>
+    <string name="folder_no_subfolders">No folders in here. Make them in a file manager.</string>
+    <string name="folder_save_here">Save here</string>
+    <string name="save_lands_in">Saves into: %1$s</string>
+    <string name="home_in_folder">🗀 %1$s</string>
     <string name="toast_workspace_cleared">Workspace cleared</string>
 
     <!-- Diagnostics -->

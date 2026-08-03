@@ -483,6 +483,27 @@ private fun ToolbarSwitch(enabled: Boolean, checked: Boolean, onCheckedChange: (
  * maintenance and need a keyboard or a confirmation. There is nothing else a clip row could offer, because
  * everything you do *to* a clip — record over it, edit its steps, play it — happens on the target app.
  */
+/**
+ * Which subfolder this one lives in, shown only when that is not the root.
+ *
+ * This screen stays one flat list on purpose — seeing everything at once is what it is for, and browsing
+ * belongs to the load dialog. But with the folder invisible, sorting clips into folders would look like
+ * losing them, so the row says where it went. Nothing behaves differently: a flow finds its clips by id
+ * wherever they are.
+ */
+@Composable
+private fun FolderNote(id: String) {
+    val folder = Repo.folderOf(id)
+    if (folder.isEmpty()) return
+    Text(
+        stringResource(R.string.home_in_folder, folder),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
+}
+
 @Composable
 private fun ClipRow(clip: Clip, loaded: Boolean, onLoad: () -> Unit) {
     val context = LocalContext.current
@@ -510,6 +531,7 @@ private fun ClipRow(clip: Clip, loaded: Boolean, onLoad: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                FolderNote(clip.id)
             }
 
             // At most one row in either list ever carries this, which is what switching modes emptying
@@ -662,6 +684,7 @@ private fun FlowRow(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                FolderNote(flow.id)
             }
 
             if (loaded) {

@@ -60,8 +60,13 @@ interface LibraryStore {
      * [locator] is a Uri string or an absolute path depending on the implementation, and only ever
      * travels from [list] back into [remember] — the caller never interprets it. Held as a string
      * because the alternative is a type parameter threaded through Repo for a value it never reads.
+     *
+     * [folder] is the opposite: the one thing about a file's location that the app *does* read, and only
+     * so browsing can group by it. Relative to the chosen folder, "" for the root, and reported by the
+     * walk because the walk already knows it — deriving it from [locator] afterwards would mean parsing
+     * the value that is documented as opaque.
      */
-    class Entry(val kind: Kind, val json: String, val locator: String)
+    class Entry(val kind: Kind, val json: String, val locator: String, val folder: String)
 
     /**
      * What one walk of the folder found.
@@ -114,7 +119,14 @@ interface LibraryStore {
      *
      * [folder] is where a **new** file goes, relative to the chosen folder, "" for the root. Something
      * already known — see [remember] — is overwritten wherever it already lives, so moving a file in a
-     * file manager keeps working and saving never silently relocates what you were editing.
+     * file manager keeps working and saving does not relocate what you were editing.
+     *
+     * One exception, and only on [SafLibrary]: if the known document has vanished, the overwrite fails and
+     * the file is recreated — in [folder], because a document Uri does not hand back its parent, so there
+     * is nothing to recreate it *next to*. So a save that has to recreate can move a clip to the working
+     * folder. Recovering the clip is worth that; the alternative is threading a folder through [remember]
+     * for a path only a deleted-from-under-us save reaches. [FileLibrary] has no such path — a failed
+     * write there simply fails, because the target is a plain path that stays valid.
      */
     fun write(kind: Kind, id: String, name: String, json: String, folder: String = ""): Boolean
 

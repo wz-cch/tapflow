@@ -214,7 +214,14 @@
     <string name="save_name_label">名稱</string>
     <string name="save_as_new">另存為新片段,不覆蓋原本的</string>
     <string name="load_title">讀取片段</string>
-    <string name="load_empty">還沒有存過任何片段。</string>
+    <string name="load_empty">這個資料夾裡沒有這一種。</string>
+    <string name="folder_up">上一層</string>
+    <string name="folder_root">選定的資料夾</string>
+    <string name="folder_pick_where">存到哪裡</string>
+    <string name="folder_no_subfolders">這裡面沒有資料夾。要分類請用檔案管理員建。</string>
+    <string name="folder_save_here">存在這裡</string>
+    <string name="save_lands_in">存到:%1$s</string>
+    <string name="home_in_folder">🗀 %1$s</string>
     <string name="toast_workspace_cleared">工作區已清空</string>
 
     <!-- 診斷 -->
