@@ -95,6 +95,16 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         fun onToggleMode()
 
         /**
+         * Done with a clip that was opened from a flow: asks about saving, then goes back to that flow.
+         *
+         * The one exit while nested, which is why the mode button is hidden alongside it. Saving can be
+         * offered here — unlike the ordinary discard prompt, which has no save option — because overwriting
+         * an existing clip needs no name, and a name is the only reason that one has to send you to an
+         * activity and back.
+         */
+        fun onFinishClip()
+
+        /**
          * Flow mode's four. Same icons as the clip versions where they overlap, and deliberately so: the
          * noun follows the mode, and doubling the icons would make the column longer without making it
          * clearer. What tells you which noun is in force is the mode button at the top of the column.
@@ -180,6 +190,16 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
     private val deleteFlow = icon(R.drawable.ic_remove)
     private val editFlow = icon(R.drawable.ic_edit)
     private val modeToggle = icon(R.drawable.ic_mode_clip)
+
+    /**
+     * Finish with a clip opened from a flow, and go back to that flow.
+     *
+     * Its own icon, deliberately not the close glyph [dismiss] uses. Two buttons that look alike doing
+     * different things — one leaves a clip, the other turns the whole toolbar off — is the most expensive
+     * kind of resemblance there is.
+     */
+    private val finishClip = icon(R.drawable.ic_finish_clip)
+
     private val eye = icon(R.drawable.ic_eye)
     private val quickSettings = icon(R.drawable.ic_tune)
     private val dismiss = icon(R.drawable.ic_close)
@@ -197,9 +217,9 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
      * the column top-down then goes "which noun, then what to do with it".
      */
     private val scrollingButtons = listOf(
-        modeToggle, primary, playFrom, secondary, edit, editFlow, insertStep, duplicateStep, insertGlobal,
-        insertPause, insertWait, deleteStep, undo, stepPanelToggle, stepListToggle, newClip, save, load,
-        newFlow, deleteFlow, eye, quickSettings, dismiss, collapse,
+        modeToggle, finishClip, primary, playFrom, secondary, edit, editFlow, insertStep, duplicateStep,
+        insertGlobal, insertPause, insertWait, deleteStep, undo, stepPanelToggle, stepListToggle, newClip,
+        save, load, newFlow, deleteFlow, eye, quickSettings, dismiss, collapse,
     )
 
     private val allButtons = listOf(grip) + scrollingButtons
@@ -250,6 +270,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         deleteFlow.setOnClickListener { actions.onDeleteFlow() }
         editFlow.setOnClickListener { actions.onEditFlow() }
         modeToggle.setOnClickListener { actions.onToggleMode() }
+        finishClip.setOnClickListener { actions.onFinishClip() }
 
         attachDrag(grip, onTap = null)
         attachDrag(ball) {
@@ -284,6 +305,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         stepPanelOpen: Boolean,
         flowMode: Boolean,
         hasFlow: Boolean,
+        insideFlow: Boolean,
     ) {
         val hasSteps = workspaceSize > 0
         val recording = mode == Mode.RECORDING
@@ -336,7 +358,14 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         // Under the grip in every mode that has it, because a button that reinterprets the others cannot
         // move around. Absent while recording or editing: those are states *inside* clip mode, and
         // leaving one of them is what the record and pencil buttons are already for.
-        modeToggle.visibility = visibleWhen(idle || flowMode)
+        //
+        // Absent inside a flow as well, and that is the interesting one. A clip opened from a flow sits
+        // *above* it, so "switch mode" would have two readings there — empty both sides, or go back to the
+        // flow I came from — decided by how you arrived, which is not visible. One button with two meanings
+        // chosen by hidden state is the exact shape of the bug that made mode explicit in the first place.
+        // So while nested there is one exit and it says what it does.
+        modeToggle.visibility = visibleWhen((idle || flowMode) && !insideFlow)
+        finishClip.visibility = visibleWhen(insideFlow && (idle || editing))
         modeToggle.setImageResource(if (flowMode) R.drawable.ic_mode_flow else R.drawable.ic_mode_clip)
         // Shows the mode you are *in*, not the one you would go to. A toggle icon that shows its
         // destination is ambiguous the moment you look at it without remembering which way round it is.
@@ -588,6 +617,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         deleteFlow.contentDescription = context.getString(R.string.action_delete_flow)
         editFlow.contentDescription = context.getString(R.string.action_edit_flow)
         modeToggle.contentDescription = context.getString(R.string.action_mode_clip)
+        finishClip.contentDescription = context.getString(R.string.action_finish_clip)
         eye.contentDescription = context.getString(R.string.action_density)
         quickSettings.contentDescription = context.getString(R.string.action_quick_settings)
         dismiss.contentDescription = context.getString(R.string.action_dismiss)

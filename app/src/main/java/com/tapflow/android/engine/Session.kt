@@ -30,6 +30,22 @@ object Session {
     val needsConfirm: Boolean get() = Workspace.dirty.value
 
     /**
+     * The flow a clip was opened *from*, so finishing with the clip goes back to it. Null the rest of the
+     * time, which is most of the time.
+     *
+     * **This is navigation history, not part of the invariant above**, and the distinction is load-bearing.
+     * It is deliberately not `Repo.currentFlowId`: that one says which flow the play button runs, and
+     * setting it here would put a loaded flow and a dirty workspace on the two sides at once — precisely
+     * what this object exists to prevent. Nothing that decides a mode may read this.
+     *
+     * It lives here anyway because every deliberate transition already passes through this object, which
+     * makes it the only place that can guarantee the breadcrumb is dropped rather than left pointing at a
+     * flow nobody is inside any more. Every entry point below clears it; exactly one sets it.
+     */
+    var returnToFlowId: String? = null
+        private set
+
+    /**
      * The one deliberate way between modes.
      *
      * Emptying both sides is the point rather than a side effect: `clip → flow → clip` arrives back at an
@@ -43,15 +59,49 @@ object Session {
     }
 
     fun loadClip(clip: Clip) {
+        returnToFlowId = null
         Repo.setCurrentFlow(null)
         Workspace.load(clip)
         Repo.setMode(AppMode.CLIP)
     }
 
     fun loadFlow(flow: Flow) {
+        returnToFlowId = null
         Workspace.clear()
         Repo.setCurrentFlow(flow.id)
         Repo.setMode(AppMode.FLOW)
+    }
+
+    /**
+     * Opens one of a flow's clips *above* the flow, so finishing with it returns there.
+     *
+     * The clip is loaded exactly as it would be from anywhere else — same working copy, same detachment
+     * from the file — so nothing about editing it is special. What the flow contributes is only where to
+     * come back to.
+     *
+     * Set after [loadClip], not instead of it: routing through the normal path is what guarantees the flow
+     * side really is empty while the excursion runs, and the breadcrumb is then the *only* thing that makes
+     * this different from having loaded the clip from the library.
+     *
+     * Nothing about the flow is held open. It is already on disk — the flow editor writes on every change —
+     * so there is nothing here that could be lost, and coming back re-reads it.
+     */
+    fun editClipFromFlow(flowId: String, clip: Clip) {
+        loadClip(clip)
+        returnToFlowId = flowId
+    }
+
+    /**
+     * Back to the flow the current clip came from. Returns it, or null if there is nothing to go back to.
+     *
+     * The breadcrumb is consumed whatever happens, including when the flow has since been deleted: a
+     * bookmark that survives failing to be followed is one that fires at the wrong moment later.
+     */
+    fun returnToFlow(): Flow? {
+        val flow = Repo.flowById(returnToFlowId)
+        returnToFlowId = null
+        flow?.let { loadFlow(it) }
+        return flow
     }
 
     /** Clip mode with nothing in it: the state a recording starts from. */
@@ -74,5 +124,6 @@ object Session {
     private fun empty() {
         Workspace.clear()
         Repo.setCurrentFlow(null)
+        returnToFlowId = null
     }
 }

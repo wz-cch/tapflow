@@ -537,6 +537,7 @@ class TapFlowService : AccessibilityService() {
             stepPanelOpen = EngineState.paramPanelOpen.value,
             flowMode = flowMode,
             hasFlow = Repo.currentFlowId.value != null,
+            insideFlow = Session.returnToFlowId != null,
         )
         host.update(toolbar, toolbarParams)
 
@@ -1895,6 +1896,89 @@ class TapFlowService : AccessibilityService() {
         override fun onToggleMode() = confirmDiscard {
             Session.switchMode(if (flowMode) AppMode.CLIP else AppMode.FLOW)
             toast(getString(if (flowMode) R.string.toast_mode_flow else R.string.toast_mode_clip))
+        }
+
+        /**
+         * Done with a clip opened from a flow: save or not, then back to the flow.
+         *
+         * **Save is offered here, and it is the one discard question that can offer it.** The ordinary
+         * prompt cannot, because saving a fresh recording needs a name, a name needs an activity, and every
+         * caller would then have to carry a pending action out to it and back. Getting here means a clip was
+         * *loaded*, so it already has a name and an id and overwriting it needs nothing typed — two labels
+         * on the pad and no state machine.
+         *
+         * A clean workspace skips the question entirely: there is nothing to save and nothing to lose, so
+         * asking would be a dialog with one meaningful answer.
+         */
+        override fun onFinishClip() {
+            if (!Session.needsConfirm) {
+                backToFlow()
+                return
+            }
+            openOptionPad(
+                OptionRequest(
+                    title = getString(R.string.finish_clip_title),
+                    labels = listOf(
+                        getString(R.string.finish_clip_save),
+                        getString(R.string.finish_clip_discard),
+                    ),
+                ) { index ->
+                    // Only on a successful save. A failed write leaves the workspace dirty and the draft
+                    // recoverable, and walking back to the flow would strand the edit behind a screen that
+                    // no longer explains it — the same reason the save dialog does not close on a failure.
+                    if (index == 0 && !saveOverSource()) return@OptionRequest
+                    backToFlow()
+                }
+            )
+        }
+
+        /**
+         * Overwrites the clip this workspace came from, with no naming step.
+         *
+         * Its name is whatever it already had: this route exists to fix a clip in place, so inventing a
+         * different name for it would be the one thing nobody asked for.
+         */
+        private fun saveOverSource(): Boolean {
+            val name = Repo.clipById(Workspace.sourceClipId)?.name
+            if (name == null) {
+                // No source means the clip was deleted from under the excursion. Nothing to overwrite, and
+                // silently creating a new one would leave the flow pointing at the old id regardless.
+                toast(getString(R.string.toast_save_failed))
+                return false
+            }
+            return when (val result = Workspace.commit(name, System.currentTimeMillis(), asNew = false)) {
+                is Workspace.Saved.Ok -> {
+                    toast(getString(R.string.toast_saved, result.clip.name))
+                    true
+                }
+
+                Workspace.Saved.Nothing -> true
+                Workspace.Saved.Failed -> {
+                    toast(getString(R.string.toast_save_failed))
+                    false
+                }
+            }
+        }
+
+        private fun backToFlow() {
+            // Leaving editing is not optional. Unlike the mode button — which is simply hidden while editing,
+            // so it never has to think about this — finish stays available there, because "fix the node, then
+            // go back" is the whole reason this button exists. Without it the canvas would keep intercepting
+            // the entire screen after the mode changed under it.
+            exitEditing()
+            val flow = Session.returnToFlow()
+            if (flow == null) {
+                // The flow was deleted while its clip was open. The breadcrumb is spent either way, so land
+                // somewhere honest rather than nowhere: flow mode with nothing loaded.
+                Session.switchMode(AppMode.FLOW)
+                toast(getString(R.string.toast_flow_gone))
+                return
+            }
+            startActivity(
+                Intent(this@TapFlowService, MainActivity::class.java)
+                    .putExtra(MainActivity.EXTRA_OPEN_FLOW, flow.id)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
         }
 
         /**

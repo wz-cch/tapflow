@@ -222,6 +222,11 @@
     <string name="folder_save_here">存在這裡</string>
     <string name="save_lands_in">存到:%1$s</string>
     <string name="home_in_folder">🗀 %1$s</string>
+    <string name="action_finish_clip">完成這個片段,回到流程</string>
+    <string name="finish_clip_title">這個片段有未儲存的修改。回到流程前要存嗎?</string>
+    <string name="finish_clip_save">存檔並回到流程</string>
+    <string name="finish_clip_discard">不存,回到流程</string>
+    <string name="toast_flow_gone">那條流程已經不存在了</string>
     <string name="toast_workspace_cleared">工作區已清空</string>
 
     <!-- 診斷 -->
