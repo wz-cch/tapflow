@@ -217,9 +217,7 @@
     <string name="load_empty">這個資料夾裡沒有這一種。</string>
     <string name="folder_up">上一層</string>
     <string name="folder_root">選定的資料夾</string>
-    <string name="folder_pick_where">存到哪裡</string>
     <string name="folder_no_subfolders">這裡面沒有資料夾。要分類請用檔案管理員建。</string>
-    <string name="folder_save_here">存在這裡</string>
     <string name="save_lands_in">存到:%1$s</string>
     <string name="home_in_folder">🗀 %1$s</string>
     <string name="action_finish_clip">完成這個片段,回到流程</string>
@@ -231,6 +229,10 @@
 
     <!-- 診斷 -->
     <string name="diag_title">診斷紀錄</string>
+    <string name="diag_crash_title">上次 app 非正常關閉</string>
+    <string name="diag_crash_copy">複製錯誤報告</string>
+    <string name="diag_crash_clear">丟棄</string>
+    <string name="home_crashed">app 上次非正常關閉。報告在診斷紀錄裡 —— 複製傳給我。</string>
     <string name="diag_body">引擎最近做了什麼。按錄製或播放會清空並重新開始計時。時間是從該次開始起算的毫秒。</string>
     <string name="diag_copy">複製</string>
     <string name="diag_clear">清空</string>

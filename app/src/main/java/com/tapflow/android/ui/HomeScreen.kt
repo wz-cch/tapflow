@@ -58,6 +58,7 @@ import com.tapflow.android.data.FolderStore
 import com.tapflow.android.data.Flow
 import com.tapflow.android.data.Repo
 import com.tapflow.android.text.flowSummary
+import com.tapflow.android.engine.CrashLog
 import com.tapflow.android.engine.EngineState
 import com.tapflow.android.engine.Session
 import com.tapflow.android.text.clipSummary
@@ -100,6 +101,8 @@ fun HomeScreen(
     val mode by Repo.mode.collectAsStateWithLifecycle()
     val folderUsable by FolderStore.usable.collectAsStateWithLifecycle()
     val unreadable by Repo.unreadable.collectAsStateWithLifecycle()
+    val crashRevision by CrashLog.revision.collectAsStateWithLifecycle()
+    val crashed = remember(crashRevision) { CrashLog.read() != null }
     var creatingFlow by remember { mutableStateOf(false) }
     var pendingStart by remember { mutableStateOf(false) }
     var closingToolbar by remember { mutableStateOf(false) }
@@ -333,6 +336,16 @@ fun HomeScreen(
                     fontFamily = FontFamily.Monospace,
                 )
                 Spacer(Modifier.height(8.dp))
+                // Said here because otherwise nobody would know to look. A crash report that sits in a
+                // screen you have no reason to open is the same as no crash report.
+                if (crashed) {
+                    Text(
+                        stringResource(R.string.home_crashed),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                }
                 OutlinedButton(onClick = onOpenDiagnostics) {
                     Text(stringResource(R.string.diag_title))
                 }

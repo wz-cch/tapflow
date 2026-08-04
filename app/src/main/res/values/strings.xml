@@ -220,9 +220,7 @@
     <string name="load_empty">Nothing of this kind in this folder.</string>
     <string name="folder_up">Up one folder</string>
     <string name="folder_root">Chosen folder</string>
-    <string name="folder_pick_where">Where to save</string>
     <string name="folder_no_subfolders">No folders in here. Make them in a file manager.</string>
-    <string name="folder_save_here">Save here</string>
     <string name="save_lands_in">Saves into: %1$s</string>
     <string name="home_in_folder">🗀 %1$s</string>
     <string name="action_finish_clip">Finish with this clip and go back to the flow</string>
@@ -234,6 +232,10 @@
 
     <!-- Diagnostics -->
     <string name="diag_title">Diagnostics</string>
+    <string name="diag_crash_title">The app closed unexpectedly last time</string>
+    <string name="diag_crash_copy">Copy crash report</string>
+    <string name="diag_crash_clear">Discard it</string>
+    <string name="home_crashed">The app closed unexpectedly. The report is in Diagnostics — copy it and send it over.</string>
     <string name="diag_body">What the engine did most recently. Recording or playing clears it and starts a fresh timeline. Times are milliseconds from the start of the attempt.</string>
     <string name="diag_copy">Copy</string>
     <string name="diag_clear">Clear</string>
