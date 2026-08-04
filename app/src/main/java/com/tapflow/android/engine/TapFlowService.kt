@@ -447,7 +447,7 @@ class TapFlowService : AccessibilityService() {
         scope.launch { Workspace.steps.collect { syncOverlay() } }
         // Both, not just the mode: flow mode with nothing open is a real state, and which one it is
         // decides whether play and the flow buttons are live.
-        scope.launch { Repo.openFlow.collect { syncOverlay() } }
+        scope.launch { Repo.currentFlow.collect { syncOverlay() } }
         scope.launch { Repo.mode.collect { syncOverlay() } }
         scope.launch { Repo.settings.collect { syncOverlay() } }
         scope.launch { EngineState.mode.collect { syncOverlay() } }
@@ -536,7 +536,7 @@ class TapFlowService : AccessibilityService() {
             stepListOpen = EngineState.stepListOpen.value,
             stepPanelOpen = EngineState.paramPanelOpen.value,
             flowMode = flowMode,
-            hasFlow = Repo.openFlow.value != null,
+            hasFlow = Repo.currentFlow.value != null,
             insideFlow = Session.returnToFlowRef != null,
         )
         host.update(toolbar, toolbarParams)
@@ -1101,7 +1101,7 @@ class TapFlowService : AccessibilityService() {
      * fails while looking like it succeeded, which is the worse of the two failures.
      */
     private fun startFlowPlayback() {
-        val open = Repo.openFlow.value ?: return
+        val open = Repo.currentFlow.value ?: return
         val plan = FlowPlan.expand(open.flow, open.clips, currentScreen())
 
         if (plan.missing.isNotEmpty()) {
@@ -1892,7 +1892,7 @@ class TapFlowService : AccessibilityService() {
          * no undo — `↩` restores steps, and a deleted flow is gone.
          */
         override fun onDeleteFlow() {
-            val open = Repo.openFlow.value ?: return
+            val open = Repo.currentFlow.value ?: return
             openOptionPad(
                 OptionRequest(
                     title = getString(R.string.flow_delete_title, open.file.name),
@@ -1918,7 +1918,7 @@ class TapFlowService : AccessibilityService() {
          * picker, and it is the same screen the app's flow rows open — one editor, two ways in.
          */
         override fun onEditFlow() {
-            val open = Repo.openFlow.value ?: return
+            val open = Repo.currentFlow.value ?: return
             startActivity(
                 Intent(this@TapFlowService, MainActivity::class.java)
                     .putExtra(MainActivity.EXTRA_OPEN_FLOW, open.file.ref)

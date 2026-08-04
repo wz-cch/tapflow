@@ -38,13 +38,13 @@ object Session {
      * time, which is most of the time.
      *
      * **This is navigation history, not part of the invariant above**, and the distinction is load-bearing.
-     * It is deliberately not [Repo.openFlow]: that one says which flow the play button runs, and setting it
+     * It is deliberately not [Repo.currentFlow]: that one says which flow the play button runs, and setting it
      * here would put an open flow and a dirty workspace on the two sides at once — precisely what this object
      * exists to prevent. Nothing that decides a mode may read this.
      *
      * A file reference rather than an id, like everything else now. It is also why coming back has to re-read
      * the flow: nothing was held open, so the only way to see the clip's edit reflected is to read the file
-     * again — which is what [returnToFlow] does.
+     * again — which the flow editor does on entry, from the ref [consumeReturnRef] hands back.
      */
     var returnToFlowRef: String? = null
         private set
@@ -64,7 +64,7 @@ object Session {
 
     fun openClip(loaded: LoadedClip) {
         returnToFlowRef = null
-        Repo.openFlow.value = null
+        Repo.currentFlow.value = null
         Workspace.load(loaded)
         Repo.setMode(AppMode.CLIP)
     }
@@ -72,7 +72,7 @@ object Session {
     fun openFlow(flow: OpenFlow) {
         returnToFlowRef = null
         Workspace.clear()
-        Repo.openFlow.value = flow
+        Repo.currentFlow.value = flow
         Repo.setMode(AppMode.FLOW)
     }
 
@@ -130,7 +130,7 @@ object Session {
 
     private fun empty() {
         Workspace.clear()
-        Repo.openFlow.value = null
+        Repo.currentFlow.value = null
         returnToFlowRef = null
     }
 }

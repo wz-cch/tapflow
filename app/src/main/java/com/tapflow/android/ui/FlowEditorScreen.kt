@@ -86,7 +86,7 @@ import kotlin.math.roundToInt
 fun FlowEditorScreen(flowRef: String, onBack: () -> Unit, onEditClip: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val open by Repo.openFlow.collectAsStateWithLifecycle()
+    val open by Repo.currentFlow.collectAsStateWithLifecycle()
     var loading by remember(flowRef) { mutableStateOf(true) }
 
     LaunchedEffect(flowRef) {

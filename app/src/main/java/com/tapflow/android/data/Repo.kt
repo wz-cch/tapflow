@@ -70,9 +70,10 @@ object Repo {
      * The flow the toolbar's play button runs, read into memory. Null in clip mode and in flow mode with
      * nothing opened yet, which is a real state — it is where creating your first flow starts.
      *
-     * Not persisted, for the reason [mode] gives.
+     * Not persisted, for the reason [mode] gives. Named for what it holds rather than for the act, so that
+     * `currentFlow.value` and `openFlow(ref)` cannot be misread for one another.
      */
-    val openFlow = MutableStateFlow<OpenFlow?>(null)
+    val currentFlow = MutableStateFlow<OpenFlow?>(null)
 
     /** Whether the user wants the floating toolbar shown. */
     val overlayEnabled = MutableStateFlow(false)
@@ -191,7 +192,7 @@ object Repo {
      */
     fun saveFlow(updated: OpenFlow): Boolean {
         if (!DocStore.write(updated.file.ref, AppJson.encodeToString(updated.flow))) return false
-        openFlow.value = updated
+        currentFlow.value = updated
         Recents.touch(
             RecentDoc(
                 ref = updated.file.ref,
@@ -225,7 +226,7 @@ object Repo {
     fun deleteFile(ref: String): Boolean {
         val gone = DocStore.delete(ref)
         if (gone) Recents.forget(ref)
-        if (gone && openFlow.value?.file?.ref == ref) openFlow.value = null
+        if (gone && currentFlow.value?.file?.ref == ref) currentFlow.value = null
         return gone
     }
 
@@ -242,7 +243,8 @@ object Repo {
         Recents.renamed(ref, to, label)
         // The open flow renaming itself under the editor is the one case where this object holds something
         // that has to follow. Its clips did not move, so they are carried over unread.
-        openFlow.value?.takeIf { it.file.ref == ref }?.let { openFlow.value = it.movedTo(DocFile(to, label)) }
+        currentFlow.value?.takeIf { it.file.ref == ref }
+            ?.let { currentFlow.value = it.movedTo(DocFile(to, label)) }
         return to
     }
 

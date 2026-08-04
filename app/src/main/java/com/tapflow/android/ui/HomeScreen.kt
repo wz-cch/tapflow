@@ -104,7 +104,7 @@ fun HomeScreen(
     val overlayEnabled by Repo.overlayEnabled.collectAsStateWithLifecycle()
     val needsOverlayPermission by EngineState.needsOverlayPermission.collectAsStateWithLifecycle()
     val recent by Recents.docs.collectAsStateWithLifecycle()
-    val openFlow by Repo.openFlow.collectAsStateWithLifecycle()
+    val openFlow by Repo.currentFlow.collectAsStateWithLifecycle()
     val source by Workspace.source.collectAsStateWithLifecycle()
     val mode by Repo.mode.collectAsStateWithLifecycle()
     val crashRevision by CrashLog.revision.collectAsStateWithLifecycle()
