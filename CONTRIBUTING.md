@@ -169,6 +169,23 @@ ui/     Compose。只有主 app 畫面。
 - 顯式標示可見性只在需要時(`private`、`internal`),public 不用寫
 - 優先用 `data class` 與不可變集合;需要可變狀態時用 `MutableStateFlow` 而不是 `var`
 
+### `@Serializable` 的類別不可以宣告 private companion
+
+**這一條是硬規則,而且它咬過人。** serialization 的 compiler plugin 會把 `serializer()` 掛在那個類別的 companion 上 —— 如果類別自己宣告了一個,就是**同一個** companion。所以:
+
+```kotlin
+@Serializable
+data class Clip(...) {
+    private companion object { const val COST_MS = 300L }   // ← 讓 Clip.Companion 變成 private
+}
+```
+
+之後每一次 `encodeToString(clip)` 都會編譯成「從別的類別讀一個 private 靜態欄位」。**編譯得過**(plugin 把它產生在 inline 函式的 body 裡,沒有 synthetic accessor),然後在**真的會檢查的 runtime 上** `IllegalAccessError`。
+
+它會表現成裝置專屬的 crash 而不是 bug:Android 11 放行,Android 10 不放行。而 stack frame 會指向一個**超過檔案長度的行號** —— 那是 inliner 標記「這段程式碼來自別的地方」的方式,也是唯一的線索。
+
+要常數就放 **top-level `private const val`**。放在 companion 裡沒有任何好處。
+
 ---
 
 ## 4. Pull request
