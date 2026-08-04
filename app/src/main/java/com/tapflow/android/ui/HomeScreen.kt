@@ -147,7 +147,23 @@ fun HomeScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.app_name)) },
+                title = {
+                    Column {
+                        Text(stringResource(R.string.app_name))
+                        // Under the app name, where it cannot be missed, and only on a debug build — which
+                        // is every build that gets hand-installed for testing. It exists because "are you
+                        // on the build I just sent" was costing a round trip each time it came up: a sha
+                        // needs looking up, a timestamp does not.
+                        if (BuildConfig.DEBUG) {
+                            Text(
+                                buildStamp(),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontFamily = FontFamily.Monospace,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                },
                 actions = {
                     IconButton(onClick = onOpenSettings) {
                         Icon(Icons.Filled.Settings, contentDescription = stringResource(R.string.settings_title))
@@ -328,9 +344,10 @@ fun HomeScreen(
 
             item {
                 Spacer(Modifier.height(24.dp))
-                // Shown so a bug report identifies its build. Every CI APK used to claim 0.1.0.
+                // Also here, at the conventional place, so a release build still identifies itself once the
+                // debug subtitle above is gone.
                 Text(
-                    stringResource(R.string.home_version, BuildConfig.VERSION_NAME),
+                    stringResource(R.string.home_version, buildStamp()),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontFamily = FontFamily.Monospace,

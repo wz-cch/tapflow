@@ -15,6 +15,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Used for both the version inside the app and the artifact's name. Every artifact used to be
+      # called app-debug, so two downloads looked identical in the Downloads folder and a week-old one
+      # got installed and reported against — which cost a whole round of debugging to notice.
+      - name: Short sha
+        run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
@@ -34,7 +40,7 @@ jobs:
       - name: Build debug APK
         run: |
           set -o pipefail
-          gradle assembleDebug -PbuildId=${GITHUB_SHA} --stacktrace 2>&1 | tee build.log
+          gradle assembleDebug -PbuildId=${SHORT_SHA} --stacktrace 2>&1 | tee build.log
 
       # Compiler errors are otherwise only visible inside the raw log, which needs an
       # authenticated API call to read. Emitting them as an annotation puts them on the
@@ -67,6 +73,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v7
         with:
-          name: app-debug
+          name: app-debug-${{ env.SHORT_SHA }}
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
