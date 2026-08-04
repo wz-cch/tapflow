@@ -38,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -54,11 +55,11 @@ import com.tapflow.android.text.clipSummary
 import com.tapflow.android.text.flowSummary
 import com.tapflow.android.text.defaultClipName
 import com.tapflow.android.ui.DiscardConfirmDialog
-import com.tapflow.android.ui.FolderPickDialog
 import com.tapflow.android.ui.TapFlowTheme
 import com.tapflow.android.ui.folderLabel
 import com.tapflow.android.ui.folderRows
 import com.tapflow.android.ui.guardDiscard
+import com.tapflow.android.ui.rememberSubfolders
 import com.tapflow.android.ui.wroteToLibrary
 
 /**
@@ -126,8 +127,14 @@ class WorkspaceDialogActivity : ComponentActivity() {
      * still dirty, and offering the picker again here is the whole remedy. Closing would leave the
      * user holding an unsaved recording with nothing on screen explaining it.
      */
-    private fun save(name: String, asNew: Boolean) {
-        when (val result = Workspace.commit(name, System.currentTimeMillis(), asNew)) {
+    private fun save(name: String, asNew: Boolean) = lifecycleScope.launch {
+        // Off the main thread. Writing means a ContentProvider round trip on SAF, and a save is the one
+        // place the user is already waiting — so a slow provider showed up as the UI locking up rather than
+        // as a save taking a moment.
+        val result = withContext(Dispatchers.IO) {
+            Workspace.commit(name, System.currentTimeMillis(), asNew)
+        }
+        when (result) {
             is Workspace.Saved.Ok -> {
                 toast(getString(R.string.toast_saved, result.clip.name))
                 finish()
@@ -332,7 +339,10 @@ private fun SaveDialog(onDismiss: () -> Unit, onSave: (name: String, asNew: Bool
     }
     // Saving over the clip the workspace came from is the expected default; the tick opts out.
     var asNew by remember { mutableStateOf(source == null) }
-    var picking by remember { mutableStateOf(false) }
+    // Where a new file would land. Starts at the working folder and moves as you browse; committed only
+    // when the save actually happens, so cancelling out does not change where the next save goes.
+    var target by remember { mutableStateOf(Repo.saveFolder.value) }
+    val subfolders = rememberSubfolders(target)
 
     // Hidden while a clip is open from inside a flow, because there it would be a trap: the flow references
     // its clips by id, so saving as new would leave the flow pointing at the untouched original and the fix
@@ -343,7 +353,7 @@ private fun SaveDialog(onDismiss: () -> Unit, onSave: (name: String, asNew: Bool
     // Overwriting lands where the file already is — that is what LibraryStore.write promises, so offering a
     // choice here would be showing a control that changes nothing. Only a new file has a folder to pick.
     val overwriting = source != null && !asNew
-    val landsIn = if (overwriting) Repo.folderOf(source!!.id) else Repo.saveFolder.value
+    val landsIn = if (overwriting) Repo.folderOf(source!!.id) else target
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -367,39 +377,51 @@ private fun SaveDialog(onDismiss: () -> Unit, onSave: (name: String, asNew: Bool
                         )
                     }
                 }
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(8.dp))
                 Text(
                     stringResource(R.string.save_lands_in, folderLabel(landsIn)),
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (overwriting) {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    } else {
-                        MaterialTheme.colorScheme.primary
-                    },
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .then(if (overwriting) Modifier else Modifier.clickable { picking = true })
-                        .padding(vertical = 4.dp),
                 )
+
+                // The folders are browsable here rather than behind a second dialog, because naming a file
+                // and choosing where it goes is one decision — that is what every save-as box has always
+                // looked like. Absent while overwriting: then the line above is a statement of fact, and a
+                // browser under it would imply a choice that write() does not offer.
+                if (!overwriting) {
+                    LazyColumn(Modifier.heightIn(max = 200.dp)) {
+                        folderRows(target, subfolders) { target = it }
+                        if (target.isEmpty() && subfolders.isEmpty()) {
+                            item {
+                                Text(
+                                    stringResource(R.string.folder_no_subfolders),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(vertical = 8.dp),
+                                )
+                            }
+                        }
+                    }
+                }
             }
         },
         confirmButton = {
-            TextButton(enabled = name.isNotBlank(), onClick = { onSave(name, asNew) }) {
-                Text(stringResource(R.string.dialog_confirm))
-            }
+            TextButton(
+                enabled = name.isNotBlank(),
+                onClick = {
+                    // Before the save, because upsertClip reads it. And only now — browsing and then
+                    // cancelling must not move where the next save goes.
+                    if (!overwriting) Repo.setSaveFolder(target)
+                    onSave(name, asNew)
+                },
+            ) { Text(stringResource(R.string.dialog_confirm)) }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.dialog_cancel)) }
         },
     )
-
-    if (picking) {
-        FolderPickDialog(
-            initial = Repo.saveFolder.value,
-            onDismiss = { picking = false },
-        ) { Repo.setSaveFolder(it) }
-    }
 }
 
 /**
@@ -424,7 +446,7 @@ private fun LoadDialog(
 
     // Starts wherever new saves go, because that is where you were last working.
     var folder by remember { mutableStateOf(Repo.saveFolder.value) }
-    val subfolders = remember(folder) { FolderStore.folders(folder) }
+    val subfolders = rememberSubfolders(folder)
     // Filtered from what is already in memory rather than read again per folder. The library is loaded
     // whole — a flow resolves its clips by id from wherever they are — so reading again would be a second
     // walk that could disagree with the first.

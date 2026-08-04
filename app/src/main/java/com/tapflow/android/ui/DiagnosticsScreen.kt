@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tapflow.android.BuildConfig
 import com.tapflow.android.R
+import com.tapflow.android.engine.CrashLog
 import com.tapflow.android.engine.Diag
 
 /**
@@ -51,6 +52,9 @@ fun DiagnosticsScreen(onBack: () -> Unit) {
     // The revision counter is the recompose trigger; the text itself is pulled on read.
     val revision by Diag.revision.collectAsStateWithLifecycle()
     val body = remember(revision) { Diag.dump() }
+
+    val crashRevision by CrashLog.revision.collectAsStateWithLifecycle()
+    val crash = remember(crashRevision) { CrashLog.read() }
 
     Scaffold(
         topBar = {
@@ -70,6 +74,35 @@ fun DiagnosticsScreen(onBack: () -> Unit) {
                 .padding(insets)
                 .padding(horizontal = 16.dp)
         ) {
+            // Above the timeline and in the error colour, because it is the one thing here that survives a
+            // process death — so if it is present, it is almost certainly why you opened this screen.
+            if (crash != null) {
+                Text(
+                    stringResource(R.string.diag_crash_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                Spacer(Modifier.height(4.dp))
+                // The first few lines only. The whole thing goes on the clipboard; what is on screen is
+                // just enough to see that something is there and to say what it was out loud.
+                Text(
+                    crash.lineSequence().take(6).joinToString("\n"),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
+                )
+                Spacer(Modifier.height(4.dp))
+                Row {
+                    OutlinedButton(onClick = { context.copyToClipboard(withHeader(crash)) }) {
+                        Text(stringResource(R.string.diag_crash_copy))
+                    }
+                    Spacer(Modifier.padding(horizontal = 4.dp))
+                    OutlinedButton(onClick = { CrashLog.clear() }) {
+                        Text(stringResource(R.string.diag_crash_clear))
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+            }
+
             Text(
                 stringResource(R.string.diag_body),
                 style = MaterialTheme.typography.bodySmall,
