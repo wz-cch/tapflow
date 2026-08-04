@@ -33,7 +33,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.tapflow.android.BuildConfig
 import com.tapflow.android.R
 import com.tapflow.android.engine.CrashLog
 import com.tapflow.android.engine.Diag
@@ -135,8 +134,13 @@ fun DiagnosticsScreen(onBack: () -> Unit) {
     }
 }
 
-/** The build is part of the report: which APK produced a timeline is half the answer. */
-private fun withHeader(body: String) = "TapFlow ${BuildConfig.VERSION_NAME}\n$body"
+/**
+ * The build is part of the report: which APK produced a timeline is half the answer.
+ *
+ * With the time, not just the sha — a report that has to be dated by asking is a report that gets argued
+ * about instead of read.
+ */
+private fun withHeader(body: String) = "TapFlow ${buildStamp()}\n$body"
 
 private fun Context.copyToClipboard(text: String) {
     val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager

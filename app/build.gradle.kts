@@ -1,3 +1,7 @@
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -27,6 +31,21 @@ android {
         // debugging time. CI passes -PbuildId=<sha>; a local build says so.
         val buildId = (project.findProperty("buildId") as String?)?.trim()?.take(7)
         versionName = if (buildId.isNullOrEmpty()) "0.1.0-local" else "0.1.0+$buildId"
+
+        // When, not just which. A sha is opaque to a person: telling that 411089d was a week old meant
+        // going to the repository to look it up, so "is this the build I was just sent" was unanswerable
+        // by either side — and a whole round of debugging went into asking it. A timestamp is legible on
+        // sight, and everybody already knows when the APK arrived.
+        //
+        // It changes every build, so BuildConfig is regenerated every build. That is the point, and the
+        // cost is one task in a project that is rebuilt on every change anyway.
+        buildConfigField(
+            "String",
+            "BUILD_TIME",
+            "\"" + DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+                .withZone(ZoneId.systemDefault())
+                .format(Instant.now()) + "\"",
+        )
 
         // English is the default locale (values/), Traditional Chinese is values-zh-rTW/.
         resourceConfigurations += setOf("en", "zh-rTW")
