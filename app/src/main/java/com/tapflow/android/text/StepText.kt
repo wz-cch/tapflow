@@ -3,7 +3,6 @@ package com.tapflow.android.text
 import android.content.res.Resources
 import com.tapflow.android.R
 import com.tapflow.android.data.Clip
-import com.tapflow.android.data.ClipNode
 import com.tapflow.android.data.Flow
 import com.tapflow.android.data.GestureKind
 import com.tapflow.android.data.GestureStep
@@ -106,43 +105,46 @@ fun MarkerDensity.label(res: Resources): String = res.getString(
 )
 
 /**
- * One line for a clip's row in a flow: its name, and the knobs that are not at their defaults.
- *
- * A missing clip is not a case here. Deleting a clip removes it from every flow that references it, so a
- * dangling id cannot survive to be displayed — see Repo.deleteClip.
- */
-fun ClipNode.label(res: Resources, clips: List<Clip>): String {
-    val name = clips.firstOrNull { it.id == clipId }?.name ?: return res.getString(R.string.node_clip_gone)
-    return if (repeat > 1) res.getString(R.string.node_clip_repeat, name, repeat) else name
-}
-
-/**
  * One-line description of a clip for a list row.
  *
- * Shared by the app's clip list and the overlay's load dialog, so the two never drift apart.
+ * Takes counts rather than a [Clip], because the home screen has the counts and *not* the clip: the recent
+ * list caches what each file held so that drawing twenty rows costs no reads. The overload below is for the
+ * places that do have the clip in hand, so both routes produce the same sentence.
  */
-fun clipSummary(res: Resources, clip: Clip): String {
-    val duration = formatDuration(clip.estimatedDurationMs)
-    return if (clip.pauseCount > 0) {
-        res.getString(R.string.clip_summary_with_pauses, clip.stepCount, clip.pauseCount, duration)
+fun clipSummary(res: Resources, stepCount: Int, pauseCount: Int, durationMs: Long): String {
+    val duration = formatDuration(durationMs)
+    return if (pauseCount > 0) {
+        res.getString(R.string.clip_summary_with_pauses, stepCount, pauseCount, duration)
     } else {
-        res.getString(R.string.clip_summary, clip.stepCount, duration)
+        res.getString(R.string.clip_summary, stepCount, duration)
     }
 }
+
+fun clipSummary(res: Resources, clip: Clip): String =
+    clipSummary(res, clip.stepCount, clip.pauseCount, clip.estimatedDurationMs)
 
 /**
  * One line for a flow in a list: how many clips, and roughly how long one pass takes.
  *
- * The estimate is the sum of each clip's own estimate multiplied by its repeat count, plus the gaps. Same
- * shape as a clip's estimate one level up — which is the point of the two layers having the same knobs.
+ * Counts again rather than the flow, for the reason above.
  */
-fun flowSummary(res: Resources, flow: Flow, clips: List<Clip>): String {
+fun flowSummary(res: Resources, clipCount: Int, durationMs: Long): String =
+    res.getString(R.string.flow_summary, clipCount, formatDuration(durationMs))
+
+/**
+ * The same line for a flow that is open, whose clips have been read.
+ *
+ * The estimate is the sum of each clip's own estimate multiplied by its repeat count, plus the gaps. Same
+ * shape as a clip's estimate one level up — which is the point of the two layers having the same knobs. A
+ * clip that could not be read counts as nothing; the row it belongs to says `!` for itself.
+ */
+fun flowSummary(res: Resources, flow: Flow, clips: Map<String, Clip>): String {
     val total = flow.clips.sumOf { node ->
-        val clip = clips.firstOrNull { it.id == node.clipId } ?: return@sumOf 0L
+        val clip = clips[node.ref] ?: return@sumOf 0L
         val passes = node.repeat.coerceAtLeast(1)
         node.delayBefore + clip.estimatedDurationMs * passes + node.extraPasses * node.repeatIntervalMs
     }
-    return res.getString(R.string.flow_summary, flow.clips.size, formatDuration(total))
+    return flowSummary(res, flow.clips.size, total)
 }
 
 private fun formatDuration(ms: Long): String {
@@ -152,10 +154,21 @@ private fun formatDuration(ms: Long): String {
     return if (minutes > 0) "${minutes}m ${seconds}s" else "${seconds}s"
 }
 
-/** Default name for a freshly saved clip, e.g. "Recording 07-25 14:32". */
-fun defaultClipName(res: Resources, createdAt: Long): String {
-    val stamp = CLIP_NAME_FORMAT.format(Instant.ofEpochMilli(createdAt).atZone(ZoneId.systemDefault()))
-    return res.getString(R.string.clip_default_name, stamp)
-}
+/**
+ * Name suggested for a clip that has never been saved, e.g. "Recording 07-25 14:32".
+ *
+ * A suggestion in the document picker's own name field, nothing more — the user types over it, and the file
+ * they end up with is the clip's name. Timestamped because the alternative is every unnamed recording
+ * colliding with the last one, and a date is the one thing about a fresh recording that is worth saying.
+ */
+fun defaultClipName(res: Resources, now: Long): String =
+    res.getString(R.string.clip_default_name, stamp(now))
+
+/** The same, for a new flow. */
+fun defaultFlowName(res: Resources, now: Long): String =
+    res.getString(R.string.flow_default_name, stamp(now))
+
+private fun stamp(millis: Long): String =
+    CLIP_NAME_FORMAT.format(Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()))
 
 private val CLIP_NAME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("MM-dd HH:mm")

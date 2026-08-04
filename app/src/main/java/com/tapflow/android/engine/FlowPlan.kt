@@ -40,9 +40,10 @@ object FlowPlan {
      * @param steps every step of every clip, in order, already scaled to the current screen.
      * @param segments one per clip *pass*, in the same order, so a global index maps back to a clip.
      * @param clipCount how many clips the flow has, which is the denominator in "2 / 5".
-     * @param missing clip ids the flow referenced that no longer exist. Should always be empty —
-     *   deleting a clip prunes it from every flow — so a non-empty list means something raced, and the
-     *   caller refuses to start rather than quietly running a flow with a hole in it.
+     * @param missing the files the flow referenced that could not be read. Refusing to start on a non-empty
+     *   list is the whole reason it is reported: a reference is a location now, so a moved or renamed clip is
+     *   an ordinary thing to find here — and a flow that quietly runs four of its five clips fails while
+     *   looking like it worked. The flow editor shows the same rows with `!` and offers to repoint them.
      */
     data class Expanded(
         val steps: List<Step>,
@@ -52,7 +53,7 @@ object FlowPlan {
     )
 
     /**
-     * Expands [flow] against [clips] onto a screen of [target] size.
+     * Expands [flow] against the clips read for it, keyed by file reference, onto a screen of [target] size.
      *
      * Coordinates are scaled **per clip**, from the screen that clip was recorded on. Every clip carries
      * its own [Clip.screen] while the player takes one recorded screen for a whole run, so without this a
@@ -61,15 +62,15 @@ object FlowPlan {
      * faithfully means. It is the same linear scaling the dispatcher already applies — not the harder
      * job of remapping between genuinely different devices, which belongs where a clip is saved.
      */
-    fun expand(flow: Flow, clips: List<Clip>, target: ScreenSpec): Expanded {
+    fun expand(flow: Flow, clips: Map<String, Clip>, target: ScreenSpec): Expanded {
         val steps = ArrayList<Step>()
         val segments = ArrayList<Segment>()
         val missing = ArrayList<String>()
 
         flow.clips.forEachIndexed { index, node ->
-            val clip = clips.firstOrNull { it.id == node.clipId }
+            val clip = clips[node.ref]
             if (clip == null) {
-                missing += node.clipId
+                missing += node.name.ifEmpty { node.ref }
                 return@forEachIndexed
             }
             if (clip.steps.isEmpty()) return@forEachIndexed

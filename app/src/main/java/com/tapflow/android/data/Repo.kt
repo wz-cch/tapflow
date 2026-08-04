@@ -27,68 +27,32 @@ enum class AppMode { CLIP, FLOW }
  *
  * MainActivity and TapFlowService live in the same process, so both sides share the StateFlows on
  * this object directly and no IPC is needed.
+ *
+ * ### There is no library here any more
+ *
+ * This object used to hold every saved clip and flow, read out of one folder the user had granted, and
+ * everything downstream looked things up in those two lists by id. All of it is gone. A clip is a file the
+ * user picked; opening one reads it, and what is held is only *what is open* — the workspace's source file
+ * and, in flow mode, one [OpenFlow]. Files the user has been in and out of are a list of names and counts
+ * ([Recents]), not a copy of their contents.
+ *
+ * That removes a whole class of state rather than moving it. There is no configured-folder gate, no walk of
+ * a directory tree, no id-to-location table to keep in step with the disk, and no way for the app's idea of
+ * the library to disagree with what is actually there — because it no longer has one.
  */
 object Repo {
 
     private const val TAG = "Repo"
     private const val PREFS = "tapflow"
     private const val KEY_MODE = "app_mode"
-    private const val KEY_CURRENT_CLIP = "current_clip_id"
     private const val KEY_OVERLAY_ON = "overlay_on"
-    private const val KEY_SAVE_FOLDER = "save_folder"
 
     private lateinit var appContext: Context
     private lateinit var prefs: SharedPreferences
 
     private val settingsFile: File get() = File(appContext.filesDir, "settings.json")
     private val workspaceFile: File get() = File(appContext.filesDir, "workspace.json")
-
-    // --- The library ---
-    //
-    // Saved clips and flows live in the folder the user chose (see FolderStore), and these two flows
-    // are a session-lifetime cache of what was read from it — not a second copy on disk. Empty until
-    // something asks, because reading the folder is IPC and startup is not a moment anyone asked for
-    // it: recording, editing and replaying the workspace never need the library at all.
-
-    private val _clips = MutableStateFlow<List<Clip>>(emptyList())
-    val clips: StateFlow<List<Clip>> = _clips.asStateFlow()
-
-    private val _flows = MutableStateFlow<List<Flow>>(emptyList())
-    val flows: StateFlow<List<Flow>> = _flows.asStateFlow()
-
-    /** Whether [loadLibrary] has run against the current folder. */
-    val libraryLoaded = MutableStateFlow(false)
-
-    /**
-     * How many files in the folder were there but could not be read, on the last [loadLibrary].
-     *
-     * Skipping one mangled file instead of failing the whole list is right. Doing it **silently** is not,
-     * and that silence is the exact shape of the loss reported on a device: an unclean shutdown, and on
-     * the next launch the library was simply empty with nothing said. It looked like the app had forgotten
-     * rather than like a file being unreadable — and those need completely different responses, because
-     * the file is still sitting in the folder.
-     */
-    val unreadable = MutableStateFlow(0)
-
-    /**
-     * Which subfolder each saved thing came out of, keyed by id. "" is the root.
-     *
-     * Only the browsing UI reads this, and only to group rows. Nothing about behaviour depends on where a
-     * file sits — a flow finds its clips by id, wherever they are — which is what keeps the folders purely
-     * a way of looking at the library rather than part of its structure.
-     */
-    private val folderOfId = HashMap<String, String>()
-
-    fun folderOf(id: String): String = folderOfId[id] ?: ""
-
-    /**
-     * Where a **new** clip or flow goes, relative to the chosen folder. "" is the root.
-     *
-     * Persisted, because "the folder I am working in" survives closing the app in every file-based tool
-     * there is. It only affects things that do not exist yet: something already saved is overwritten
-     * wherever it already lives, so changing this never moves what you were editing.
-     */
-    val saveFolder = MutableStateFlow("")
+    private val recentFile: File get() = File(appContext.filesDir, "recent.json")
 
     private val _settings = MutableStateFlow(Settings.DEFAULT)
     val settings: StateFlow<Settings> = _settings.asStateFlow()
@@ -96,17 +60,20 @@ object Repo {
     /**
      * Which noun the toolbar works on. See [AppMode].
      *
-     * The only piece of this state that survives a restart. What was *loaded* in the mode deliberately
-     * does not: coming back into the mode you left costs nothing to remember and matches where you were,
-     * whereas reopening a file by itself is the thing an app should not do — and reloading is one tap.
+     * The only piece of this state that survives a restart. What was *open* in the mode deliberately does
+     * not: coming back into the mode you left costs nothing to remember and matches where you were, whereas
+     * reopening a file by itself is the thing an app should not do — and reopening is one tap.
      */
     val mode = MutableStateFlow(AppMode.CLIP)
 
-    /** Which flow the toolbar play button runs. Not persisted — see [mode]. */
-    val currentFlowId = MutableStateFlow<String?>(null)
-
-    /** Which clip is loaded into the workspace; the save key overwrites it by default. */
-    val currentClipId = MutableStateFlow<String?>(null)
+    /**
+     * The flow the toolbar's play button runs, read into memory. Null in clip mode and in flow mode with
+     * nothing opened yet, which is a real state — it is where creating your first flow starts.
+     *
+     * Not persisted, for the reason [mode] gives. Named for what it holds rather than for the act, so that
+     * `currentFlow.value` and `openFlow(ref)` cannot be misread for one another.
+     */
+    val currentFlow = MutableStateFlow<OpenFlow?>(null)
 
     /** Whether the user wants the floating toolbar shown. */
     val overlayEnabled = MutableStateFlow(false)
@@ -119,233 +86,169 @@ object Repo {
 
         mode.value = runCatching { AppMode.valueOf(prefs.getString(KEY_MODE, "").orEmpty()) }
             .getOrDefault(AppMode.CLIP)
-        currentClipId.value = prefs.getString(KEY_CURRENT_CLIP, null)
         overlayEnabled.value = prefs.getBoolean(KEY_OVERLAY_ON, false)
-        saveFolder.value = prefs.getString(KEY_SAVE_FOLDER, "").orEmpty()
 
-        // Deliberately does not read the library. That is a folder over IPC, and doing it here would
-        // put it on whichever thread starts the app or binds the service, for a list nothing needs
-        // until you open a screen that shows it.
-        FolderStore.init(appContext, prefs.getString(FolderStore.prefsKey(), null))
+        DocStore.init(appContext)
+        // One small file in filesDir, unlike the folder walk this replaced — which is why it can be read
+        // here, on whichever thread starts the app, instead of being deferred to the first screen.
+        Recents.init(recentFile)
         _settings.value = readSettings()
     }
 
     val isReady: Boolean get() = ::appContext.isInitialized
 
-    // --- The library ---
+    // --- Opening -------------------------------------------------------------
+    //
+    // Every one of these does IO. None of them may be called on the main thread.
 
     /**
-     * Reads the chosen folder. **Does IO — never call this on the main thread.**
+     * Reads one clip. Null when the file is unreadable or is not a clip.
      *
-     * Whole library at once rather than one kind at a time, because every screen that wants flows
-     * also wants clips: a flow row reads "3 clips, 47 actions", and running one needs their steps.
-     * Splitting it would only create a state where half the library is present.
-     *
-     * A file that will not parse is skipped, not fatal. These live in a folder the user opens and
-     * copies around, so one mangled file is an ordinary event — and it must cost that one clip
-     * rather than the list. How many were skipped goes into [unreadable], because skipping quietly is
-     * indistinguishable from never having saved it.
+     * A file that will not parse is a normal event rather than a bug: these live where the user can copy,
+     * sync and edit them. What it is *not* is silent — the caller says so, because the alternative (an empty
+     * clip) is indistinguishable from having opened something that was never saved.
      */
-    fun loadLibrary() {
-        if (!FolderStore.refreshUsable()) {
-            _clips.value = emptyList()
-            _flows.value = emptyList()
-            unreadable.value = 0
-            libraryLoaded.value = false
-            return
-        }
-
-        val listing = FolderStore.list()
-        val (clipFiles, flowFiles) = listing.entries.partition { it.kind == LibraryStore.Kind.CLIP }
-
-        folderOfId.clear()
-        _clips.value = clipFiles.mapNotNull { entry ->
-            decode<Clip>(entry.json, "clip")?.also { remember(it.id, entry) }
-        }
-        _flows.value = flowFiles.mapNotNull { entry ->
-            decode<Flow>(entry.json, "flow")?.also { remember(it.id, entry) }
-        }
-
-        // Two shortfalls, one number, because from the user's side they are the same event — something is
-        // in the folder and not in the list. What the walk could not read or enter it counted itself; what
-        // it read but could not parse is the subtraction. Derived rather than tallied inside decode(),
-        // which has no business knowing it is being counted, and a subtraction cannot drift out of step
-        // with the list it describes the way a separate counter can.
-        val unparsed = (clipFiles.size - _clips.value.size) + (flowFiles.size - _flows.value.size)
-        unreadable.value = listing.unread + unparsed
-        libraryLoaded.value = true
-    }
-
-    private fun remember(id: String, entry: LibraryStore.Entry) {
-        FolderStore.remember(id, entry.locator)
-        folderOfId[id] = entry.folder
-    }
-
-    private inline fun <reified T> decode(json: String, what: String): T? = runCatching {
-        AppJson.decodeFromString<T>(json)
-    }.onFailure { Log.e(TAG, "Skipping an unreadable $what file", it) }.getOrNull()
-
-    /** Forgets the library without touching the folder. Used when the folder changes. */
-    private fun clearLibraryCache() {
-        _clips.value = emptyList()
-        _flows.value = emptyList()
-        folderOfId.clear()
-        unreadable.value = 0
-        libraryLoaded.value = false
-    }
-
-    /** Where new saves land. Persisted; see [saveFolder]. */
-    fun setSaveFolder(path: String) {
-        saveFolder.value = path
-        prefs.edit().putString(KEY_SAVE_FOLDER, path).apply()
-    }
-
-    // --- Clips ---
-
-    fun clipById(id: String?): Clip? = id?.let { key -> _clips.value.firstOrNull { it.id == key } }
-
-    /**
-     * Saves a clip, returning false when the folder would not take it.
-     *
-     * The result matters and must not be dropped. On a failure the caller keeps the workspace dirty,
-     * so the unsaved-draft recovery already holds the data, and the user is asked to pick the folder
-     * again — whereas a swallowed failure would report a successful save of nothing.
-     */
-    fun upsertClip(clip: Clip): Boolean {
-        val previousName = clipById(clip.id)?.name
-        // Content first, label second. Writing overwrites in place and so keeps the old file name; the
-        // rename that follows is cosmetic, which is why its failure is not this function's failure.
-        // saveFolder only decides where something *new* lands — see LibraryStore.write. An existing clip
-        // is overwritten where it already is, so changing the working folder never moves what is open.
-        val landed = FolderStore.write(
-            LibraryStore.Kind.CLIP,
-            clip.id,
-            clip.name,
-            AppJson.encodeToString(clip),
-            saveFolder.value,
+    fun openClip(ref: String): LoadedClip? {
+        val name = fileLabel(ref)
+        val clip = read<Clip>(ref, "clip") ?: return null
+        Recents.touch(
+            RecentDoc(
+                ref = ref,
+                kind = DocKind.CLIP,
+                name = name,
+                openedAt = System.currentTimeMillis(),
+                stepCount = clip.stepCount,
+                pauseCount = clip.pauseCount,
+                durationMs = clip.estimatedDurationMs,
+            )
         )
-        if (!landed) return false
-        if (previousName != null && previousName != clip.name) FolderStore.rename(clip.id, clip.name)
+        return LoadedClip(DocFile(ref, name), clip)
+    }
 
-        val exists = _clips.value.any { it.id == clip.id }
-        _clips.value = if (exists) {
-            _clips.value.map { if (it.id == clip.id) clip else it }
-        } else {
-            _clips.value + clip
-        }
+    /**
+     * Reads one flow and every clip it references. Null when the flow file itself cannot be read.
+     *
+     * A clip that cannot be read is *not* a failure of this call. It comes back absent, the row shows `!`,
+     * and the flow is otherwise entirely usable — which is the only sane answer when the reference is a
+     * location and locations are the user's to rearrange. Refusing to open the flow at all would leave them
+     * with no screen on which to fix it.
+     */
+    fun openFlow(ref: String): OpenFlow? {
+        val name = fileLabel(ref)
+        val flow = read<Flow>(ref, "flow") ?: return null
+        // Distinct refs only: one clip used five times is one read. The map is keyed by ref for the same
+        // reason — a flow may legitimately hold the same clip more than once.
+        val resolved = flow.clips.map { it.ref }.distinct().mapNotNull { clipRef ->
+            val clip = read<Clip>(clipRef, "clip") ?: return@mapNotNull null
+            clipRef to LoadedClip(DocFile(clipRef, fileLabel(clipRef)), clip)
+        }.toMap()
+
+        val opened = OpenFlow(DocFile(ref, name), flow, resolved)
+        Recents.touch(
+            RecentDoc(
+                ref = ref,
+                kind = DocKind.FLOW,
+                name = name,
+                openedAt = System.currentTimeMillis(),
+                clipCount = flow.clips.size,
+                durationMs = flowDuration(flow, opened.clips),
+            )
+        )
+        return opened
+    }
+
+    // --- Saving --------------------------------------------------------------
+    //
+    // These do IO too. Same rule: not on the main thread.
+
+    /**
+     * Writes a clip to [ref]. False means it did not land, and the caller must not pretend otherwise.
+     *
+     * On a failure the workspace stays dirty, so the unsaved-draft recovery already holds the data. Which is
+     * why this returns a result at all: a swallowed failure would report a successful save of nothing.
+     */
+    fun saveClip(ref: String, clip: Clip, name: String): Boolean {
+        if (!DocStore.write(ref, AppJson.encodeToString(clip))) return false
+        Recents.touch(
+            RecentDoc(
+                ref = ref,
+                kind = DocKind.CLIP,
+                name = name,
+                openedAt = System.currentTimeMillis(),
+                stepCount = clip.stepCount,
+                pauseCount = clip.pauseCount,
+                durationMs = clip.estimatedDurationMs,
+            )
+        )
         return true
     }
 
     /**
-     * Deletes a clip, and takes it out of every flow that referenced it.
+     * Writes a flow back to its own file and makes it the open one.
      *
-     * Pruned rather than left as a "clip deleted" placeholder, which is what this used to do. A flow with a
-     * dangling reference is a flow that looks runnable and is not, and the failure would arrive halfway
-     * through a run; removing the row means the flow on screen is the flow that will run. The one thing
-     * lost is "I only wanted to point that row at a different clip", which is two actions instead of one.
+     * A flow has no unsaved state — it is a list of references, so every edit is written straight back — and
+     * that is why this takes the whole [OpenFlow]: the in-memory copy and the file are meant to agree at all
+     * times, so updating one without the other would be the bug.
      */
-    fun deleteClip(id: String) {
-        FolderStore.delete(id)
-        _clips.value = _clips.value.filterNot { it.id == id }
-
-        // One file write per affected flow now, rather than one for all of them. If one fails, that
-        // flow keeps a reference to a clip that is gone — and FlowPlan already refuses to run a flow
-        // with a hole in it rather than quietly skipping the row, so the failure surfaces where it
-        // matters instead of halfway through a replay.
-        _flows.value.filter { flow -> flow.clips.any { it.clipId == id } }.forEach { flow ->
-            upsertFlow(flow.copy(clips = flow.clips.filterNot { it.clipId == id }))
-        }
-
-        if (currentClipId.value == id) setCurrentClip(null)
-    }
-
-    // --- Flows ---
-
-    fun flowById(id: String?): Flow? = id?.let { key -> _flows.value.firstOrNull { it.id == key } }
-
-    /** How many flows use this clip. Shown before deleting, since deleting edits those flows. */
-    fun flowsUsing(clipId: String): Int =
-        _flows.value.count { flow -> flow.clips.any { it.clipId == clipId } }
-
-    /**
-     * The loaded flow, or null.
-     *
-     * No falling back to the first flow, which is what this used to do. Null is a real state — flow mode
-     * with nothing picked yet — and a fallback would make the play button run a flow nobody chose.
-     */
-    fun currentFlow(): Flow? = flowById(currentFlowId.value)
-
-    /**
-     * Saves a flow, returning false when the folder would not take it.
-     *
-     * Deliberately does not load it. Loading a flow clears the workspace, so it has to be something
-     * the user asks for — creating or editing one must never throw away an unsaved recording.
-     */
-    fun upsertFlow(flow: Flow): Boolean {
-        val previousName = flowById(flow.id)?.name
-        val landed = FolderStore.write(
-            LibraryStore.Kind.FLOW,
-            flow.id,
-            flow.name,
-            AppJson.encodeToString(flow),
-            saveFolder.value,
+    fun saveFlow(updated: OpenFlow): Boolean {
+        if (!DocStore.write(updated.file.ref, AppJson.encodeToString(updated.flow))) return false
+        currentFlow.value = updated
+        Recents.touch(
+            RecentDoc(
+                ref = updated.file.ref,
+                kind = DocKind.FLOW,
+                name = updated.file.name,
+                openedAt = System.currentTimeMillis(),
+                clipCount = updated.flow.clips.size,
+                durationMs = flowDuration(updated.flow, updated.clips),
+            )
         )
-        if (!landed) return false
-        if (previousName != null && previousName != flow.name) FolderStore.rename(flow.id, flow.name)
-
-        val exists = _flows.value.any { it.id == flow.id }
-        _flows.value = if (exists) {
-            _flows.value.map { if (it.id == flow.id) flow else it }
-        } else {
-            _flows.value + flow
-        }
         return true
     }
 
-    fun deleteFlow(id: String) {
-        FolderStore.delete(id)
-        _flows.value = _flows.value.filterNot { it.id == id }
-        // Nothing loaded, rather than whichever flow happens to be first: deleting the loaded flow is not
-        // a request to run a different one.
-        if (currentFlowId.value == id) setCurrentFlow(null)
+    /** Writes a brand-new empty flow to a file the user just created. */
+    fun createFlow(ref: String): OpenFlow? {
+        val opened = OpenFlow(DocFile(ref, fileLabel(ref)), Flow(clips = emptyList()), emptyMap())
+        return if (saveFlow(opened)) opened else null
     }
 
-    // --- The folder ---
+    // --- Maintenance ---------------------------------------------------------
 
     /**
-     * Adopts a folder the user picked and reads whatever is in it. **Does IO.**
+     * Deletes the file behind a row.
      *
-     * Reading is the whole behaviour, and there is no migration alongside it: pick a folder that
-     * already holds a library and that library is yours, pick an empty one and you start empty.
+     * **Nothing else is touched, and that is the design.** A flow that referenced this clip will show `!` the
+     * next time it is opened. Hunting down those flows would mean reading every file the app has ever heard
+     * of, to edit files the user did not ask about, on the assumption that a reference to a missing file is
+     * worth less than the reference itself — and it is not: `!` plus "point it somewhere else" keeps the
+     * arrangement, while pruning silently shortens the flow.
      */
-    fun useFolder(uri: android.net.Uri): Boolean {
-        clearLibraryCache()
-        if (!FolderStore.adopt(uri)) return false
-        prefs.edit().putString(FolderStore.prefsKey(), FolderStore.treeUriString()).apply()
-        loadLibrary()
-        return libraryLoaded.value
-    }
-
-    fun forgetFolder() {
-        FolderStore.forget()
-        prefs.edit().remove(FolderStore.prefsKey()).apply()
-        clearLibraryCache()
+    fun deleteFile(ref: String): Boolean {
+        val gone = DocStore.delete(ref)
+        if (gone) Recents.forget(ref)
+        if (gone && currentFlow.value?.file?.ref == ref) currentFlow.value = null
+        return gone
     }
 
     /**
-     * Brings up the fixed folder on the versions that have one. **Does IO.**
+     * Renames the file, which renames the clip: the file's name is the only name there is.
      *
-     * The counterpart to [useFolder] for API 28 and below, where nothing is picked: the runtime permission
-     * has just been granted, so probing creates the folder and the library can be read.
+     * Flows pointing at the old name break, visibly. That is not a regression to be fixed later — it is the
+     * same thing that happens when the file is renamed from a file manager, which cannot be prevented, so
+     * making the in-app route quietly repair references would create a difference nobody can depend on.
      */
-    fun useDefaultFolder(): Boolean {
-        clearLibraryCache()
-        if (!FolderStore.refreshUsable()) return false
-        loadLibrary()
-        return libraryLoaded.value
+    fun renameFile(ref: String, kind: DocKind, name: String): String? {
+        val to = DocStore.rename(ref, suggestedFileName(name, kind)) ?: return null
+        val label = fileLabel(to)
+        Recents.renamed(ref, to, label)
+        // The open flow renaming itself under the editor is the one case where this object holds something
+        // that has to follow. Its clips did not move, so they are carried over unread.
+        currentFlow.value?.takeIf { it.file.ref == ref }
+            ?.let { currentFlow.value = it.movedTo(DocFile(to, label)) }
+        return to
     }
 
-    // --- Settings ---
+    // --- Settings ------------------------------------------------------------
 
     fun updateSettings(transform: (Settings) -> Settings) {
         _settings.value = transform(_settings.value)
@@ -355,10 +258,10 @@ object Repo {
 
     fun resetSettings() = updateSettings { Settings.DEFAULT }
 
-    // --- Workspace draft ---
+    // --- Workspace draft -----------------------------------------------------
     //
-    // All file access lives in this object, so the in-memory workspace (engine/Workspace.kt) calls
-    // through here rather than touching filesDir itself.
+    // The in-memory workspace (engine/Workspace.kt) calls through here rather than touching filesDir
+    // itself, so all of the app's own storage stays in one object.
 
     fun readWorkspace(): WorkspaceSnapshot = runCatching {
         if (!workspaceFile.exists()) WorkspaceSnapshot()
@@ -366,9 +269,12 @@ object Repo {
     }.onFailure { Log.e(TAG, "Failed to read workspace draft, starting empty", it) }
         .getOrDefault(WorkspaceSnapshot())
 
-    fun writeWorkspace(snapshot: WorkspaceSnapshot) = write(workspaceFile, snapshot, "workspace draft")
+    fun writeWorkspace(snapshot: WorkspaceSnapshot) {
+        runCatching { workspaceFile.writeText(AppJson.encodeToString(snapshot)) }
+            .onFailure { Log.e(TAG, "Failed to write the workspace draft", it) }
+    }
 
-    // --- Preferences ---
+    // --- Preferences ---------------------------------------------------------
 
     /**
      * Both of these are single writes with no rules attached. The rules about what may be loaded
@@ -377,15 +283,6 @@ object Repo {
     fun setMode(next: AppMode) {
         mode.value = next
         prefs.edit().putString(KEY_MODE, next.name).apply()
-    }
-
-    fun setCurrentFlow(id: String?) {
-        currentFlowId.value = id
-    }
-
-    fun setCurrentClip(id: String?) {
-        currentClipId.value = id
-        prefs.edit().putString(KEY_CURRENT_CLIP, id).apply()
     }
 
     fun setOverlayEnabled(enabled: Boolean) {
@@ -398,11 +295,15 @@ object Repo {
 
     fun writeInt(key: String, value: Int) = prefs.edit().putInt(key, value).apply()
 
-    // --- I/O ---
+    // --- I/O -----------------------------------------------------------------
 
-    private inline fun <reified T> write(file: File, value: T, what: String) {
-        runCatching { file.writeText(AppJson.encodeToString(value)) }
-            .onFailure { Log.e(TAG, "Failed to write $what", it) }
+    private fun fileLabel(ref: String): String = DocStore.label(ref)
+
+    private inline fun <reified T> read(ref: String, what: String): T? {
+        val text = DocStore.read(ref) ?: return null
+        return runCatching { AppJson.decodeFromString<T>(text) }
+            .onFailure { Log.w(TAG, "$ref is not a readable $what", it) }
+            .getOrNull()
     }
 
     private fun readSettings(): Settings = runCatching {
@@ -410,4 +311,17 @@ object Repo {
         else AppJson.decodeFromString<Settings>(settingsFile.readText())
     }.onFailure { Log.e(TAG, "Failed to read settings, falling back to defaults", it) }
         .getOrDefault(Settings.DEFAULT)
+}
+
+/**
+ * Roughly how long one pass of a flow takes, for the row in the recent list.
+ *
+ * A clip that could not be read contributes nothing. Better than refusing to show an estimate: the row also
+ * says how many clips there are, so a total that is short for a flow with a broken reference is consistent
+ * with the `!` the flow itself shows.
+ */
+private fun flowDuration(flow: Flow, clips: Map<String, Clip>): Long = flow.clips.sumOf { node ->
+    val clip = clips[node.ref] ?: return@sumOf 0L
+    val passes = node.repeat.coerceAtLeast(1)
+    node.delayBefore + clip.estimatedDurationMs * passes + node.extraPasses * node.repeatIntervalMs
 }

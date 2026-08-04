@@ -82,6 +82,10 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         fun onDuplicateStep()
         fun onDeleteSelected()
         fun onSave()
+
+        /** Write to a new file, naming it. Never offered inside a flow — see the visibility block. */
+        fun onSaveAs()
+
         fun onLoad()
         fun onNewClip()
 
@@ -185,6 +189,16 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
     private val deleteStep = icon(R.drawable.ic_remove)
     private val newClip = icon(R.drawable.ic_new_clip)
     private val save = icon(R.drawable.ic_save)
+
+    /**
+     * Write the workspace to a file the user names, rather than over the one it came from.
+     *
+     * Its own button rather than a long-press on `💾`, because a hidden gesture is not a way to offer an
+     * action that creates a file. `💾` on a clip that has never been saved comes here on its own — there is
+     * nothing to overwrite then — which is how every editor behaves.
+     */
+    private val saveAs = icon(R.drawable.ic_save_as)
+
     private val load = icon(R.drawable.ic_folder_open)
     private val newFlow = icon(R.drawable.ic_new_clip)
     private val deleteFlow = icon(R.drawable.ic_remove)
@@ -219,7 +233,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
     private val scrollingButtons = listOf(
         modeToggle, finishClip, primary, playFrom, secondary, edit, editFlow, insertStep, duplicateStep,
         insertGlobal, insertPause, insertWait, deleteStep, undo, stepPanelToggle, stepListToggle, newClip,
-        save, load, newFlow, deleteFlow, eye, quickSettings, dismiss, collapse,
+        save, saveAs, load, newFlow, deleteFlow, eye, quickSettings, dismiss, collapse,
     )
 
     private val allButtons = listOf(grip) + scrollingButtons
@@ -264,6 +278,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         // Each of these opens one small screen that does one thing. Naming needs a text field, and
         // a text field needs input focus, which no overlay here may take.
         save.setOnClickListener { actions.onSave() }
+        saveAs.setOnClickListener { actions.onSaveAs() }
         load.setOnClickListener { actions.onLoad() }
         newClip.setOnClickListener { actions.onNewClip() }
         newFlow.setOnClickListener { actions.onNewFlow() }
@@ -355,6 +370,27 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         // There is no save button in flow mode either. Editing a flow writes it straight back — it is a
         // list of references with nothing accumulating in it — so the act does not exist.
         val idle = !editing && !recording && !flowMode
+
+        // Clip mode standing on its own, as opposed to a clip opened from inside a flow.
+        //
+        // **This distinction is what makes the excursion a mode rather than clip mode with a return button.**
+        // Nested, the idle set is six buttons: finish, edit, save, the eye, dismiss, collapse. Everything
+        // else is deliberately gone, and each for its own reason.
+        //
+        // Playing one clip of a flow in isolation runs it against whatever is on screen now, which is not the
+        // screen the four clips before it would have left behind — so `▶` and `▶|` verify nothing here and
+        // reading a green result off them is worse than having no button.
+        //
+        // `📂 open` and `⊕ new` had a sharper problem: they *worked*, and in working they silently ended the
+        // excursion. Either one replaces the workspace with something unrelated to the flow, leaving the
+        // finish button pointing back at a flow whose clip you are no longer editing.
+        //
+        // `⊙ record` and `⚙ quick settings` are merely out of place — one starts capturing a new script over
+        // the clip you came to fix, the other is a settings panel reachable from the app.
+        //
+        // Editing keeps its whole set. Editing *is* what the excursion is for.
+        val soloIdle = idle && !insideFlow
+
         // Under the grip in every mode that has it, because a button that reinterprets the others cannot
         // move around. Absent while recording or editing: those are states *inside* clip mode, and
         // leaving one of them is what the record and pencil buttons are already for.
@@ -373,11 +409,11 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
             if (flowMode) R.string.action_mode_flow else R.string.action_mode_clip
         )
 
-        primary.visibility = visibleWhen(idle || flowMode)
-        playFrom.visibility = visibleWhen(idle)
+        primary.visibility = visibleWhen(soloIdle || flowMode)
+        playFrom.visibility = visibleWhen(soloIdle)
         // Clip mode only. It used to be visible in flow mode as "the way out", which made recording a
         // hidden mode change — the mode button is the way out now, and it is the only one.
-        secondary.visibility = visibleWhen(!editing && !flowMode)
+        secondary.visibility = visibleWhen(!editing && !flowMode && !insideFlow)
         insertPause.visibility = visibleWhen(recording || editing)
         insertWait.visibility = visibleWhen(recording || editing)
         insertGlobal.visibility = visibleWhen(recording || editing)
@@ -390,16 +426,21 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         insertStep.visibility = visibleWhen(editing)
         duplicateStep.visibility = visibleWhen(editing)
         deleteStep.visibility = visibleWhen(editing)
-        newClip.visibility = visibleWhen(idle)
+        newClip.visibility = visibleWhen(soloIdle)
+        // Save survives the excursion, and it is the only one of the storage buttons that does: overwriting
+        // the file this clip came from is precisely what you came to do. Save-as does not, because writing the
+        // edit to a *different* file would leave the flow pointing at the untouched original — your fix would
+        // appear to have done nothing. Make variants from the home screen, where no flow is waiting.
         save.visibility = visibleWhen(idle)
-        // One button, and behind it a dialog listing only the current mode's kind. It used to list both,
-        // which under an explicit mode is a hole: picking a flow from clip mode would empty the workspace
-        // without ever passing the mode button, so the one thing that asks before discarding is skipped.
-        load.visibility = visibleWhen(idle || flowMode)
+        saveAs.visibility = visibleWhen(soloIdle)
+        // One button, and behind it the picker for the current mode's kind. It used to list both kinds, which
+        // under an explicit mode is a hole: opening a flow from clip mode would empty the workspace without
+        // ever passing the mode button, so the one thing that asks before discarding is skipped.
+        load.visibility = visibleWhen(soloIdle || flowMode)
         newFlow.visibility = visibleWhen(flowMode)
         deleteFlow.visibility = visibleWhen(flowMode)
         editFlow.visibility = visibleWhen(flowMode)
-        quickSettings.visibility = visibleWhen(idle || flowMode)
+        quickSettings.visibility = visibleWhen(soloIdle || flowMode)
         dismiss.visibility = visibleWhen(idle || flowMode)
 
         primary.setImageResource(if (flowMode) R.drawable.ic_play_flow else R.drawable.ic_play)
@@ -453,6 +494,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         setActionEnabled(deleteStep, hasSelection)
         setActionEnabled(stepPanelToggle, hasSelection)
         setActionEnabled(save, hasSteps)
+        setActionEnabled(saveAs, hasSteps)
         setActionEnabled(load, true)
         setActionEnabled(newClip, hasSteps)
         setActionEnabled(dismiss, true)
@@ -611,6 +653,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         stepPanelToggle.contentDescription = context.getString(R.string.action_step_panel)
         stepListToggle.contentDescription = context.getString(R.string.action_step_list)
         save.contentDescription = context.getString(R.string.action_save)
+        saveAs.contentDescription = context.getString(R.string.action_save_as)
         load.contentDescription = context.getString(R.string.action_load)
         newClip.contentDescription = context.getString(R.string.action_new_clip)
         newFlow.contentDescription = context.getString(R.string.action_new_flow)

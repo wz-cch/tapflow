@@ -53,6 +53,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -444,11 +445,10 @@ class TapFlowService : AccessibilityService() {
             }
         }
         scope.launch { Workspace.steps.collect { syncOverlay() } }
-        scope.launch { Repo.currentFlowId.collect { syncOverlay() } }
-        // Both, not just the mode: flow mode with nothing loaded is a real state, and which one it is
+        // Both, not just the mode: flow mode with nothing open is a real state, and which one it is
         // decides whether play and the flow buttons are live.
+        scope.launch { Repo.currentFlow.collect { syncOverlay() } }
         scope.launch { Repo.mode.collect { syncOverlay() } }
-        scope.launch { Repo.flows.collect { syncOverlay() } }
         scope.launch { Repo.settings.collect { syncOverlay() } }
         scope.launch { EngineState.mode.collect { syncOverlay() } }
         scope.launch { EngineState.toolbarForm.collect { syncOverlay() } }
@@ -536,8 +536,8 @@ class TapFlowService : AccessibilityService() {
             stepListOpen = EngineState.stepListOpen.value,
             stepPanelOpen = EngineState.paramPanelOpen.value,
             flowMode = flowMode,
-            hasFlow = Repo.currentFlowId.value != null,
-            insideFlow = Session.returnToFlowId != null,
+            hasFlow = Repo.currentFlow.value != null,
+            insideFlow = Session.returnToFlowRef != null,
         )
         host.update(toolbar, toolbarParams)
 
@@ -1101,8 +1101,8 @@ class TapFlowService : AccessibilityService() {
      * fails while looking like it succeeded, which is the worse of the two failures.
      */
     private fun startFlowPlayback() {
-        val flow = Repo.currentFlow() ?: return
-        val plan = FlowPlan.expand(flow, Repo.clips.value, currentScreen())
+        val open = Repo.currentFlow.value ?: return
+        val plan = FlowPlan.expand(open.flow, open.clips, currentScreen())
 
         if (plan.missing.isNotEmpty()) {
             toast(getString(R.string.toast_flow_missing_clip, plan.missing.size))
@@ -1114,9 +1114,12 @@ class TapFlowService : AccessibilityService() {
         }
 
         Diag.clear()
-        Diag.log("playback start: flow '${flow.name}', ${flow.clips.size} clip(s) -> ${plan.steps.size} step(s)")
+        Diag.log(
+            "playback start: flow '${open.file.name}', ${open.flow.clips.size} clip(s) " +
+                "-> ${plan.steps.size} step(s)"
+        )
         exitEditing()
-        player.play(plan.steps, recordedScreen = null, loops = flow.loopCount, plan = plan)
+        player.play(plan.steps, recordedScreen = null, loops = open.flow.loopCount, plan = plan)
     }
 
     /**
@@ -1155,7 +1158,7 @@ class TapFlowService : AccessibilityService() {
      * the rule is *for* cannot go wrong the same way when a fifth mode is added.
      */
     private fun openWorkspaceDialog(mode: WorkspaceDialogActivity.Mode, stepId: String? = null) {
-        if (mode == WorkspaceDialogActivity.Mode.SAVE && Workspace.isEmpty) {
+        if (mode == WorkspaceDialogActivity.Mode.SAVE_AS && Workspace.isEmpty) {
             toast(getString(R.string.toast_nothing_to_save))
             return
         }
@@ -1842,7 +1845,38 @@ class TapFlowService : AccessibilityService() {
 
         override fun onDeleteSelected() = deleteSelected()
 
-        override fun onSave() = openWorkspaceDialog(WorkspaceDialogActivity.Mode.SAVE)
+        /**
+         * Overwrites the file this clip came from, with no dialog at all.
+         *
+         * That is the whole of a plain save now: the workspace knows which file it was opened from, and
+         * writing it back needs nothing typed and nowhere chosen. It used to open a screen asking for a name,
+         * a tick box for "save as new" and a folder to browse — three questions, of which the answer to all
+         * three was almost always "the same as last time".
+         *
+         * A clip that has never been saved has nothing to overwrite, so it falls through to save-as. Which is
+         * what every editor does, and it means `💾` always does something.
+         */
+        override fun onSave() {
+            val target = Workspace.source.value ?: return onSaveAs()
+            if (Workspace.isEmpty) {
+                toast(getString(R.string.toast_nothing_to_save))
+                return
+            }
+            // Off the main thread: writing goes through a ContentProvider on API 29+, and a slow provider
+            // showed up on a device as the whole UI locking up rather than as a save taking a moment.
+            scope.launch {
+                val result = withContext(Dispatchers.IO) { Workspace.commit(target) }
+                toast(
+                    when (result) {
+                        is Workspace.Saved.Ok -> getString(R.string.toast_saved, result.file.name)
+                        Workspace.Saved.Nothing -> getString(R.string.toast_nothing_to_save)
+                        Workspace.Saved.Failed -> getString(R.string.toast_save_failed)
+                    }
+                )
+            }
+        }
+
+        override fun onSaveAs() = openWorkspaceDialog(WorkspaceDialogActivity.Mode.SAVE_AS)
 
         /**
          * Naming a flow needs a keyboard, so it goes the same way saving a clip does — an activity, because
@@ -1858,14 +1892,19 @@ class TapFlowService : AccessibilityService() {
          * no undo — `↩` restores steps, and a deleted flow is gone.
          */
         override fun onDeleteFlow() {
-            val flow = Repo.currentFlow() ?: return
+            val open = Repo.currentFlow.value ?: return
             openOptionPad(
                 OptionRequest(
-                    title = getString(R.string.flow_delete_title, flow.name),
+                    title = getString(R.string.flow_delete_title, open.file.name),
                     labels = listOf(getString(R.string.clip_action_delete)),
                 ) {
-                    Repo.deleteFlow(flow.id)
-                    toast(getString(R.string.toast_flow_deleted, flow.name))
+                    scope.launch {
+                        val gone = withContext(Dispatchers.IO) { Repo.deleteFile(open.file.ref) }
+                        toast(
+                            if (gone) getString(R.string.toast_flow_deleted, open.file.name)
+                            else getString(R.string.toast_delete_failed)
+                        )
+                    }
                 }
             )
         }
@@ -1879,10 +1918,10 @@ class TapFlowService : AccessibilityService() {
          * picker, and it is the same screen the app's flow rows open — one editor, two ways in.
          */
         override fun onEditFlow() {
-            val flow = Repo.currentFlow() ?: return
+            val open = Repo.currentFlow.value ?: return
             startActivity(
                 Intent(this@TapFlowService, MainActivity::class.java)
-                    .putExtra(MainActivity.EXTRA_OPEN_FLOW, flow.id)
+                    .putExtra(MainActivity.EXTRA_OPEN_FLOW, open.file.ref)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             )
         }
@@ -1923,32 +1962,37 @@ class TapFlowService : AccessibilityService() {
                         getString(R.string.finish_clip_discard),
                     ),
                 ) { index ->
+                    if (index != 0) {
+                        backToFlow()
+                        return@OptionRequest
+                    }
                     // Only on a successful save. A failed write leaves the workspace dirty and the draft
                     // recoverable, and walking back to the flow would strand the edit behind a screen that
-                    // no longer explains it — the same reason the save dialog does not close on a failure.
-                    if (index == 0 && !saveOverSource()) return@OptionRequest
-                    backToFlow()
+                    // no longer explains it.
+                    scope.launch { if (saveOverSource()) backToFlow() }
                 }
             )
         }
 
         /**
-         * Overwrites the clip this workspace came from, with no naming step.
+         * Overwrites the file this workspace came from, with no naming step.
          *
-         * Its name is whatever it already had: this route exists to fix a clip in place, so inventing a
-         * different name for it would be the one thing nobody asked for.
+         * This route exists to fix a clip in place, so writing it anywhere else would be the one thing nobody
+         * asked for — and on a flow's clip it would be actively wrong: the flow points at the old file, so the
+         * fix would appear not to have worked.
          */
-        private fun saveOverSource(): Boolean {
-            val name = Repo.clipById(Workspace.sourceClipId)?.name
-            if (name == null) {
-                // No source means the clip was deleted from under the excursion. Nothing to overwrite, and
-                // silently creating a new one would leave the flow pointing at the old id regardless.
+        private suspend fun saveOverSource(): Boolean {
+            val target = Workspace.source.value
+            if (target == null) {
+                // No source means the clip was never a file — unreachable from a flow, which only ever holds
+                // clips that were read from one, and worth reporting rather than silently creating a file the
+                // flow does not point at.
                 toast(getString(R.string.toast_save_failed))
                 return false
             }
-            return when (val result = Workspace.commit(name, System.currentTimeMillis(), asNew = false)) {
+            return when (val result = withContext(Dispatchers.IO) { Workspace.commit(target) }) {
                 is Workspace.Saved.Ok -> {
-                    toast(getString(R.string.toast_saved, result.clip.name))
+                    toast(getString(R.string.toast_saved, result.file.name))
                     true
                 }
 
@@ -1966,17 +2010,19 @@ class TapFlowService : AccessibilityService() {
             // go back" is the whole reason this button exists. Without it the canvas would keep intercepting
             // the entire screen after the mode changed under it.
             exitEditing()
-            val flow = Session.returnToFlow()
-            if (flow == null) {
-                // The flow was deleted while its clip was open. The breadcrumb is spent either way, so land
-                // somewhere honest rather than nowhere: flow mode with nothing loaded.
+            val ref = Session.consumeReturnRef()
+            if (ref == null) {
+                // Nothing to go back to, which should be unreachable — the button is only visible while the
+                // breadcrumb exists. Land somewhere honest rather than nowhere: flow mode with nothing open.
                 Session.switchMode(AppMode.FLOW)
                 toast(getString(R.string.toast_flow_gone))
                 return
             }
+            // The editor re-reads the flow, which is how the edit that was just saved shows up in it. Reading
+            // it here instead would mean file IO on this thread, for a screen that is about to do it anyway.
             startActivity(
                 Intent(this@TapFlowService, MainActivity::class.java)
-                    .putExtra(MainActivity.EXTRA_OPEN_FLOW, flow.id)
+                    .putExtra(MainActivity.EXTRA_OPEN_FLOW, ref)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             )
         }

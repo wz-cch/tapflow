@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Tinted programmatically by the overlay views, so no tint attribute here.
+     Save-as: the same downward arrow into a tray as ic_save, plus a plus sign — a *new* file rather than the
+     one this clip came from. Deliberately the save glyph with something added, because the two sit next to
+     each other in the same column and the difference between them is exactly "another one". -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Narrower than ic_save's arrow, to leave the top-right corner for the plus. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M8,3h2v6h2.5l-3.5,4.5 -3.5,-4.5h2.5z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M3,17h13v3h-13z" />
+    <!-- The plus: a second file, not the one that was opened. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M17,3h2v3h3v2h-3v3h-2v-3h-3v-2h3z" />
+</vector>
