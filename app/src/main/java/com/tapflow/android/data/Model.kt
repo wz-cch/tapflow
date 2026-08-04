@@ -386,10 +386,26 @@ data class Clip(
             step.delayBefore + once * passes + gaps
         }
 
-    private companion object {
-        const val GLOBAL_ACTION_COST_MS = 300L
-    }
 }
+
+/**
+ * Roughly what a global action costs, for [Clip.estimatedDurationMs]. Display only.
+ *
+ * A top-level private const rather than a companion inside [Clip], and that is not a style choice.
+ * `@Serializable` makes the compiler plugin put `serializer()` on the class's companion — the *same*
+ * companion, if the class declares one. This was `private companion object`, so `Clip.Companion` was
+ * private, and every `encodeToString(clip)` compiled into a read of a private field from another class:
+ * legal at compile time because the plugin emits it inside an inlined function body with no synthetic
+ * accessor, and an `IllegalAccessError` the moment a runtime actually enforces the check.
+ *
+ * Which is why it presented as a device-specific crash rather than a bug. Android 11 let the access
+ * through; Android 10 did not, and saving died in Repo.upsertClip with a stack frame pointing at a line
+ * number past the end of Repo.kt — the inliner's marker for code that came from somewhere else.
+ *
+ * So: no `@Serializable` class here may declare a private companion. There is nothing to gain from it and
+ * the failure it causes is invisible until it is not.
+ */
+private const val GLOBAL_ACTION_COST_MS = 300L
 
 // ---------------------------------------------------------------------------
 // Layer 3 — flow: several clips chained into one run.
