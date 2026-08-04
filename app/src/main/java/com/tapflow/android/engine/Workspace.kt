@@ -1,6 +1,8 @@
 package com.tapflow.android.engine
 
 import com.tapflow.android.data.Clip
+import com.tapflow.android.data.DocFile
+import com.tapflow.android.data.LoadedClip
 import com.tapflow.android.data.Repo
 import com.tapflow.android.data.ScreenSpec
 import com.tapflow.android.data.Step
@@ -23,9 +25,15 @@ object Workspace {
     /** True when the workspace differs from the clip it came from (or from nothing). */
     val dirty = MutableStateFlow(false)
 
-    /** Clip this workspace was loaded from. Save overwrites it; save-as always creates a new one. */
-    var sourceClipId: String? = null
-        private set
+    /**
+     * The file this workspace was opened from. `💾` overwrites it; save-as writes a new one.
+     *
+     * Null for a recording that has never been saved, and that is exactly the case where `💾` has nothing to
+     * overwrite and has to ask where the file should go. A [MutableStateFlow] rather than a plain field
+     * because two screens show which file is open — the home screen's "open" badge and the toolbar — and
+     * neither of them is in a position to poll.
+     */
+    val source = MutableStateFlow<DocFile?>(null)
 
     /** Screen geometry the steps were captured on. Null until the first step is recorded. */
     var screen: ScreenSpec? = null
@@ -52,7 +60,7 @@ object Workspace {
             return false
         }
         steps.value = snapshot.steps
-        sourceClipId = snapshot.sourceClipId
+        source.value = snapshot.sourceRef?.let { DocFile(it, snapshot.sourceName.orEmpty()) }
         screen = snapshot.screen
         dirty.value = true
         return true
@@ -194,18 +202,25 @@ object Workspace {
         history.clear()
         coalescing = false
         steps.value = emptyList()
-        sourceClipId = null
+        source.value = null
         screen = null
         dirty.value = false
         persist()
     }
 
-    fun load(clip: Clip) {
+    /**
+     * Takes a working copy of a clip that was just read off disk.
+     *
+     * "Working copy" is the whole of it: the steps are in memory from here on and the file is not held open,
+     * so editing them changes nothing on disk until a save, and a change made to the file from elsewhere does
+     * not appear here. Same as any editor with a document open.
+     */
+    fun load(loaded: LoadedClip) {
         history.clear()
         coalescing = false
-        steps.value = clip.steps
-        sourceClipId = clip.id
-        screen = clip.screen
+        steps.value = loaded.clip.steps
+        source.value = loaded.file
+        screen = loaded.clip.screen
         dirty.value = false
         persist()
     }
@@ -218,46 +233,45 @@ object Workspace {
      * save" — which is not merely unhelpful, it is the opposite of what happened.
      */
     sealed interface Saved {
-        data class Ok(val clip: Clip) : Saved
+        data class Ok(val file: DocFile) : Saved
 
-        /** Empty workspace, blank name, or no screen geometry ever captured. Nothing was attempted. */
+        /** Empty workspace, or no screen geometry ever captured. Nothing was attempted. */
         data object Nothing : Saved
 
-        /** The library folder refused it. The draft stays dirty, so recovery still holds the work. */
+        /** The file refused the write. The draft stays dirty, so recovery still holds the work. */
         data object Failed : Saved
     }
 
     /**
-     * Commits the workspace to a clip under [name].
+     * Writes the workspace to [target], which becomes the file it is open from.
      *
-     * When [asNew] is false and the workspace came from a clip, that clip is updated in place;
-     * otherwise a new one is created. [name] always wins, so renaming while saving works.
+     * One entry point for both saves. Overwriting is `commit(source.value!!)` and saving as is
+     * `commit(whatever the picker returned)` — there is no `asNew` flag any more, because there is nothing
+     * for it to decide: the target file is chosen before this is called, by whoever asked for the save. That
+     * also retires the "save as new leaves the flow pointing at the original" trap, since a flow now
+     * references a *location*, and saving to a different location is visibly a different file.
      *
-     * **`dirty` is only cleared once the write has landed.** That is what makes a failed save safe
-     * rather than silent: the workspace stays unsaved, so the draft survives on disk and the
-     * unsaved-work recovery covers it, and the user is asked to pick the folder again.
+     * **`dirty` is only cleared once the write has landed.** That is what makes a failed save safe rather
+     * than silent: the workspace stays unsaved, so the draft survives on disk and the unsaved-work recovery
+     * covers it.
+     *
+     * **Writes a file, so never call this on the main thread.** On API 29+ that write is a ContentProvider
+     * round trip, and a slow provider showed up on a device as the whole UI locking up rather than as a save
+     * taking a moment.
      */
-    fun commit(name: String, now: Long, asNew: Boolean): Saved {
+    fun commit(target: DocFile): Saved {
         val currentSteps = steps.value
         val capturedOn = screen
         if (currentSteps.isEmpty() || capturedOn == null) return Saved.Nothing
 
-        val cleanName = name.trim().ifEmpty { return Saved.Nothing }
-        val existing = if (asNew) null else Repo.clipById(sourceClipId)
-        val clip = existing?.copy(
-            name = cleanName,
-            steps = currentSteps,
-            screen = capturedOn,
-            updatedAt = now,
-        ) ?: Clip(name = cleanName, steps = currentSteps, screen = capturedOn, createdAt = now)
+        if (!Repo.saveClip(target.ref, Clip(steps = currentSteps, screen = capturedOn), target.name)) {
+            return Saved.Failed
+        }
 
-        if (!Repo.upsertClip(clip)) return Saved.Failed
-
-        sourceClipId = clip.id
-        Repo.setCurrentClip(clip.id)
+        source.value = target
         dirty.value = false
         persist()
-        return Saved.Ok(clip)
+        return Saved.Ok(target)
     }
 
     private fun markDirty() {
@@ -265,8 +279,15 @@ object Workspace {
         persist()
     }
 
-    private fun persist() =
-        Repo.writeWorkspace(WorkspaceSnapshot(steps.value, sourceClipId, screen, dirty.value))
+    private fun persist() = Repo.writeWorkspace(
+        WorkspaceSnapshot(
+            steps = steps.value,
+            sourceRef = source.value?.ref,
+            sourceName = source.value?.name,
+            screen = screen,
+            dirty = dirty.value,
+        )
+    )
 
     /** Deep enough for any editing session; the entries are references, so the cost is negligible. */
     private const val HISTORY_LIMIT = 60

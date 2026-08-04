@@ -1,5 +1,7 @@
 package com.tapflow.android.ui
 
+import android.content.Context
+import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -26,9 +28,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,11 +45,15 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tapflow.android.R
 import com.tapflow.android.data.Clip
 import com.tapflow.android.data.ClipNode
+import com.tapflow.android.data.DocKind
 import com.tapflow.android.data.Flow
 import com.tapflow.android.data.Repo
 import com.tapflow.android.data.Settings
 import com.tapflow.android.engine.Session
 import com.tapflow.android.text.clipSummary
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 /**
@@ -52,43 +61,93 @@ import kotlin.math.roundToInt
  *
  * A plain list, and deliberately nothing more. This screen's object is the *clip*; it cannot edit what is
  * inside one, so there are no coordinates to drag, no durations to nudge, nothing that needs the overlay.
- * If a step inside a clip needs changing, that happens where clips are edited.
+ * If a step inside a clip needs changing, that happens where clips are edited — tap the name.
  *
- * Every change writes straight back through [Repo.upsertFlow]. A flow is a list of references with nothing
- * accumulating in it, so there is no unsaved state to protect and therefore no save button — the same
- * reason the toolbar has none in flow mode.
+ * ### Entering reads the flow
  *
- * "Straight back" now means a file in the user's folder, so every one of those writes can fail and every
- * one goes through [wroteToLibrary]. Without it the in-memory flow would be left untouched too, and the
- * screen would simply not change — a tap that silently did nothing.
+ * All three ways in — arranging from the home screen, the toolbar's pencil, and coming back from editing one
+ * of the clips — hand over a file reference, and this screen reads it. Unconditionally, even when that flow is
+ * already open, because the one case that matters is the third: the clip that was just edited is one of the
+ * files this flow points at, so re-reading is how the edit arrives. Making it conditional would mean deciding
+ * *when* a re-read is needed, and the answer would be wrong exactly once.
+ *
+ * Every change writes straight back. A flow is a list of references with nothing accumulating in it, so there
+ * is no unsaved state to protect and therefore no save button — the same reason the toolbar has none in flow
+ * mode. Those writes go through [writeFile], off the main thread and reported when they fail: without that,
+ * a failed write would leave the in-memory flow untouched too, and the tap would appear to do nothing.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 /**
- * @param onEditClip one of this flow's clips is to be opened for editing. The screen has already loaded it
- *   and left the breadcrumb; what remains is handing over to the toolbar, which only the activity can do.
+ * @param flowRef the flow's file. Read on entry; see above.
+ * @param onEditClip one of this flow's clips has been opened for editing. Handing over to the toolbar is all
+ *   that is left, and only the activity can do it.
  */
 @Composable
-fun FlowEditorScreen(flowId: String, onBack: () -> Unit, onEditClip: () -> Unit) {
+fun FlowEditorScreen(flowRef: String, onBack: () -> Unit, onEditClip: () -> Unit) {
     val context = LocalContext.current
-    val flows by Repo.flows.collectAsStateWithLifecycle()
-    val clips by Repo.clips.collectAsStateWithLifecycle()
-    val flow = flows.firstOrNull { it.id == flowId }
+    val scope = rememberCoroutineScope()
+    val open by Repo.openFlow.collectAsStateWithLifecycle()
+    var loading by remember(flowRef) { mutableStateOf(true) }
 
-    // The flow can vanish under this screen — deleted from the toolbar, for instance — and there is
-    // nothing to show then.
+    LaunchedEffect(flowRef) {
+        val opened = withContext(Dispatchers.IO) { Repo.openFlow(flowRef) }
+        loading = false
+        if (opened == null) {
+            // The file was deleted or moved while its editor was on the way up. Nothing to arrange.
+            context.toastLong(context.getString(R.string.toast_open_flow_failed))
+            onBack()
+        } else {
+            Session.openFlow(opened)
+        }
+    }
+
+    val flow = open?.takeIf { it.file.ref == flowRef }
     if (flow == null) {
-        onBack()
+        if (loading) BusyDialog()
         return
     }
 
-    var addingClip by remember { mutableStateOf(false) }
+    // Saveable: the picker is another activity, so a rotation while it is open would otherwise lose which
+    // row the result belongs to and silently drop the choice.
+    var addingAt by rememberSaveable { mutableStateOf<Int?>(null) }
     var editing by remember { mutableStateOf<Int?>(null) }
+
+    /** Writes a changed node list back to the file, keeping the clips already read. */
+    fun update(nodes: List<ClipNode>) {
+        scope.writeFile(context) { Repo.saveFlow(flow.withNodes(nodes)) }
+    }
+
+    val clipPicker = rememberFilePicker(DocKind.CLIP) { ref ->
+        val at = addingAt
+        addingAt = null
+        if (ref == null || at == null) return@rememberFilePicker
+        scope.launch {
+            // Read here rather than on the next open, so the row can show the clip's real name and summary
+            // immediately — and so a file that turns out not to be a clip is refused at the moment it is
+            // chosen, which is the only moment the user can do anything about it.
+            val loaded = withContext(Dispatchers.IO) { Repo.openClip(ref) }
+            if (loaded == null) {
+                context.toastLong(context.getString(R.string.toast_open_clip_failed))
+                return@launch
+            }
+            val node = ClipNode(ref = loaded.file.ref, name = loaded.file.name)
+            // `at` is the row being repointed, or the size of the list when appending.
+            val nodes = if (at in flow.flow.clips.indices) {
+                flow.flow.clips.mapIndexed { index, existing ->
+                    if (index == at) existing.copy(ref = node.ref, name = node.name) else existing
+                }
+            } else {
+                flow.flow.clips + node
+            }
+            scope.writeFile(context) { Repo.saveFlow(flow.withNodes(nodes, loaded)) }
+        }
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(flow.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(flow.file.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -106,10 +165,24 @@ fun FlowEditorScreen(flowId: String, onBack: () -> Unit, onEditClip: () -> Unit)
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             item {
-                LoopRow(flow) { updated -> context.wroteToLibrary { Repo.upsertFlow(updated) } }
+                LoopRow(flow.flow) { updated ->
+                    scope.writeFile(context) { Repo.saveFlow(flow.withFlow(updated)) }
+                }
             }
 
-            if (flow.clips.isEmpty()) {
+            // Above the rows, because it explains them: a reference is a location, so this is what a moved or
+            // renamed clip looks like, and every one of those rows offers the one thing that fixes it.
+            if (flow.missingCount > 0) {
+                item {
+                    Text(
+                        stringResource(R.string.flow_missing_note, flow.missingCount),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+
+            if (flow.flow.clips.isEmpty()) {
                 item {
                     Text(
                         stringResource(R.string.flow_editor_empty),
@@ -119,31 +192,36 @@ fun FlowEditorScreen(flowId: String, onBack: () -> Unit, onEditClip: () -> Unit)
                 }
             }
 
-            itemsIndexed(flow.clips) { index, node ->
+            itemsIndexed(flow.flow.clips) { index, node ->
                 ClipNodeRow(
                     position = index + 1,
                     node = node,
-                    clip = clips.firstOrNull { it.id == node.clipId },
+                    name = flow.nameAt(index),
+                    clip = flow.clipAt(index)?.clip,
                     canMoveUp = index > 0,
-                    canMoveDown = index < flow.clips.lastIndex,
-                    onMove = { delta -> context.wroteToLibrary { Repo.upsertFlow(flow.moved(index, delta)) } },
-                    onRemove = {
-                        context.wroteToLibrary { Repo.upsertFlow(flow.copy(clips = flow.clips.minusAt(index))) }
-                    },
+                    canMoveDown = index < flow.flow.clips.lastIndex,
+                    onMove = { delta -> update(flow.flow.clips.moved(index, delta)) },
+                    onRemove = { update(flow.flow.clips.minusAt(index)) },
                     onOpenSettings = { editing = index },
                     // Nothing to confirm. The flow is written on every change here, so it is already on
                     // disk, and flow mode keeps the workspace empty — so leaving for the clip cannot lose
                     // anything on either side.
-                    onEditClip = { clip ->
-                        Session.editClipFromFlow(flow.id, clip)
-                        onEditClip()
+                    onEditClip = {
+                        flow.clipAt(index)?.let { loaded ->
+                            Session.editClipFromFlow(flow.file.ref, loaded)
+                            onEditClip()
+                        }
                     },
+                    // Opens beside the flow itself, which is where a clip that moved is most likely to be.
+                    onRelink = { addingAt = index; clipPicker.open(near = flow.file.ref) },
                 )
             }
 
             item {
                 Spacer(Modifier.height(4.dp))
-                OutlinedButton(onClick = { addingClip = true }) {
+                OutlinedButton(
+                    onClick = { addingAt = flow.flow.clips.size; clipPicker.open(near = flow.file.ref) }
+                ) {
                     Text(stringResource(R.string.flow_editor_add))
                 }
                 Spacer(Modifier.height(24.dp))
@@ -151,20 +229,8 @@ fun FlowEditorScreen(flowId: String, onBack: () -> Unit, onEditClip: () -> Unit)
         }
     }
 
-    if (addingClip) {
-        // The same clip list the overlay's load dialog shows, for the same reason: one place that knows
-        // how to present a clip means the two cannot drift.
-        PickClipDialog(
-            clips = clips,
-            onDismiss = { addingClip = false },
-        ) { clip ->
-            context.wroteToLibrary { Repo.upsertFlow(flow.copy(clips = flow.clips + ClipNode(clipId = clip.id))) }
-            addingClip = false
-        }
-    }
-
     editing?.let { index ->
-        val node = flow.clips.getOrNull(index)
+        val node = flow.flow.clips.getOrNull(index)
         if (node == null) {
             editing = null
         } else {
@@ -173,7 +239,7 @@ fun FlowEditorScreen(flowId: String, onBack: () -> Unit, onEditClip: () -> Unit)
                 node = node,
                 onDismiss = { editing = null },
             ) { updated ->
-                context.wroteToLibrary { Repo.upsertFlow(flow.copy(clips = flow.clips.replacedAt(index, updated))) }
+                update(flow.flow.clips.replacedAt(index, updated))
                 editing = null
             }
         }
@@ -183,11 +249,10 @@ fun FlowEditorScreen(flowId: String, onBack: () -> Unit, onEditClip: () -> Unit)
 /**
  * The flow's loop count.
  *
- * Writes on release, not on every value change. Saving a flow now means a file in a folder the user
- * chose, reached through a ContentProvider — so writing per tick would be dozens of round trips for one
- * drag, and the slider would stutter against its own saves. Dragging updates a local number; letting go
- * commits it. The clip-node dialog needs none of this: it already keeps its three sliders local and
- * writes once, on its confirm button.
+ * Writes on release, not on every value change. Saving a flow means writing a file, which on API 29+ is a
+ * ContentProvider round trip — so writing per tick would be dozens of them for one drag, and the slider would
+ * stutter against its own saves. Dragging updates a local number; letting go commits it. The clip-node dialog
+ * needs none of this: it already keeps its three sliders local and writes once, on its confirm button.
  */
 @Composable
 private fun LoopRow(flow: Flow, onChange: (Flow) -> Unit) {
@@ -241,17 +306,26 @@ private fun LoopRow(flow: Flow, onChange: (Flow) -> Unit) {
     }
 }
 
+/**
+ * One clip's place in the flow.
+ *
+ * @param clip null when the file behind this row could not be read, which is what turns the row into `!` plus
+ *   a way to point it somewhere else. Not an error state to be cleared: a reference is a location, and the
+ *   user is entitled to move their files.
+ */
 @Composable
 private fun ClipNodeRow(
     position: Int,
     node: ClipNode,
+    name: String,
     clip: Clip?,
     canMoveUp: Boolean,
     canMoveDown: Boolean,
     onMove: (Int) -> Unit,
     onRemove: () -> Unit,
     onOpenSettings: () -> Unit,
-    onEditClip: (Clip) -> Unit,
+    onEditClip: () -> Unit,
+    onRelink: () -> Unit,
 ) {
     val resources = LocalContext.current.resources
     Card(Modifier.fillMaxWidth()) {
@@ -269,7 +343,11 @@ private fun ClipNodeRow(
                 // that leaves this screen is the one that has to look like a link — and it is the name,
                 // because that is the clip rather than its place in this flow.
                 Text(
-                    clip?.name ?: stringResource(R.string.node_clip_gone),
+                    if (clip == null) {
+                        stringResource(R.string.node_clip_missing, name.ifEmpty { "?" })
+                    } else {
+                        name
+                    },
                     style = MaterialTheme.typography.bodyLarge,
                     color = if (clip == null) {
                         MaterialTheme.colorScheme.error
@@ -279,7 +357,7 @@ private fun ClipNodeRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
-                        .then(if (clip == null) Modifier else Modifier.clickable { onEditClip(clip) })
+                        .clickable(onClick = if (clip == null) onRelink else onEditClip)
                         .padding(vertical = 2.dp),
                 )
                 Text(
@@ -292,6 +370,15 @@ private fun ClipNodeRow(
                         clipSummary(resources, clip),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    // Under the name, where the summary would have been, because it is the answer to the
+                    // question the `!` raises rather than a separate feature.
+                    Text(
+                        stringResource(R.string.node_relink),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clickable(onClick = onRelink),
                     )
                 }
             }
@@ -412,48 +499,12 @@ private fun SliderBlock(
     }
 }
 
-@Composable
-private fun PickClipDialog(clips: List<Clip>, onDismiss: () -> Unit, onPick: (Clip) -> Unit) {
-    val resources = LocalContext.current.resources
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.flow_editor_add)) },
-        text = {
-            if (clips.isEmpty()) {
-                Text(stringResource(R.string.load_empty))
-            } else {
-                LazyColumn(Modifier.height(320.dp)) {
-                    itemsIndexed(clips) { _, clip ->
-                        Column(
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 10.dp)
-                        ) {
-                            TextButton(onClick = { onPick(clip) }) {
-                                Text(clip.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
-                            Text(
-                                clipSummary(resources, clip),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.dialog_cancel)) }
-        },
-    )
-}
-
 // --- list helpers, kept here because nothing else needs them ---
 
-private fun Flow.moved(index: Int, delta: Int): Flow {
+private fun List<ClipNode>.moved(index: Int, delta: Int): List<ClipNode> {
     val target = index + delta
-    if (target !in clips.indices) return this
-    return copy(clips = clips.toMutableList().apply { add(target, removeAt(index)) })
+    if (target !in indices) return this
+    return toMutableList().apply { add(target, removeAt(index)) }
 }
 
 private fun List<ClipNode>.minusAt(index: Int): List<ClipNode> =
@@ -461,3 +512,5 @@ private fun List<ClipNode>.minusAt(index: Int): List<ClipNode> =
 
 private fun List<ClipNode>.replacedAt(index: Int, node: ClipNode): List<ClipNode> =
     mapIndexed { position, existing -> if (position == index) node else existing }
+
+private fun Context.toastLong(text: String) = Toast.makeText(this, text, Toast.LENGTH_LONG).show()

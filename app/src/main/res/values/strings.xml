@@ -43,11 +43,12 @@
     <string name="density_hidden">Hidden</string>
 
     <!-- Flow nodes -->
-    <string name="node_clip_repeat">%1$s ×%2$d</string>
-    <string name="node_clip_gone">(clip no longer exists)</string>
+    <string name="node_clip_missing">! %1$s</string>
+    <string name="node_relink">Point this row at a file</string>
+    <string name="flow_missing_note">%1$d clip(s) could not be opened — moved, renamed or deleted. Tap the row to point it at the file.</string>
 
     <!-- Clips -->
-    <string name="flow_editor_empty">No clips in this flow yet. Add one below.</string>
+    <string name="flow_editor_empty">No clips in this flow yet. Add one below — they can come from any folder.</string>
     <string name="flow_editor_add">Add a clip</string>
     <string name="flow_loop_body">How many times the whole flow runs. 0 runs until you stop it.</string>
     <string name="flow_node_plain">runs once, no lead-in</string>
@@ -58,15 +59,14 @@
     <string name="home_loaded">LOADED</string>
     <string name="flow_summary">%1$d clips · about %2$s</string>
     <string name="flow_new_title">New flow</string>
-    <string name="flow_new_confirm">Create</string>
-    <string name="flow_name_label">Flow name</string>
     <string name="flow_delete_title">Delete “%1$s”? A flow cannot be undone.</string>
     <string name="toast_flow_created">Created and loaded “%1$s”</string>
     <string name="toast_flow_loaded">Loaded “%1$s”</string>
     <string name="toast_flow_deleted">Deleted “%1$s”</string>
     <string name="toast_flow_empty">This flow has no clips in it yet</string>
-    <string name="toast_flow_missing_clip">This flow refers to %1$d clip(s) that no longer exist. Open it and fix it before running.</string>
+    <string name="toast_flow_missing_clip">%1$d of this flow’s clips could not be opened. Arrange the flow and point those rows at their files first.</string>
     <string name="clip_default_name">Recording %1$s</string>
+    <string name="flow_default_name">Flow %1$s</string>
 
     <!-- Toolbar buttons. Used as content descriptions, so they must stay short. -->
     <string name="action_play">Play</string>
@@ -86,6 +86,7 @@
     <string name="action_step_list">Step list</string>
     <string name="action_edit_mode">Edit mode</string>
     <string name="action_save">Save clip</string>
+    <string name="action_save_as">Save as a new file</string>
     <string name="action_load">Load clip</string>
     <string name="action_play_flow">Play this flow</string>
     <string name="action_new_flow">New flow</string>
@@ -121,11 +122,18 @@
     <string name="onboarding_service_stalled_body">TapFlow is switched on in accessibility settings, but Android has not restarted the service. This usually happens after the app is swiped off the recents list or force stopped.\n\nTry switching TapFlow off and back on in accessibility settings. If that does not help, this device is holding the app in a stopped state: exclude TapFlow from battery optimisation and allow it to auto-start, or reinstall it. Nothing inside the app can force Android to bind the service.\n\nYou can turn the toolbar on below already — it will appear as soon as the service reconnects.</string>
 
     <!-- Home screen -->
+    <string name="home_recent_clips">Recent clips</string>
+    <string name="home_recent_flows">Recent flows</string>
+    <string name="home_open_clip">Open a clip file…</string>
+    <string name="home_open_flow">Open a flow file…</string>
+    <string name="home_row_missing">! %1$s</string>
+    <string name="row_forget">Remove from this list</string>
+    <string name="row_delete_file">Delete the file</string>
+    <string name="rename_breaks_flows">This renames the file. Flows that use this clip will show ! until you point them at the new name.</string>
+    <string name="busy_reading">Reading…</string>
     <string name="home_show_toolbar">Show floating toolbar</string>
-    <string name="home_tab_clips">Clips</string>
-    <string name="home_tab_flows">Flows</string>
-    <string name="home_no_clips">No clips yet. Turn on the toolbar, press record, and do something.</string>
-    <string name="home_no_flows">No flows yet. Chain saved clips into a flow to run them in one go.</string>
+    <string name="home_no_clips">Nothing opened yet. Turn on the toolbar, press record and do something, or open a clip file.</string>
+    <string name="home_no_flows">Nothing opened yet. A flow chains saved clips so they run in one go.</string>
     <string name="clip_summary">%1$d actions · about %2$s</string>
     <string name="clip_summary_with_pauses">%1$d actions · %2$d pause points · about %3$s</string>
 
@@ -149,8 +157,7 @@
     <string name="clip_action_delete">Delete</string>
     <string name="clip_rename_title">Rename clip</string>
     <string name="clip_delete_title">Delete “%1$s”?</string>
-    <string name="clip_delete_body_in_flows">%1$d flow(s) use this clip. Deleting it removes it from them too. This cannot be undone.</string>
-    <string name="clip_delete_body">This cannot be undone.</string>
+    <string name="clip_delete_body">The file is deleted. Flows that use it will show ! until you point them somewhere else.</string>
     <string name="dialog_confirm">OK</string>
     <string name="dialog_cancel">Cancel</string>
     <string name="number_entry_range">Between %1$d and %2$d</string>
@@ -210,25 +217,24 @@
     <string name="quick_full_settings">All settings in the app →</string>
 
     <!-- Workspace dialogs -->
+    <string name="browse_title_open">Choose a file</string>
+    <string name="browse_title_save">Save into</string>
+    <string name="browse_up">Up one folder</string>
+    <string name="browse_empty">Nothing here.</string>
+    <string name="browse_name_label">File name</string>
+    <string name="browse_overwrite_title">Replace “%1$s”?</string>
     <string name="note_title">Pause note</string>
     <string name="note_explain">Shown when a replay stops here. Leave it blank if you do not need one.</string>
     <string name="note_label">What to do by hand</string>
-    <string name="save_title">Save clip</string>
-    <string name="save_name_label">Name</string>
-    <string name="save_as_new">Save as a new clip instead of replacing it</string>
-    <string name="load_title">Load clip</string>
-    <string name="load_empty">Nothing of this kind in this folder.</string>
-    <string name="folder_up">Up one folder</string>
-    <string name="folder_root">Chosen folder</string>
-    <string name="folder_no_subfolders">No folders in here. Make them in a file manager.</string>
-    <string name="save_lands_in">Saves into: %1$s</string>
-    <string name="home_in_folder">🗀 %1$s</string>
     <string name="action_finish_clip">Finish with this clip and go back to the flow</string>
     <string name="finish_clip_title">This clip has unsaved changes. Save them before going back to the flow?</string>
     <string name="finish_clip_save">Save and go back</string>
     <string name="finish_clip_discard">Go back without saving</string>
     <string name="toast_flow_gone">That flow no longer exists</string>
     <string name="toast_workspace_cleared">Workspace cleared</string>
+    <string name="toast_open_clip_failed">Could not open that as a clip. The file may have moved, or it may not be a clip.</string>
+    <string name="toast_open_flow_failed">Could not open that as a flow. The file may have moved, or it may not be a flow.</string>
+    <string name="toast_delete_failed">Could not delete that file</string>
 
     <!-- Diagnostics -->
     <string name="diag_title">Diagnostics</string>
@@ -315,22 +321,5 @@
     <string name="home_mode_flow">Flow mode</string>
     <string name="toast_service_off">Turn the accessibility service on first.</string>
 
-    <!-- The library folder the user picks (SPEC 12). -->
-    <string name="settings_section_storage">Storage</string>
-    <string name="folder_pick_title">Choose a folder for saved clips</string>
-    <string name="folder_pick_body">Saved clips and flows are kept in a folder you choose, so they survive reinstalling. Pick a subfolder — for example Documents/TapFlow. Android does not allow the root of internal storage or the Download folder.</string>
-    <string name="folder_lost_title">The saved folder cannot be reached</string>
-    <string name="folder_lost_body">The folder may have been moved or deleted, the card removed, or the permission lost by reinstalling. Choose it again — the files are still there.</string>
-    <string name="folder_permission_title">Allow access to storage</string>
-    <string name="folder_permission_body">Saved clips are kept in a TapFlow folder in shared storage, so they survive reinstalling. This version of Android needs file access to create it.</string>
-    <string name="folder_permission_action">Allow</string>
-    <string name="folder_pick_action">Choose folder</string>
-    <string name="folder_reading">Reading the folder…</string>
-    <string name="folder_setting">Folder for saved clips</string>
-    <string name="folder_none">Not set yet</string>
-    <string name="folder_change">Change</string>
-    <string name="folder_clear">Clear</string>
-    <string name="toast_save_failed">Could not save — the folder is unreachable. Nothing was lost; choose the folder and save again.</string>
-    <string name="home_no_folder">No folder chosen yet. Saving or loading will ask for one.</string>
-    <string name="library_unreadable">%1$d item(s) in the folder could not be read, so they are missing from the lists below. They are still there — an unclean shutdown can leave a file half-written, and a folder can refuse to be opened.</string>
+    <string name="toast_save_failed">Could not write the file. Nothing was lost — try “save as” to another place.</string>
 </resources>

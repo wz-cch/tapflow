@@ -1,7 +1,5 @@
 package com.tapflow.android.ui
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -29,11 +27,9 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,14 +38,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tapflow.android.R
 import com.tapflow.android.data.FailurePolicy
-import com.tapflow.android.data.FileLibrary
-import com.tapflow.android.data.FolderStore
 import com.tapflow.android.data.Repo
 import com.tapflow.android.data.Settings
 import com.tapflow.android.data.TouchPolicy
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -75,9 +66,6 @@ fun SettingsScreen(onBack: () -> Unit) {
                 .padding(insets)
                 .padding(horizontal = 16.dp),
         ) {
-            item { Section(R.string.settings_section_storage) }
-            item { FolderRow() }
-
             item { Section(R.string.settings_section_defaults) }
             item {
                 MsSlider(R.string.settings_default_gap, settings.defaultGapMs, 0f, 2000f, 50f) { ms ->
@@ -287,97 +275,6 @@ fun SettingsScreen(onBack: () -> Unit) {
                     Text(stringResource(R.string.settings_reset))
                 }
                 Spacer(Modifier.height(32.dp))
-            }
-        }
-    }
-}
-
-/**
- * Which folder holds the saved clips, and the way to change it.
- *
- * Shows a folder *name* rather than a path because SAF does not give one — the tree Uri's document id
- * decodes to something like `Documents/TapFlow` for internal storage and cards, and providers are free
- * to return something opaque instead. That is the limit of what the platform exposes.
- *
- * Clearing does not delete anything. It releases the permission and forgets where the library was, so
- * the next save asks again; the files stay exactly where they are.
- */
-@Composable
-private fun FolderRow() {
-    val usable by FolderStore.usable.collectAsStateWithLifecycle()
-    val scope = rememberCoroutineScope()
-    var busy by remember { mutableStateOf(false) }
-
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        busy = true
-        scope.launch {
-            withContext(Dispatchers.IO) { Repo.useFolder(uri) }
-            busy = false
-        }
-    }
-
-    // API 28 and below: the path is fixed, so what can be missing is the permission that lets us create it.
-    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (!granted) return@rememberLauncherForActivityResult
-        busy = true
-        scope.launch {
-            withContext(Dispatchers.IO) { Repo.useDefaultFolder() }
-            busy = false
-        }
-    }
-
-    // Re-probed on arrival: the folder may have gone away since it was last written to, and this screen
-    // is one of the few places that can say so before a save fails.
-    LaunchedEffect(Unit) {
-        if (FolderStore.isConfigured) withContext(Dispatchers.IO) { FolderStore.refreshUsable() }
-    }
-
-    val needsPermission = FolderStore.needsPermission
-
-    Column(Modifier.padding(top = 12.dp)) {
-        Text(stringResource(R.string.folder_setting), style = MaterialTheme.typography.bodyLarge)
-        // The path is always shown where there is a real one, even before permission is granted — knowing
-        // where the clips will go is useful in itself, and it is what you back up.
-        Text(
-            when {
-                busy -> stringResource(R.string.folder_reading)
-                needsPermission -> stringResource(R.string.folder_permission_title)
-                !FolderStore.isConfigured -> stringResource(R.string.folder_none)
-                !usable -> stringResource(R.string.folder_lost_title)
-                else -> FolderStore.displayName().orEmpty()
-            },
-            style = MaterialTheme.typography.bodySmall,
-            color = if (!busy && (needsPermission || (FolderStore.isConfigured && !usable))) {
-                MaterialTheme.colorScheme.error
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
-        )
-        Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(
-                onClick = {
-                    if (FolderStore.picksFolder) picker.launch(null)
-                    else permission.launch(FileLibrary.PERMISSION)
-                },
-                enabled = !busy,
-            ) {
-                Text(
-                    stringResource(
-                        when {
-                            needsPermission -> R.string.folder_permission_action
-                            FolderStore.isConfigured -> R.string.folder_change
-                            else -> R.string.folder_pick_action
-                        }
-                    )
-                )
-            }
-            // Only where forgetting means something. On the versions with a fixed path there is no choice
-            // to undo, and a button that clears nothing is worse than no button.
-            if (FolderStore.canForget && FolderStore.isConfigured) {
-                OutlinedButton(onClick = { Repo.forgetFolder() }, enabled = !busy) {
-                    Text(stringResource(R.string.folder_clear))
-                }
             }
         }
     }

@@ -40,11 +40,12 @@
     <string name="density_hidden">隱藏</string>
 
     <!-- 流程節點 -->
-    <string name="node_clip_repeat">%1$s ×%2$d</string>
-    <string name="node_clip_gone">(片段已不存在)</string>
+    <string name="node_clip_missing">! %1$s</string>
+    <string name="node_relink">重新指定檔案</string>
+    <string name="flow_missing_note">有 %1$d 個片段打不開 —— 被搬走、改名或刪掉了。點那一列可以重新指定檔案。</string>
 
     <!-- 片段 -->
-    <string name="flow_editor_empty">這條流程還沒有片段。在下面加一個。</string>
+    <string name="flow_editor_empty">這條流程還沒有片段。在下面加一個 —— 片段可以放在任何資料夾。</string>
     <string name="flow_editor_add">加入片段</string>
     <string name="flow_loop_body">整條流程跑幾次。0 是一直跑到你停它。</string>
     <string name="flow_node_plain">跑一次,沒有前置延遲</string>
@@ -55,15 +56,14 @@
     <string name="home_loaded">已讀取</string>
     <string name="flow_summary">%1$d 個片段 · 約 %2$s</string>
     <string name="flow_new_title">新建流程</string>
-    <string name="flow_new_confirm">建立</string>
-    <string name="flow_name_label">流程名稱</string>
     <string name="flow_delete_title">要刪除「%1$s」嗎?流程刪掉無法復原。</string>
     <string name="toast_flow_created">已建立並讀取「%1$s」</string>
     <string name="toast_flow_loaded">已讀取「%1$s」</string>
     <string name="toast_flow_deleted">已刪除「%1$s」</string>
     <string name="toast_flow_empty">這條流程還沒有任何片段</string>
-    <string name="toast_flow_missing_clip">這條流程指到 %1$d 個已經不存在的片段。先打開它修好再執行。</string>
+    <string name="toast_flow_missing_clip">這條流程有 %1$d 個片段打不開。先去編排,把那幾列重新指定檔案。</string>
     <string name="clip_default_name">錄製 %1$s</string>
+    <string name="flow_default_name">流程 %1$s</string>
 
     <!-- 工具列按鍵。會當成無障礙描述使用,請保持簡短。 -->
     <string name="action_play">播放</string>
@@ -83,6 +83,7 @@
     <string name="action_step_list">步驟列表</string>
     <string name="action_edit_mode">編輯模式</string>
     <string name="action_save">儲存片段</string>
+    <string name="action_save_as">另存新檔</string>
     <string name="action_load">讀取片段</string>
     <string name="action_play_flow">播放這條流程</string>
     <string name="action_new_flow">新建流程</string>
@@ -118,11 +119,18 @@
     <string name="onboarding_service_stalled_body">觸控流在無障礙設定裡是開著的,但 Android 沒有把服務重新啟動。通常是 app 被從最近工作清單滑掉、或被強制停止之後會這樣。\n\n先試著到無障礙設定把觸控流關掉再打開。如果沒用,代表這台裝置把 app 壓在停止狀態:請把觸控流排除在電池最佳化之外、允許自動啟動,或重新安裝。app 內部沒有任何辦法強迫 Android 綁定服務。\n\n下面的開關你現在就可以打開 —— 服務一連上,工具列就會出現。</string>
 
     <!-- 主畫面 -->
+    <string name="home_recent_clips">最近的片段</string>
+    <string name="home_recent_flows">最近的流程</string>
+    <string name="home_open_clip">開啟片段檔…</string>
+    <string name="home_open_flow">開啟流程檔…</string>
+    <string name="home_row_missing">! %1$s</string>
+    <string name="row_forget">從清單移除</string>
+    <string name="row_delete_file">刪除檔案</string>
+    <string name="rename_breaks_flows">這會把檔案改名。用到這個片段的流程會顯示 !,重新指定一次就好。</string>
+    <string name="busy_reading">讀取中…</string>
     <string name="home_show_toolbar">顯示懸浮工具列</string>
-    <string name="home_tab_clips">片段</string>
-    <string name="home_tab_flows">流程</string>
-    <string name="home_no_clips">還沒有片段。打開工具列、按錄製,操作一次看看。</string>
-    <string name="home_no_flows">還沒有流程。把存好的片段串成流程,就能一次跑完。</string>
+    <string name="home_no_clips">還沒開過任何片段。打開工具列按錄製操作一次,或直接開啟片段檔。</string>
+    <string name="home_no_flows">還沒開過任何流程。流程把存好的片段串起來,一次跑完。</string>
     <string name="clip_summary">%1$d 個動作 · 約 %2$s</string>
     <string name="clip_summary_with_pauses">%1$d 個動作 · %2$d 個暫停點 · 約 %3$s</string>
 
@@ -146,8 +154,7 @@
     <string name="clip_action_delete">刪除</string>
     <string name="clip_rename_title">重新命名片段</string>
     <string name="clip_delete_title">要刪除「%1$s」嗎?</string>
-    <string name="clip_delete_body_in_flows">有 %1$d 條流程在用這個片段,刪除後會從它們裡面一併移除。刪除後無法復原。</string>
-    <string name="clip_delete_body">刪除後無法復原。</string>
+    <string name="clip_delete_body">檔案會被刪掉。用到它的流程會顯示 !,重新指定一次就好。</string>
     <string name="dialog_confirm">確定</string>
     <string name="dialog_cancel">取消</string>
     <string name="number_entry_range">範圍 %1$d 到 %2$d</string>
@@ -207,25 +214,24 @@
     <string name="quick_full_settings">完整設定在 app 裡 →</string>
 
     <!-- 工作區對話框 -->
+    <string name="browse_title_open">選一個檔案</string>
+    <string name="browse_title_save">存到這裡</string>
+    <string name="browse_up">上一層</string>
+    <string name="browse_empty">這裡沒有東西。</string>
+    <string name="browse_name_label">檔名</string>
+    <string name="browse_overwrite_title">覆蓋「%1$s」?</string>
     <string name="note_title">暫停備註</string>
     <string name="note_explain">重播停在這一步時會顯示。不需要就留空。</string>
     <string name="note_label">要手動做什麼</string>
-    <string name="save_title">儲存片段</string>
-    <string name="save_name_label">名稱</string>
-    <string name="save_as_new">另存為新片段,不覆蓋原本的</string>
-    <string name="load_title">讀取片段</string>
-    <string name="load_empty">這個資料夾裡沒有這一種。</string>
-    <string name="folder_up">上一層</string>
-    <string name="folder_root">選定的資料夾</string>
-    <string name="folder_no_subfolders">這裡面沒有資料夾。要分類請用檔案管理員建。</string>
-    <string name="save_lands_in">存到:%1$s</string>
-    <string name="home_in_folder">🗀 %1$s</string>
     <string name="action_finish_clip">完成這個片段,回到流程</string>
     <string name="finish_clip_title">這個片段有未儲存的修改。回到流程前要存嗎?</string>
     <string name="finish_clip_save">存檔並回到流程</string>
     <string name="finish_clip_discard">不存,回到流程</string>
     <string name="toast_flow_gone">那條流程已經不存在了</string>
     <string name="toast_workspace_cleared">工作區已清空</string>
+    <string name="toast_open_clip_failed">這個檔案讀不成片段。可能被搬走了,或本來就不是片段檔。</string>
+    <string name="toast_open_flow_failed">這個檔案讀不成流程。可能被搬走了,或本來就不是流程檔。</string>
+    <string name="toast_delete_failed">刪不掉這個檔案</string>
 
     <!-- 診斷 -->
     <string name="diag_title">診斷紀錄</string>
@@ -313,21 +319,5 @@
     <string name="toast_service_off">請先啟用無障礙服務。</string>
 
     <!-- The library folder the user picks (SPEC 12). -->
-    <string name="settings_section_storage">儲存</string>
-    <string name="folder_pick_title">選一個存放片段的資料夾</string>
-    <string name="folder_pick_body">存好的片段與流程放在你指定的資料夾,重裝 app 也不會消失。請選一個子資料夾,例如 Documents/TapFlow —— Android 不允許選內部儲存的根目錄,也不允許選「下載」。</string>
-    <string name="folder_lost_title">讀不到存放的資料夾</string>
-    <string name="folder_lost_body">資料夾可能被移動或刪除、記憶卡被拔掉,或是重裝之後授權沒了。重新選一次就好 —— 檔案還在。</string>
-    <string name="folder_permission_title">允許存取儲存空間</string>
-    <string name="folder_permission_body">存好的片段放在共用儲存空間的 TapFlow 資料夾裡,重裝 app 也不會消失。這個 Android 版本需要檔案存取權才能建立它。</string>
-    <string name="folder_permission_action">允許</string>
-    <string name="folder_pick_action">選擇資料夾</string>
-    <string name="folder_reading">正在讀取資料夾…</string>
-    <string name="folder_setting">存放片段的資料夾</string>
-    <string name="folder_none">尚未指定</string>
-    <string name="folder_change">變更</string>
-    <string name="folder_clear">清除</string>
-    <string name="toast_save_failed">存檔失敗 —— 讀不到資料夾。東西沒有不見,選好資料夾再存一次即可。</string>
-    <string name="home_no_folder">還沒指定資料夾。存檔或讀取時會問你。</string>
-    <string name="library_unreadable">資料夾裡有 %1$d 項讀不出來,所以下面的清單看不到它們。東西還在 —— 非正常關機可能讓檔案只寫了一半,而資料夾也可能打不開。</string>
+    <string name="toast_save_failed">寫不進這個檔案。東西沒有不見,用「另存新檔」換個地方試試。</string>
 </resources>

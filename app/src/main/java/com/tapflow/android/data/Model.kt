@@ -353,14 +353,23 @@ enum class GlobalKind {
 @Serializable
 data class ScreenSpec(val width: Int, val height: Int, val rotation: Int)
 
+/**
+ * The actions of one saved clip — and nothing else.
+ *
+ * **No id and no name.** Both used to be here, and taking them out is the whole of this redesign. A clip is
+ * a file; where that file is *is* its identity, and what it is called is the file's name. An id inside the
+ * JSON meant a copy of a file was a different clip while a rename was the same one, which is backwards from
+ * how anyone treats a document: duplicating `login.clip` in a file manager and getting two entries that the
+ * app insists are one thing is not a subtle wrongness. Keeping a name in here too meant two places holding
+ * one name, one of which the user can change from outside the app.
+ *
+ * There is no `createdAt` either, for the plainer reason that nothing ever displayed it. The file system
+ * keeps timestamps.
+ */
 @Serializable
 data class Clip(
-    val id: String = newId(),
-    val name: String,
     val steps: List<Step>,
     val screen: ScreenSpec,
-    val createdAt: Long,
-    val updatedAt: Long = createdAt,
 ) {
     val stepCount: Int get() = steps.size
 
@@ -399,7 +408,7 @@ data class Clip(
  * accessor, and an `IllegalAccessError` the moment a runtime actually enforces the check.
  *
  * Which is why it presented as a device-specific crash rather than a bug. Android 11 let the access
- * through; Android 10 did not, and saving died in Repo.upsertClip with a stack frame pointing at a line
+ * through; Android 10 did not, and saving died inside the save path with a stack frame pointing at a line
  * number past the end of Repo.kt — the inliner's marker for code that came from somewhere else.
  *
  * So: no `@Serializable` class here may declare a private companion. There is nothing to gain from it and
@@ -434,6 +443,16 @@ private const val GLOBAL_ACTION_COST_MS = 300L
  * The conditional wait returns at M4 as a *step*, not a node: waiting for text is more useful in the
  * middle of a clip than only between clips, and "nodes are steps" is why it belongs down there.
  *
+ * @param ref where the clip's file is — a `content://` Uri string or an absolute path. **This is the
+ *   reference in full.** It used to be an id stored inside the clip's JSON, which made a flow's members
+ *   findable only by walking a library folder and comparing ids; now a flow says where its clips are, the
+ *   way a playlist names files. Move or rename one and this breaks, visibly, with a `!` row and a button to
+ *   point it somewhere else — which is the same outcome as any other document that references a file, and
+ *   the alternative was worse: matching by name would silently pick up a *different* clip that happens to
+ *   share it.
+ * @param name what the clip was called when it was added, kept only so a broken row can say which clip is
+ *   missing. Never used while the file can be read — the name shown then comes from the file itself, so
+ *   renaming a clip outside the app shows up the next time the flow is opened.
  * @param delayBefore how long to wait before this clip starts. 0 leaves the clip's own first-step delay
  *   alone; anything else replaces it, because that recorded value was never measured against a
  *   predecessor — the first step of a recording has none — so it carries nothing worth keeping.
@@ -445,7 +464,8 @@ private const val GLOBAL_ACTION_COST_MS = 300L
 @Serializable
 @SerialName("clip")
 data class ClipNode(
-    val clipId: String,
+    val ref: String,
+    val name: String = "",
     val delayBefore: Long = 0,
     val repeat: Int = 1,
     val repeatIntervalMs: Long = 0,
@@ -463,11 +483,17 @@ data class ClipNode(
  * [dirty] is what decides whether it comes back. The draft exists to protect work that was never
  * saved; restoring unconditionally meant that after saving a clip and reopening, the app looked like
  * it had loaded a file on its own — surprising, and not what the draft is for.
+ *
+ * [sourceName] is carried alongside [sourceRef] rather than looked up from it. Asking a document provider
+ * for a name is IO, and the two places that want it — the save toast and the name suggested for a save-as —
+ * are both on the path where the user is already waiting. A stale label costs nothing: it is never what
+ * decides which file gets written.
  */
 @Serializable
 data class WorkspaceSnapshot(
     val steps: List<Step> = emptyList(),
-    val sourceClipId: String? = null,
+    val sourceRef: String? = null,
+    val sourceName: String? = null,
     val screen: ScreenSpec? = null,
     val dirty: Boolean = false,
 )
@@ -476,18 +502,15 @@ data class WorkspaceSnapshot(
  * Several clips chained into one run.
  *
  * Holds no speed and no start delay of its own. Both exist in Settings already, and two places holding
- * one number is two places for it to disagree.
+ * one number is two places for it to disagree. No id and no name either, for the reason [Clip] gives: a
+ * flow is a file, and the file is both.
  *
  * There is also no "unsaved" state to speak of: a flow is a list of references, so editing one writes it
  * straight back. That is why the toolbar has no save button in flow mode — the act does not exist.
  */
 @Serializable
 data class Flow(
-    val id: String = newId(),
-    val name: String,
     val clips: List<ClipNode>,
     /** 0 means loop forever until stopped. */
     val loopCount: Int = 1,
-    val createdAt: Long,
-    val updatedAt: Long = createdAt,
 )

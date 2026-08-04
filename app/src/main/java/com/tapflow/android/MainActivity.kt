@@ -25,8 +25,13 @@ class MainActivity : ComponentActivity() {
      */
     private val screen = mutableStateOf(Screen.HOME)
 
-    /** Which flow the editor is on. Alongside [screen] for the same reason: it survives recomposition. */
-    private val editingFlowId = mutableStateOf<String?>(null)
+    /**
+     * Which flow's file the editor is on. Alongside [screen] for the same reason: it survives recomposition.
+     *
+     * A file reference rather than an id, and the editor reads it on entry — which is what makes coming back
+     * from editing one of the flow's clips show that edit.
+     */
+    private val editingFlowRef = mutableStateOf<String?>(null)
 
     /**
      * Whether leaving the flow editor should close the app rather than go back to the home screen.
@@ -52,8 +57,8 @@ class MainActivity : ComponentActivity() {
                     Screen.HOME -> HomeScreen(
                         onOpenSettings = { screen.value = Screen.SETTINGS },
                         onOpenDiagnostics = { screen.value = Screen.DIAGNOSTICS },
-                        onOpenFlow = { id, exitAfter ->
-                            editingFlowId.value = id
+                        onOpenFlow = { ref, exitAfter ->
+                            editingFlowRef.value = ref
                             flowEditorExits.value = exitAfter
                             screen.value = Screen.FLOW
                         },
@@ -73,8 +78,8 @@ class MainActivity : ComponentActivity() {
                     }
 
                     Screen.FLOW -> {
-                        val id = editingFlowId.value
-                        if (id == null) {
+                        val ref = editingFlowRef.value
+                        if (ref == null) {
                             screen.value = Screen.HOME
                         } else {
                             // Editing a flow writes straight back, so there is never anything unsaved to
@@ -84,7 +89,7 @@ class MainActivity : ComponentActivity() {
                             }
                             BackHandler { leave() }
                             FlowEditorScreen(
-                                flowId = id,
+                                flowRef = ref,
                                 onBack = leave,
                                 // The clip is already loaded and the breadcrumb set; this is the handover.
                                 // Same two steps as loading from the home screen, and for the same reason:
@@ -113,8 +118,8 @@ class MainActivity : ComponentActivity() {
         }
         // The toolbar's pencil in flow mode. That flow is already loaded, so closing the editor should go
         // back to the target app rather than land on a home screen nobody asked for.
-        intent?.getStringExtra(EXTRA_OPEN_FLOW)?.let { id ->
-            editingFlowId.value = id
+        intent?.getStringExtra(EXTRA_OPEN_FLOW)?.let { ref ->
+            editingFlowRef.value = ref
             flowEditorExits.value = true
             screen.value = Screen.FLOW
         }
