@@ -10,7 +10,11 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -21,6 +25,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -89,7 +94,21 @@ fun FileBrowserDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text(stringResource(if (saving) R.string.browse_title_save else R.string.browse_title_open))
+            // An ✕ in the title as well as the cancel below it, and the duplication is deliberate: this dialog
+            // is a list of folders and files, and a list of things to tap does not look like something you can
+            // leave without tapping one. Every picker the user has ever used has a close in its corner.
+            //
+            // It also survives the case the bottom button does not: with the keyboard up while saving, the
+            // button row can be pushed past the bottom of the screen. The title never is.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(if (saving) R.string.browse_title_save else R.string.browse_title_open),
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.dialog_cancel))
+                }
+            }
         },
         text = {
             Column {
