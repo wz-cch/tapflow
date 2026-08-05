@@ -66,7 +66,6 @@ import com.tapflow.android.engine.Workspace
 import com.tapflow.android.text.clipSummary
 import com.tapflow.android.text.defaultFlowName
 import com.tapflow.android.text.flowSummary
-import com.tapflow.android.text.openFailure
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -171,7 +170,7 @@ fun HomeScreen(
             val loaded = withContext(Dispatchers.IO) { Repo.openClip(ref) }
             busy = false
             if (loaded == null) {
-                context.toast(context.openFailureFor(DocKind.CLIP, ref))
+                context.toast(context.getString(R.string.toast_open_clip_failed))
                 return@launch
             }
             Session.openClip(loaded)
@@ -193,7 +192,7 @@ fun HomeScreen(
             val opened = withContext(Dispatchers.IO) { Repo.openFlow(ref) }
             busy = false
             if (opened == null) {
-                context.toast(context.openFailureFor(DocKind.FLOW, ref))
+                context.toast(context.getString(R.string.toast_open_flow_failed))
                 return@launch
             }
             Session.openFlow(opened)
@@ -430,7 +429,9 @@ fun HomeScreen(
         }
     }
 
-    if (busy) BusyDialog()
+    // Cancellable for the same reason everywhere else: the dialog swallows back, so without a way out
+    // a provider that never answers is a dead end.
+    if (busy) BusyDialog(onCancel = { busy = false })
 
     pending?.let { action ->
         DiscardConfirmDialog(onDismiss = { pending = null }) {
@@ -721,14 +722,6 @@ private fun RenameDialog(initial: String, onDismiss: () -> Unit, onConfirm: (Str
 
 private fun Context.toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
 
-/**
- * The sentence for a file that would not open as [wanted]. **Does IO**: it reads the file again to say what it
- * actually is, which is the difference between "wrong file" and "broken file".
- */
-private suspend fun Context.openFailureFor(wanted: DocKind, ref: String): String {
-    val actual = withContext(Dispatchers.IO) { Repo.kindOf(ref) }
-    return openFailure(resources, wanted, actual)
-}
 
 private fun Context.openAccessibilitySettings() =
     startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))

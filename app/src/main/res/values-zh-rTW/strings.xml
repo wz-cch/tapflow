@@ -233,6 +233,8 @@
     <string name="toast_open_flow_failed">這個檔案讀不成流程。可能被搬走了,或本來就不是流程檔。</string>
     <string name="toast_open_is_flow">這是流程檔,不是片段檔。要開它請切到流程模式。</string>
     <string name="toast_open_is_clip">這是片段檔,不是流程檔。要開它請切到片段模式。</string>
+    <string name="toast_open_not_clip">這不是片段檔。片段的副檔名是 .clip —— 如果你改過名字,改回來就開得起來。</string>
+    <string name="toast_open_not_flow">這不是流程檔。流程的副檔名是 .flow —— 如果你改過名字,改回來就開得起來。</string>
     <string name="toast_delete_failed">刪不掉這個檔案</string>
 
     <!-- 診斷 -->

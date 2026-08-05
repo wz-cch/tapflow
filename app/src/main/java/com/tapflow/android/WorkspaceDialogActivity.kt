@@ -31,7 +31,6 @@ import com.tapflow.android.engine.Session
 import com.tapflow.android.engine.Workspace
 import com.tapflow.android.text.defaultClipName
 import com.tapflow.android.text.defaultFlowName
-import com.tapflow.android.text.openFailure
 import com.tapflow.android.ui.BusyDialog
 import com.tapflow.android.ui.DiscardConfirmDialog
 import com.tapflow.android.ui.TapFlowTheme
@@ -128,8 +127,14 @@ private fun PickThen(
     fun proceed(ref: String) {
         busy = true
         scope.launch {
-            act(ref)
-            onFinish()
+            // Finishes even if the work throws. This activity is transparent and has nothing of its own on
+            // screen, so a coroutine that dies quietly would leave a spinner over the app underneath with no
+            // way out at all.
+            try {
+                act(ref)
+            } finally {
+                onFinish()
+            }
         }
     }
 
@@ -153,7 +158,9 @@ private fun PickThen(
             proceed(ref)
         }
     }
-    if (busy) BusyDialog()
+    // Cancellable, and here it matters more than anywhere: there is no screen of ours underneath to go back
+    // to, so without this the only exit from a slow read is force-stopping the app.
+    if (busy) BusyDialog(onCancel = onFinish)
 }
 
 /**
@@ -177,7 +184,7 @@ private fun Open(onFinish: () -> Unit) {
         if (flowMode) {
             val opened = withContext(Dispatchers.IO) { Repo.openFlow(ref) }
             if (opened == null) {
-                context.toast(context.openFailureFor(DocKind.FLOW, ref))
+                context.toast(context.getString(R.string.toast_open_flow_failed))
             } else {
                 Session.openFlow(opened)
                 context.toast(context.getString(R.string.toast_flow_loaded, opened.file.name))
@@ -185,7 +192,7 @@ private fun Open(onFinish: () -> Unit) {
         } else {
             val loaded = withContext(Dispatchers.IO) { Repo.openClip(ref) }
             if (loaded == null) {
-                context.toast(context.openFailureFor(DocKind.CLIP, ref))
+                context.toast(context.getString(R.string.toast_open_clip_failed))
             } else {
                 Session.openClip(loaded)
                 context.toast(context.getString(R.string.toast_loaded, loaded.file.name))
@@ -297,12 +304,3 @@ private fun NoteDialog(step: PauseStep, onDismiss: () -> Unit, onSave: (String) 
 
 private fun android.content.Context.toast(text: String) =
     Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
-
-/**
- * The sentence for a file that would not open as [wanted]. **Does IO** — it reads the file again to find out
- * what it actually is, on a path where the user has already lost.
- */
-private suspend fun android.content.Context.openFailureFor(wanted: DocKind, ref: String): String {
-    val actual = withContext(Dispatchers.IO) { Repo.kindOf(ref) }
-    return openFailure(resources, wanted, actual)
-}

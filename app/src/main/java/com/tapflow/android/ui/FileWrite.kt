@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,11 +42,16 @@ fun CoroutineScope.writeFile(context: Context, write: () -> Boolean): Job = laun
  * Opening a flow reads the flow *and* every clip in it, which on a document provider is one round trip each.
  * That is quick and it is not free, and a screen that does nothing for half a second after a tap reads as a
  * tap that missed.
+ *
+ * @param onCancel a way out, where there is one. **Not optional decoration:** a read can take as long as the
+ *   provider takes — a file on a cloud provider is a network request — and a spinner that back cannot dismiss
+ *   and that has no button is a dead end, on top of a transparent activity with nothing else on it. Null only
+ *   where the caller's own screen is still underneath and reachable.
  */
 @Composable
-fun BusyDialog() {
+fun BusyDialog(onCancel: (() -> Unit)? = null) {
     AlertDialog(
-        onDismissRequest = {},
+        onDismissRequest = onCancel ?: {},
         text = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(Modifier.size(20.dp))
@@ -53,6 +59,10 @@ fun BusyDialog() {
                 Text(stringResource(R.string.busy_reading))
             }
         },
-        confirmButton = {},
+        confirmButton = {
+            if (onCancel != null) {
+                TextButton(onClick = onCancel) { Text(stringResource(R.string.dialog_cancel)) }
+            }
+        },
     )
 }
