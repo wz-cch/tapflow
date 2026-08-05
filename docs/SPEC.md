@@ -1254,7 +1254,23 @@ ACTION_CANCEL        丟棄該手勢
 
 **API 28- 用 `ui/FileBrowser.kt`,自己瀏覽。** 這是被實機逼出來的:一台 Android 7 上系統選擇器只列得出「最近」,一個儲存根目錄都沒有。試過 `SHOW_ADVANCED` 沒用,那台的 DocumentsUI 沒有把 `ExternalStorageProvider` 的根目錄露出來。**沒有別的槓桿**,所以那些版本只能自己列 —— 而既然 scoped storage 還不存在,`WRITE_EXTERNAL_STORAGE` 就是完整讀寫,自己列是合法的。它刻意**不是**檔案管理員:只列資料夾與正在找的那一種檔案,沒有建資料夾、改名、刪除。
 
-**MIME 過濾一律收全部。** provider 對一個 `.clip` 回報的是 `application/octet-stream` 或什麼都沒有,按 type 過濾會把要找的檔案藏起來。**能不能開由「解析得起來嗎」決定** —— 所以一個複製成 `notes.txt` 的片段照樣能開,而一個內容是別的東西的 `.clip` 開不起來。
+### 12.4.1 副檔名:我們加的,而且在 29+ 過濾不了
+
+**副檔名不出現在使用者打字的地方。** 系統選擇器只有一個檔名欄、沒有「副檔名」這個概念,所以把 `登入.clip` 當建議名字丟進去,`.clip` 就在欄位裡任人編輯或刪掉 —— 等於把一個承重的東西做成裝飾。所以建議名字是**乾的**,副檔名在檔案建好之後由 `DocStore.ensureExtension()` 補上。
+
+補的方式是 rename,而不是請選擇器加上:**不認識的 MIME type 是 `ExternalStorageProvider` 不亂加副檔名的原因(12.3 ②),而同一個不認識也代表它不會幫我們加。** 兩次 provider 往返換一個正確的檔名,一次存檔付一次,值得。provider 不支援 rename 的話就只損失那個副檔名 —— 檔案照樣讀得開(靠解析),所以那條路回傳原本的 ref 而不是失敗。
+
+**而在 API 29+ 沒辦法只列出一種副檔名,這是平台限制。** 選擇器按 MIME type 過濾,而 `.clip` / `.flow` 沒有註冊過的 type —— `MimeTypeMap` 不認識,provider 就回報 `application/octet-stream`。所以:
+
+| 想做的 | 為什麼做不到 |
+|---|---|
+| 只列 `.clip` | 兩種都是 `application/octet-stream`,分不開 |
+| 至少濾掉照片影片 | 濾 `application/octet-stream` 會**藏掉** `.txt` / `.json` —— 一個被複製成 `notes.txt` 的片段就在選擇器裡消失了。藏掉使用者需要的檔案比列出太多更糟 |
+| 註冊 `.clip` 的 MIME type | 過濾發生在**來源 provider** 那一邊,它報什麼 type 不是我們決定的 |
+
+所以清單縮不了,能做的是**選錯的時候把話講清楚**:`Repo.kindOf()` 在開檔失敗之後再解析一次,於是「這是流程檔,不是片段檔」跟「這個檔案壞了」不會長得一樣。API 28- 沒有這個問題 —— 那邊是我自己列的,直接按副檔名濾。
+
+**MIME 過濾一律收全部。** 見上表:**能不能開由「解析得起來嗎」決定** —— 所以一個複製成 `notes.txt` 的片段照樣能開,而一個內容是別的東西的 `.clip` 開不起來。
 
 ### 12.5 存檔失敗的安全網已經存在
 

@@ -33,7 +33,14 @@ class FilePicker internal constructor(private val start: (String?, String?) -> U
      */
     fun open(near: String? = null) = start(null, near)
 
-    /** Asks where to write a new file, with [suggestedName] filled in. */
+    /**
+     * Asks where to write a new file, with [suggestedName] filled in.
+     *
+     * **A bare name, without the extension.** The picker has one name field and no notion of an extension, so
+     * a suggested `Login.clip` would put `.clip` in front of the user as something to edit or delete —
+     * decoration made out of the one part of the name the app depends on. It is added afterwards, by
+     * `DocStore.ensureExtension`.
+     */
     fun create(suggestedName: String) = start(suggestedName, null)
 }
 

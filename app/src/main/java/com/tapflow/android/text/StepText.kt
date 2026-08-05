@@ -3,6 +3,7 @@ package com.tapflow.android.text
 import android.content.res.Resources
 import com.tapflow.android.R
 import com.tapflow.android.data.Clip
+import com.tapflow.android.data.DocKind
 import com.tapflow.android.data.Flow
 import com.tapflow.android.data.GestureKind
 import com.tapflow.android.data.GestureStep
@@ -101,6 +102,27 @@ fun MarkerDensity.label(res: Resources): String = res.getString(
         MarkerDensity.ALL -> R.string.density_all
         MarkerDensity.RECENT -> R.string.density_recent
         MarkerDensity.HIDDEN -> R.string.density_hidden
+    }
+)
+
+/**
+ * Why a file could not be opened, given what it turned out to be.
+ *
+ * **The wrong-kind case earns its own sentence, because on API 29+ it is the only thing the extension can do
+ * for the user.** The system picker filters by MIME type, and `.clip` and `.flow` have no registered type —
+ * both come back as `application/octet-stream`, so no filter can separate them and every other file shows up
+ * alongside. Filtering on that type would hide `.txt` and `.json`, which is worse: a clip the user copied to
+ * `notes.txt` would become invisible in the picker. So the list cannot be narrowed, and the least this can do
+ * is stop "wrong file" from reading like "broken file".
+ *
+ * @param actual what the file parses as, or null when it is neither kind.
+ */
+fun openFailure(res: Resources, wanted: DocKind, actual: DocKind?): String = res.getString(
+    when {
+        wanted == DocKind.CLIP && actual == DocKind.FLOW -> R.string.toast_open_is_flow
+        wanted == DocKind.FLOW && actual == DocKind.CLIP -> R.string.toast_open_is_clip
+        wanted == DocKind.CLIP -> R.string.toast_open_clip_failed
+        else -> R.string.toast_open_flow_failed
     }
 )
 

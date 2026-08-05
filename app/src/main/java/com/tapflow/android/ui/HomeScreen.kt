@@ -59,7 +59,6 @@ import com.tapflow.android.data.DocStore
 import com.tapflow.android.data.RecentDoc
 import com.tapflow.android.data.Recents
 import com.tapflow.android.data.Repo
-import com.tapflow.android.data.suggestedFileName
 import com.tapflow.android.engine.CrashLog
 import com.tapflow.android.engine.EngineState
 import com.tapflow.android.engine.Session
@@ -67,6 +66,7 @@ import com.tapflow.android.engine.Workspace
 import com.tapflow.android.text.clipSummary
 import com.tapflow.android.text.defaultFlowName
 import com.tapflow.android.text.flowSummary
+import com.tapflow.android.text.openFailure
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -171,7 +171,7 @@ fun HomeScreen(
             val loaded = withContext(Dispatchers.IO) { Repo.openClip(ref) }
             busy = false
             if (loaded == null) {
-                context.toast(context.getString(R.string.toast_open_clip_failed))
+                context.toast(context.openFailureFor(DocKind.CLIP, ref))
                 return@launch
             }
             Session.openClip(loaded)
@@ -193,7 +193,7 @@ fun HomeScreen(
             val opened = withContext(Dispatchers.IO) { Repo.openFlow(ref) }
             busy = false
             if (opened == null) {
-                context.toast(context.getString(R.string.toast_open_flow_failed))
+                context.toast(context.openFailureFor(DocKind.FLOW, ref))
                 return@launch
             }
             Session.openFlow(opened)
@@ -394,12 +394,8 @@ fun HomeScreen(
                     // a list on a real screen, so unlike a clip it cannot begin on the toolbar.
                     OutlinedButton(
                         onClick = {
-                            flowCreator.create(
-                                suggestedFileName(
-                                    defaultFlowName(context.resources, System.currentTimeMillis()),
-                                    DocKind.FLOW,
-                                )
-                            )
+                            // The name only — the extension is added after the file exists.
+                            flowCreator.create(defaultFlowName(context.resources, System.currentTimeMillis()))
                         }
                     ) { Text(stringResource(R.string.flow_new_title)) }
                 }
@@ -724,6 +720,15 @@ private fun RenameDialog(initial: String, onDismiss: () -> Unit, onConfirm: (Str
 }
 
 private fun Context.toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
+
+/**
+ * The sentence for a file that would not open as [wanted]. **Does IO**: it reads the file again to say what it
+ * actually is, which is the difference between "wrong file" and "broken file".
+ */
+private suspend fun Context.openFailureFor(wanted: DocKind, ref: String): String {
+    val actual = withContext(Dispatchers.IO) { Repo.kindOf(ref) }
+    return openFailure(resources, wanted, actual)
+}
 
 private fun Context.openAccessibilitySettings() =
     startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))

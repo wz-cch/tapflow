@@ -24,16 +24,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.tapflow.android.data.AppMode
-import com.tapflow.android.data.DocFile
 import com.tapflow.android.data.DocKind
-import com.tapflow.android.data.DocStore
 import com.tapflow.android.data.PauseStep
 import com.tapflow.android.data.Repo
-import com.tapflow.android.data.suggestedFileName
 import com.tapflow.android.engine.Session
 import com.tapflow.android.engine.Workspace
 import com.tapflow.android.text.defaultClipName
 import com.tapflow.android.text.defaultFlowName
+import com.tapflow.android.text.openFailure
 import com.tapflow.android.ui.BusyDialog
 import com.tapflow.android.ui.DiscardConfirmDialog
 import com.tapflow.android.ui.TapFlowTheme
@@ -179,7 +177,7 @@ private fun Open(onFinish: () -> Unit) {
         if (flowMode) {
             val opened = withContext(Dispatchers.IO) { Repo.openFlow(ref) }
             if (opened == null) {
-                context.toast(context.getString(R.string.toast_open_flow_failed))
+                context.toast(context.openFailureFor(DocKind.FLOW, ref))
             } else {
                 Session.openFlow(opened)
                 context.toast(context.getString(R.string.toast_flow_loaded, opened.file.name))
@@ -187,7 +185,7 @@ private fun Open(onFinish: () -> Unit) {
         } else {
             val loaded = withContext(Dispatchers.IO) { Repo.openClip(ref) }
             if (loaded == null) {
-                context.toast(context.getString(R.string.toast_open_clip_failed))
+                context.toast(context.openFailureFor(DocKind.CLIP, ref))
             } else {
                 Session.openClip(loaded)
                 context.toast(context.getString(R.string.toast_loaded, loaded.file.name))
@@ -206,10 +204,9 @@ private fun Open(onFinish: () -> Unit) {
 @Composable
 private fun SaveAs(onFinish: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    // The name only, with no extension: the picker's field is for the part the user owns.
     val suggested = remember {
-        val current = Workspace.source.value?.name
-            ?: defaultClipName(context.resources, System.currentTimeMillis())
-        suggestedFileName(current, DocKind.CLIP)
+        Workspace.source.value?.name ?: defaultClipName(context.resources, System.currentTimeMillis())
     }
 
     PickThen(
@@ -219,7 +216,7 @@ private fun SaveAs(onFinish: () -> Unit) {
         onFinish = onFinish,
     ) { ref ->
         val result = withContext(Dispatchers.IO) {
-            Workspace.commit(DocFile(ref, DocStore.label(ref)))
+            Workspace.commit(Repo.prepareNew(ref, DocKind.CLIP))
         }
         context.toast(
             when (result) {
@@ -240,9 +237,7 @@ private fun SaveAs(onFinish: () -> Unit) {
 @Composable
 private fun NewFlow(onFinish: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val suggested = remember {
-        suggestedFileName(defaultFlowName(context.resources, System.currentTimeMillis()), DocKind.FLOW)
-    }
+    val suggested = remember { defaultFlowName(context.resources, System.currentTimeMillis()) }
 
     PickThen(
         kind = DocKind.FLOW,
@@ -302,3 +297,12 @@ private fun NoteDialog(step: PauseStep, onDismiss: () -> Unit, onSave: (String) 
 
 private fun android.content.Context.toast(text: String) =
     Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
+
+/**
+ * The sentence for a file that would not open as [wanted]. **Does IO** — it reads the file again to find out
+ * what it actually is, on a path where the user has already lost.
+ */
+private suspend fun android.content.Context.openFailureFor(wanted: DocKind, ref: String): String {
+    val actual = withContext(Dispatchers.IO) { Repo.kindOf(ref) }
+    return openFailure(resources, wanted, actual)
+}
