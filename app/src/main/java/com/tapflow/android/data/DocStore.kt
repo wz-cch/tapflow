@@ -115,7 +115,7 @@ object DocStore {
      * difference worth acting on: a document whose provider has forgotten the grant and one that was deleted
      * both mean the ref no longer points at anything that can be opened.
      */
-    private fun fileName(ref: String): String? = runCatching {
+    fun fileName(ref: String): String? = runCatching {
         val uri = contentUri(ref)
         if (uri != null) DocumentFile.fromSingleUri(appContext, uri)?.name else File(ref).name
     }.onFailure { Log.w(TAG, "Could not read the name of $ref", it) }.getOrNull()

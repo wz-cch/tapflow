@@ -106,23 +106,20 @@ fun MarkerDensity.label(res: Resources): String = res.getString(
 )
 
 /**
- * Why a file could not be opened, given what it turned out to be.
+ * Why a picked file is not the kind that was asked for.
  *
- * **The wrong-kind case earns its own sentence, because on API 29+ it is the only thing the extension can do
- * for the user.** The system picker filters by MIME type, and `.clip` and `.flow` have no registered type —
- * both come back as `application/octet-stream`, so no filter can separate them and every other file shows up
- * alongside. Filtering on that type would hide `.txt` and `.json`, which is worse: a clip the user copied to
- * `notes.txt` would become invisible in the picker. So the list cannot be narrowed, and the least this can do
- * is stop "wrong file" from reading like "broken file".
+ * Four sentences rather than one, because "you picked the other kind" and "that is not one of ours at all"
+ * call for different next moves: switch mode, or rename the file back. The system picker cannot be narrowed to
+ * one extension (see `ui/FilePicker.kt`), so this message is doing the work a filter would have done.
  *
- * @param actual what the file parses as, or null when it is neither kind.
+ * @param actual what the file's name says it is, or null when its name says neither.
  */
-fun openFailure(res: Resources, wanted: DocKind, actual: DocKind?): String = res.getString(
+fun wrongKind(res: Resources, wanted: DocKind, actual: DocKind?): String = res.getString(
     when {
         wanted == DocKind.CLIP && actual == DocKind.FLOW -> R.string.toast_open_is_flow
         wanted == DocKind.FLOW && actual == DocKind.CLIP -> R.string.toast_open_is_clip
-        wanted == DocKind.CLIP -> R.string.toast_open_clip_failed
-        else -> R.string.toast_open_flow_failed
+        wanted == DocKind.CLIP -> R.string.toast_open_not_clip
+        else -> R.string.toast_open_not_flow
     }
 )
 
