@@ -73,6 +73,7 @@
     <string name="action_pause">Pause</string>
     <string name="action_resume">Resume</string>
     <string name="action_stop">Stop</string>
+    <string name="action_skip_wait">Skip the wait</string>
     <string name="action_record">Record</string>
     <string name="action_record_resume">Resume recording</string>
     <string name="action_record_stop">Stop recording</string>
@@ -103,6 +104,7 @@
     <string name="transport_clip">Clip %1$d/%2$d</string>
     <string name="transport_step">Step %1$d/%2$d</string>
     <string name="transport_countdown">%1$d…</string>
+    <string name="transport_wait">⏱ Waiting %1$d s</string>
     <string name="transport_recording">Recording · %1$d actions</string>
 
     <!-- Warnings shown on the canvas or in the editor -->

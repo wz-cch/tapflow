@@ -179,6 +179,18 @@ object EngineState {
     /** Seconds remaining before playback starts. 0 when not counting down. */
     val countdown = MutableStateFlow(0)
 
+    /**
+     * Seconds left on a timed wait step, or 0 when no wait is running.
+     *
+     * Kept apart from [countdown] even though both are a number counting to zero, because they are not the
+     * same thing: that one is the app getting out of the way before a run starts, this one is a step the
+     * script asked for. Only this one can be skipped, and only this one can be frozen by pausing.
+     *
+     * Seconds rather than milliseconds, because whole seconds are all that is ever displayed — putting the
+     * rounding here means the transport cannot round it differently.
+     */
+    val waitRemaining = MutableStateFlow(0)
+
     val progress = MutableStateFlow<Progress?>(null)
 
     /** Message shown while paused. Null when running. */
@@ -195,6 +207,7 @@ object EngineState {
     fun reset() {
         mode.value = Mode.IDLE
         countdown.value = 0
+        waitRemaining.value = 0
         progress.value = null
         pausePrompt.value = null
         elapsedMs.value = 0
