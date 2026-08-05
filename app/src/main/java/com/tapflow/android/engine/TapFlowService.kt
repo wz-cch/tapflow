@@ -470,6 +470,7 @@ class TapFlowService : AccessibilityService() {
             }
         }
         scope.launch { EngineState.countdown.collect { syncTransport() } }
+        scope.launch { EngineState.waitRemaining.collect { syncTransport() } }
         scope.launch { EngineState.elapsedMs.collect { syncTransport() } }
         scope.launch { EngineState.pausePrompt.collect { syncTransport() } }
     }
@@ -881,6 +882,7 @@ class TapFlowService : AccessibilityService() {
             progress = EngineState.progress.value
                 ?: Progress(0, 0, Workspace.size, Workspace.size).takeIf { mode == Mode.RECORDING },
             countdown = EngineState.countdown.value,
+            waitRemaining = EngineState.waitRemaining.value,
             elapsedMs = EngineState.elapsedMs.value,
             showTimer = current.showTimer,
             pausePrompt = EngineState.pausePrompt.value,
@@ -2102,6 +2104,8 @@ class TapFlowService : AccessibilityService() {
         override fun onPauseOrResume() {
             if (EngineState.mode.value == Mode.PAUSED) player.resume() else player.pause()
         }
+
+        override fun onSkipWait() = player.skipWait()
 
         override fun onDrag(dx: Int, dy: Int) = moveTransport(dx, dy)
 

@@ -70,6 +70,7 @@
     <string name="action_pause">暫停</string>
     <string name="action_resume">繼續</string>
     <string name="action_stop">停止</string>
+    <string name="action_skip_wait">跳過等待</string>
     <string name="action_record">錄製</string>
     <string name="action_record_resume">繼續錄製</string>
     <string name="action_record_stop">停止錄製</string>
@@ -100,6 +101,7 @@
     <string name="transport_clip">片段 %1$d/%2$d</string>
     <string name="transport_step">步 %1$d/%2$d</string>
     <string name="transport_countdown">%1$d…</string>
+    <string name="transport_wait">⏱ 等待 %1$d 秒</string>
     <string name="transport_recording">錄製中 · 已錄 %1$d 個動作</string>
 
     <!-- 畫布與編輯器上的警示 -->

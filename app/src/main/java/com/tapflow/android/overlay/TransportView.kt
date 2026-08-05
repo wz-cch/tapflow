@@ -29,6 +29,7 @@ class TransportView(context: Context, private val actions: Actions) : LinearLayo
     interface Actions {
         fun onStop()
         fun onPauseOrResume()
+        fun onSkipWait()
         fun onDrag(dx: Int, dy: Int)
         fun onDragEnd()
     }
@@ -38,6 +39,21 @@ class TransportView(context: Context, private val actions: Actions) : LinearLayo
 
     private val stop = icon(R.drawable.ic_stop)
     private val pause = icon(R.drawable.ic_pause)
+
+    /**
+     * Ends the timed wait in progress. Only shown while one is running.
+     *
+     * **Last in the row, and that is the reason it is here rather than beside pause.** It appears and
+     * disappears during a run, so anything after it would move under the user's finger; at the end, the
+     * panel grows and shrinks to the right — and the panel is TOP|START anchored — so stop and pause stay
+     * put. Reaching for skip as the wait ends therefore cannot land on stop.
+     *
+     * With one exception: a panel dragged hard against the right edge gets nudged left by up to this
+     * button's width when it appears, because widening it trips the service's clamp. Once, not persisted,
+     * and cheaper than the alternative — reserving the space with INVISIBLE would widen the panel for every
+     * run, and what the panel covers cannot receive a replayed touch.
+     */
+    private val skip = icon(R.drawable.ic_skip)
 
     private val status = TextView(context).apply {
         setTextColor(ContextCompat.getColor(context, R.color.overlay_text))
@@ -73,9 +89,11 @@ class TransportView(context: Context, private val actions: Actions) : LinearLayo
         addView(stop)
         addView(pause)
         addView(textColumn)
+        addView(skip)
 
         stop.setOnClickListener { actions.onStop() }
         pause.setOnClickListener { actions.onPauseOrResume() }
+        skip.setOnClickListener { actions.onSkipWait() }
 
         // The text column is the drag handle: it has no tap action of its own, so there is nothing
         // to disambiguate against.
@@ -83,12 +101,15 @@ class TransportView(context: Context, private val actions: Actions) : LinearLayo
 
         stop.contentDescription = context.getString(R.string.action_stop)
         pause.contentDescription = context.getString(R.string.action_pause)
+        skip.contentDescription = context.getString(R.string.action_skip_wait)
     }
 
+    /** @param waitRemaining seconds left on a timed wait step, 0 when none is running. */
     fun render(
         mode: Mode,
         progress: Progress?,
         countdown: Int,
+        waitRemaining: Int,
         elapsedMs: Long,
         showTimer: Boolean,
         pausePrompt: String?,
@@ -141,8 +162,19 @@ class TransportView(context: Context, private val actions: Actions) : LinearLayo
             else -> ""
         }
 
-        timer.visibility = if (showTimer && !recording) VISIBLE else GONE
-        timer.text = formatElapsed(elapsedMs)
+        // The countdown takes the timer's line rather than the status line, so the step position stays
+        // readable while a 30-second wait runs — "waiting, at step 12 of 40" is worth more than either half
+        // on its own. It also cannot widen the panel: that line is already there, and its digits are
+        // monospaced. The elapsed clock is the only casualty, and it comes straight back.
+        val waiting = waitRemaining > 0
+        timer.visibility = if ((showTimer || waiting) && !recording) VISIBLE else GONE
+        timer.text =
+            if (waiting) context.getString(R.string.transport_wait, waitRemaining)
+            else formatElapsed(elapsedMs)
+
+        // Gone while paused. The number stays on screen, frozen, which is the honest reading of pausing
+        // during a wait — and a skip pressed then would sit there doing nothing visible until resume.
+        skip.visibility = if (waiting && mode != Mode.PAUSED) VISIBLE else GONE
     }
 
     private var appliedScale = Float.NaN
@@ -158,7 +190,7 @@ class TransportView(context: Context, private val actions: Actions) : LinearLayo
 
         alpha = clampedOpacity
         val size = (dp(40f) * clampedScale).toInt()
-        listOf(stop, pause).forEach { it.layoutParams = LayoutParams(size, size) }
+        listOf(stop, pause, skip).forEach { it.layoutParams = LayoutParams(size, size) }
         val text = 12f * clampedScale
         status.textSize = text
         timer.textSize = text

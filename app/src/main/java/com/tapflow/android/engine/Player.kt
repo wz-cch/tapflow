@@ -43,6 +43,7 @@ class Player(
     private var job: Job? = null
     private var timerJob: Job? = null
     private val pauseRequested = MutableStateFlow(false)
+    private val skipRequested = MutableStateFlow(false)
 
     val isActive: Boolean get() = job?.isActive == true
 
@@ -119,7 +120,7 @@ class Player(
                         gate()
 
                         if (step is PauseStep) {
-                            delay(Timing.replayDelay(step.ms, current))
+                            timedWait(Timing.replayDelay(step.ms, current))
                             continue
                         }
 
@@ -324,6 +325,16 @@ class Player(
         pauseRequested.value = !pauseRequested.value
     }
 
+    /**
+     * Ends the timed wait in progress early and carries straight on with the next step.
+     *
+     * Safe to call at any moment, including when nothing is waiting: [timedWait] clears the flag on entry,
+     * so a press that arrives between two waits cannot leak into the next one.
+     */
+    fun skipWait() {
+        if (isActive) skipRequested.value = true
+    }
+
     fun stop() {
         job?.cancel()
         job = null
@@ -342,6 +353,51 @@ class Player(
 
         EngineState.pausePrompt.value = null
         EngineState.mode.value = Mode.PLAYING
+    }
+
+    /**
+     * A wait asked for by a [PauseStep] with a length: counted down on screen, and skippable.
+     *
+     * Only this one of the run's waits gets either. The others — a step's lead delay, the gap between
+     * repetitions, the gap between passes — are the script's rhythm, and there is nothing to decide about
+     * them. This one is a step the user inserted, almost always because something below has to finish
+     * loading, and the length is a guess made in advance and set generously. So it is the one wait where
+     * watching the number and deciding to go early is the point.
+     *
+     * Ticked rather than one `delay(ms)`, which buys three things beyond the display:
+     *
+     * - **Skip lands within a tick** instead of at the end of the wait.
+     * - **So does pausing**, and that fixes a real defect: [gate] used to be reached only *after* the wait,
+     *   so pausing during a 30-second wait left the button unchanged for 30 seconds and read as broken.
+     * - **Pausing freezes the count** rather than draining it, because the remaining time is held here and
+     *   nothing moves while [gate] is suspended. A countdown that ran to zero while paused and then still
+     *   had 12 seconds to serve would be lying.
+     *
+     * The tick is short and the published value is in whole seconds, so most ticks assign the value the
+     * flow already holds — and a `StateFlow` does not emit on an equal value, so the transport still
+     * redraws once a second rather than ten times.
+     */
+    private suspend fun timedWait(totalMs: Long) {
+        if (totalMs <= 0) return
+        skipRequested.value = false
+        var remaining = totalMs
+        try {
+            while (remaining > 0) {
+                gate()
+                if (skipRequested.value) {
+                    Diag.log("player: wait skipped with ${remaining}ms left")
+                    return
+                }
+                EngineState.waitRemaining.value = ((remaining + 999) / 1000).toInt()
+                val slice = minOf(remaining, WAIT_TICK_MS)
+                delay(slice)
+                remaining -= slice
+            }
+        } finally {
+            // Also on cancellation, which is what stopping a run in the middle of a wait is.
+            EngineState.waitRemaining.value = 0
+            skipRequested.value = false
+        }
     }
 
     private suspend fun countDown(delayMs: Long) {
@@ -370,5 +426,8 @@ class Player(
 
     private companion object {
         const val TIMER_TICK_MS = 200L
+
+        /** How soon skip and pause take effect inside a timed wait. Not the display rate; see [timedWait]. */
+        const val WAIT_TICK_MS = 100L
     }
 }
