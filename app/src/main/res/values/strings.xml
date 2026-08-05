@@ -234,6 +234,8 @@
     <string name="toast_workspace_cleared">Workspace cleared</string>
     <string name="toast_open_clip_failed">Could not open that as a clip. The file may have moved, or it may not be a clip.</string>
     <string name="toast_open_flow_failed">Could not open that as a flow. The file may have moved, or it may not be a flow.</string>
+    <string name="toast_open_is_flow">That is a flow file, not a clip. Switch to flow mode to open it.</string>
+    <string name="toast_open_is_clip">That is a clip file, not a flow. Switch to clip mode to open it.</string>
     <string name="toast_delete_failed">Could not delete that file</string>
 
     <!-- Diagnostics -->

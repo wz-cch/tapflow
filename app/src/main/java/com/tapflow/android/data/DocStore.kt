@@ -174,6 +174,27 @@ object DocStore {
         }
     }.onFailure { Log.w(TAG, "Could not rename $ref", it) }.getOrNull()
 
+    /**
+     * Makes sure a file the picker just created carries our extension, and returns where it now lives.
+     *
+     * **The extension is ours to add, not the user's to type.** The system picker has one name field and no
+     * notion of a separate extension, so a suggested `Login.clip` puts `.clip` *in* that field — visible,
+     * editable, and deletable, which makes a decoration out of something load-bearing. So the suggestion is
+     * the bare name and this puts the extension back afterwards.
+     *
+     * A rename rather than asking the picker for it, because there is nothing to ask: an unmapped MIME type is
+     * what stops `ExternalStorageProvider` appending an extension of its own (see [MIME]), and that same
+     * unmapped type means it will not append ours either.
+     *
+     * A provider that refuses to rename costs the extension and nothing else — the file is still opened by
+     * parsing it, so it stays usable. That is why this returns the original ref instead of failing.
+     */
+    fun ensureExtension(ref: String, kind: DocKind): String {
+        val name = fileName(ref) ?: return ref
+        if (kind.matches(name)) return ref
+        return rename(ref, name + kind.extension) ?: ref
+    }
+
     fun delete(ref: String): Boolean = runCatching {
         val uri = contentUri(ref)
         if (uri != null) {

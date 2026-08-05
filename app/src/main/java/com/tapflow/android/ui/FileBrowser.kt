@@ -48,7 +48,8 @@ import java.io.File
  * better. What it must do is let any folder be reached, since that is the whole promise of the model.
  *
  * @param suggestedName non-null when saving, which is what adds the name field and turns tapping a file into
- *   filling that field in. Null when opening.
+ *   filling that field in. Null when opening. Carries no extension — this dialog appends it on save, so the
+ *   field only ever holds the part the user owns.
  */
 @Composable
 fun FileBrowserDialog(
@@ -60,7 +61,7 @@ fun FileBrowserDialog(
     val root = remember { DocStore.legacyRoot }
     var dir by remember { mutableStateOf(root) }
     var listing by remember { mutableStateOf<List<File>>(emptyList()) }
-    var name by remember { mutableStateOf(suggestedName?.let(::displayName).orEmpty()) }
+    var name by remember { mutableStateOf(suggestedName.orEmpty()) }
     var overwriting by remember { mutableStateOf<File?>(null) }
     val saving = suggestedName != null
 

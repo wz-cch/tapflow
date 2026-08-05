@@ -206,10 +206,40 @@ object Repo {
         return true
     }
 
+    /**
+     * A file the picker just created, with our extension guaranteed and its name read back.
+     *
+     * Every creation goes through here, because the extension is the one thing the picker cannot be asked to
+     * get right — see [DocStore.ensureExtension].
+     */
+    fun prepareNew(ref: String, kind: DocKind): DocFile {
+        val at = DocStore.ensureExtension(ref, kind)
+        return DocFile(at, fileLabel(at))
+    }
+
     /** Writes a brand-new empty flow to a file the user just created. */
     fun createFlow(ref: String): OpenFlow? {
-        val opened = OpenFlow(DocFile(ref, fileLabel(ref)), Flow(clips = emptyList()), emptyMap())
+        val opened = OpenFlow(prepareNew(ref, DocKind.FLOW), Flow(clips = emptyList()), emptyMap())
         return if (saveFlow(opened)) opened else null
+    }
+
+    /**
+     * What a file actually is, by parsing it. Null when it is neither kind.
+     *
+     * Only ever called after an open has already failed, to turn "could not open that as a clip" into "that is
+     * a flow" — which is the difference between a dead end and an answer. Costs a second read, on a path the
+     * user has already lost.
+     *
+     * By content and not by extension, for the same reason opening is: a clip copied to `notes.txt` is still a
+     * clip, and a `.clip` full of something else is not one.
+     */
+    fun kindOf(ref: String): DocKind? {
+        val text = DocStore.read(ref) ?: return null
+        return when {
+            runCatching { AppJson.decodeFromString<Clip>(text) }.isSuccess -> DocKind.CLIP
+            runCatching { AppJson.decodeFromString<Flow>(text) }.isSuccess -> DocKind.FLOW
+            else -> null
+        }
     }
 
     // --- Maintenance ---------------------------------------------------------

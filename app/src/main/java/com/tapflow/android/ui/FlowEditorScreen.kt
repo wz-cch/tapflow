@@ -51,6 +51,7 @@ import com.tapflow.android.data.Repo
 import com.tapflow.android.data.Settings
 import com.tapflow.android.engine.Session
 import com.tapflow.android.text.clipSummary
+import com.tapflow.android.text.openFailure
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -127,7 +128,10 @@ fun FlowEditorScreen(flowRef: String, onBack: () -> Unit, onEditClip: () -> Unit
             // chosen, which is the only moment the user can do anything about it.
             val loaded = withContext(Dispatchers.IO) { Repo.openClip(ref) }
             if (loaded == null) {
-                context.toastLong(context.getString(R.string.toast_open_clip_failed))
+                // Says *what* the file is when it is the wrong kind — picking a flow here is an easy mistake,
+                // because the system picker cannot be told to list only clips.
+                val actual = withContext(Dispatchers.IO) { Repo.kindOf(ref) }
+                context.toastLong(openFailure(context.resources, DocKind.CLIP, actual))
                 return@launch
             }
             val node = ClipNode(ref = loaded.file.ref, name = loaded.file.name)
