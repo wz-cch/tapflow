@@ -8,6 +8,7 @@ import android.provider.Settings
 import android.util.Log
 import android.view.Gravity
 import android.view.View
+import android.view.WindowInsets
 import android.view.WindowManager
 import com.tapflow.android.engine.EngineState
 
@@ -45,6 +46,32 @@ class OverlayHost(private val service: AccessibilityService) {
         // Android switches off an accessibility service that crashes.
         val metrics = service.resources.displayMetrics
         Point(metrics.widthPixels, metrics.heightPixels)
+    }
+
+    /**
+     * Display height with the status and navigation bars taken off.
+     *
+     * [displaySize] is deliberately the whole panel, because a coordinate has to be expressed against the
+     * same thing the injector uses. Laying a panel out is a different question and takes the other answer:
+     * a column sized against the full height reaches the navigation bar, and the system claims presses
+     * there before any overlay sees them — so its last button stops working while still being visible.
+     *
+     * Asked of the display rather than of a window. `View.getRootWindowInsets` reports what a *particular*
+     * window overlaps, and ours is a narrow wrap-content panel that usually overlaps neither bar, so it
+     * would answer zero for both and defeat the point.
+     */
+    fun usableHeight(): Int = runCatching {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val metrics = windowManager.currentWindowMetrics
+            val bars = metrics.windowInsets.getInsets(WindowInsets.Type.systemBars())
+            metrics.bounds.height() - bars.top - bars.bottom
+        } else {
+            // No window-independent inset query before R. The app metrics exclude the system decor, which
+            // on those releases is the number wanted here.
+            service.resources.displayMetrics.heightPixels
+        }
+    }.onFailure { Log.w(TAG, "Could not read the usable height", it) }.getOrElse {
+        service.resources.displayMetrics.heightPixels
     }
 
     fun rotation(): Int = runCatching {
