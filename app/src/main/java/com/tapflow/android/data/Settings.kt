@@ -194,6 +194,15 @@ data class Settings(
         const val MAX_LOOP_COUNT = 9999
 
         /**
+         * Ceiling on any repeat count, at either level.
+         *
+         * Enough for any real use, and low enough that a stray extra digit does not mean 1000 taps. One
+         * number for both because a step repeated N times and a clip repeated N times are the same promise
+         * — the flow editor used to stop at 50 for no reason but its slider being hard to drag past it.
+         */
+        const val MAX_REPEAT = 999
+
+        /**
          * Ceiling on [failureRetries].
          *
          * A missing gesture injector is not a passing condition — it stays broken until the service is
