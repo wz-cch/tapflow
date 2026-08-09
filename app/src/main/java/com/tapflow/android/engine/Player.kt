@@ -52,9 +52,10 @@ class Player(
      * @param startIndex first step of the *first* pass. Later passes always start from the beginning:
      *   "start at 47 and run three times" almost never means skipping 1–46 on every pass, it means
      *   picking up where the problem was and then behaving normally.
-     * @param plan set when the steps came from expanding a flow, so progress can be reported as "clip 2
-     *   of 5, step 10 of 30" instead of one number counted across the whole flow. Null for a recording,
-     *   where there is only one thing being run and the global index is the answer.
+     * @param plan set when the steps came from expanding a flow. It does two things: progress is reported as
+     *   "clip 2 of 5, step 10 of 30" instead of one number counted across the whole flow, and it carries the
+     *   *order* — which slice of [steps] to run, how many times, and what to wait first. Null for a
+     *   recording, where the list is the order and the global index is the answer.
      */
     fun play(
         steps: List<Step>,
@@ -65,10 +66,10 @@ class Player(
     ) {
         if (isActive || steps.isEmpty()) return
         pauseRequested.value = false
-        cursor = plan?.let { Cursor(it) }
         skipped = 0
 
-        Diag.log("player: play ${steps.size} step(s), loops=$loops, recordedScreen=$recordedScreen")
+        val runLength = plan?.totalSteps ?: steps.size
+        Diag.log("player: play $runLength step(s), loops=$loops, recordedScreen=$recordedScreen")
         job = scope.launch {
             try {
                 countDown(settings().startDelayMs)
@@ -85,18 +86,21 @@ class Player(
                     if (loop > 1) {
                         val current = settings()
                         // Step 0: between passes, nothing running. The transport reads it as a wait.
-                        EngineState.progress.value = Progress(loop, loops, 0, steps.size)
+                        EngineState.progress.value = Progress(loop, loops, 0, runLength)
                         delay(Timing.replayDelay(current.loopIntervalMs, current))
                         // So pause and stop land during the gap rather than only at the next step.
                         gate()
                     }
-                    val from = if (loop == 1) startIndex.coerceIn(0, steps.lastIndex) else 0
-                    for ((index, step) in steps.withIndex()) {
-                        if (index < from) continue
+                    val from = if (loop == 1) startIndex.coerceIn(0, runLength - 1) else 0
+                    // Generated per pass rather than held, which is the whole point: a clip repeated 999
+                    // times is 999 visits to one slice of `steps`, not 999 copies of it.
+                    for ((position, visit) in visits(steps, plan).withIndex()) {
+                        if (position < from) continue
+                        val step = steps[visit.index]
                         val passes = (step as? RepeatableStep)?.repeat?.coerceAtLeast(1) ?: 1
-                        report(loop, loops, index, steps.size, 1, passes)
+                        report(loop, loops, visit, plan, 1, passes)
                         Diag.log(
-                            "player: loop $loop step ${index + 1}/${steps.size} " +
+                            "player: loop $loop step ${position + 1}/$runLength " +
                                 step::class.java.simpleName +
                                 if (passes > 1) " x$passes" else ""
                         )
@@ -115,8 +119,12 @@ class Player(
                         val current = settings()
                         // The lead delay of the step started from is skipped: it is measured against the
                         // step before it, and that one did not run. The start countdown covers the gap.
-                        val startedHere = loop == 1 && index == from && from > 0
-                        if (!startedHere) delay(Timing.replayDelay(step.delayBefore, current))
+                        val startedHere = loop == 1 && position == from && from > 0
+                        // A clip's own lead-in, or the gap before going round again, wins over the step's
+                        // recorded one — it replaces it rather than adding to it, which is what the
+                        // copy-per-pass expansion did by overwriting the field on its private copy.
+                        val lead = if (visit.leadMs > 0) visit.leadMs else step.delayBefore
+                        if (!startedHere) delay(Timing.replayDelay(lead, current))
                         gate()
 
                         if (step is PauseStep) {
@@ -131,13 +139,13 @@ class Player(
                             // interval is what stops ten taps arriving close enough together for the app
                             // below to read them as one multi-tap — or to drop them.
                             if (pass > 1) {
-                                report(loop, loops, index, steps.size, pass, passes)
+                                report(loop, loops, visit, plan, pass, passes)
                                 delay(Timing.replayDelay(interval, current))
                                 // Checked every pass, so pause and stop work in the middle of a repeat
                                 // rather than only between steps.
                                 gate()
                             }
-                            if (!attempt(step, scale, current, index + 1)) return@launch
+                            if (!attempt(step, scale, current, position + 1)) return@launch
                         }
                     }
                 }
@@ -154,66 +162,90 @@ class Player(
     }
 
     /**
-     * Where a global step index falls in an expanded flow.
+     * One step of the run, and everything about it that depends on *where in the run* it is.
      *
-     * Walks forward from the previous answer rather than searching, because playback only ever moves
-     * forwards through the list, so this is a single comparison per step in the common case.
+     * The same step object can be visited many times — that is the point of not copying it — so nothing
+     * position-dependent may live on the step. It lives here instead, for the length of one visit.
      */
-    private class Cursor(val plan: FlowPlan.Expanded) {
-        private var segment = 0
-        private var segmentStart = 0
+    private class Visit(
+        /** Index into the step list handed to [play]. */
+        val index: Int,
+        /** Replaces the step's own lead when above zero. Only ever set on a clip's first step. */
+        val leadMs: Long,
+        /** 1-based clip position, or 0 for a recording, where there is no clip to be in. */
+        val clipPosition: Int,
+        val stepInClip: Int,
+        val stepsInClip: Int,
+    )
 
-        fun locate(index: Int): Pair<Int, Int> {
-            if (index < segmentStart) {
-                segment = 0
-                segmentStart = 0
+    /**
+     * The run, in order, generated as it goes.
+     *
+     * **Lazy on purpose.** A flow's repeats are expressed here rather than in the step list, so a clip
+     * repeated 999 times costs 999 of these — each alive for one step and then garbage — instead of 999
+     * copies of its steps held for the whole run. The player already ran a *step* N times without holding
+     * N copies of it; this is the same bargain one level up.
+     *
+     * A recording has no segments, so it is simply its own order.
+     */
+    private fun visits(steps: List<Step>, plan: FlowPlan.Expanded?): Sequence<Visit> {
+        if (plan == null) {
+            return steps.indices.asSequence().map {
+                Visit(
+                    index = it,
+                    leadMs = 0,
+                    clipPosition = 0,
+                    stepInClip = it + 1,
+                    stepsInClip = steps.size,
+                )
             }
-            while (segment < plan.segments.lastIndex &&
-                index >= segmentStart + plan.segments[segment].stepCount
-            ) {
-                segmentStart += plan.segments[segment].stepCount
-                segment++
-            }
-            val here = plan.segments.getOrNull(segment) ?: return 0 to 0
-            return here.clipPosition to here.stepCount
         }
-
-        fun stepWithin(index: Int): Int = index - segmentStart + 1
+        return sequence {
+            for (segment in plan.segments) {
+                for (pass in 1..segment.repeat) {
+                    // The lead-in belongs to arriving at this clip, the interval to going round again.
+                    val lead = if (pass == 1) segment.delayBefore else segment.repeatIntervalMs
+                    for (offset in 0 until segment.stepCount) {
+                        yield(
+                            Visit(
+                                index = segment.from + offset,
+                                leadMs = if (offset == 0) lead else 0,
+                                clipPosition = segment.clipPosition,
+                                stepInClip = offset + 1,
+                                stepsInClip = segment.stepCount,
+                            )
+                        )
+                    }
+                }
+            }
+        }
     }
-
-    private var cursor: Cursor? = null
 
     /**
      * Publishes progress, expressed in whatever unit the run has.
      *
      * A recording counts steps across the whole run. A flow counts them **within the current clip**, and
      * adds the clip's own position — which is why a flow of one clip reads exactly like running that clip
-     * on its own, once the transport hides a total of 1.
+     * on its own, once the transport hides a total of 1. Both readings come off the visit, so there is no
+     * index to map back: it was generated knowing where it was.
      */
     private fun report(
         loop: Int,
         loops: Int,
-        index: Int,
-        total: Int,
+        visit: Visit,
+        plan: FlowPlan.Expanded?,
         repeatPass: Int,
         repeatTotal: Int,
     ) {
-        val here = cursor
-        if (here == null) {
-            EngineState.progress.value =
-                Progress(loop, loops, index + 1, total, repeatPass, repeatTotal)
-            return
-        }
-        val (clipPosition, stepsInClip) = here.locate(index)
         EngineState.progress.value = Progress(
             loop = loop,
             totalLoops = loops,
-            step = here.stepWithin(index),
-            totalSteps = stepsInClip,
+            step = visit.stepInClip,
+            totalSteps = visit.stepsInClip,
             repeatPass = repeatPass,
             repeatTotal = repeatTotal,
-            clip = clipPosition,
-            totalClips = here.plan.clipCount,
+            clip = visit.clipPosition,
+            totalClips = plan?.clipCount ?: 0,
         )
     }
 
