@@ -91,9 +91,6 @@ class TapFlowService : AccessibilityService() {
 
         /** How much of the screen the settings panel may take before its rows start scrolling. */
         private const val PANEL_MAX_HEIGHT_FRACTION = 0.8f
-
-        /** Enough for any real use, and low enough that a stray extra digit does not mean 1000 taps. */
-        private const val MAX_REPEAT = 999
     }
 
     /**
@@ -1557,7 +1554,7 @@ class TapFlowService : AccessibilityService() {
                     title = getString(R.string.repeat_pad_title),
                     unit = getString(R.string.repeat_pad_unit),
                     initialValue = step.repeat,
-                    max = MAX_REPEAT,
+                    max = Settings.MAX_REPEAT,
                 ) { times ->
                     val repeat = times.coerceAtLeast(1)
                     val interval = if (repeat > 1 && step.repeatIntervalMs <= 0) {

@@ -37,6 +37,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -418,6 +419,9 @@ private fun nodeDetail(node: ClipNode): String = buildString {
     if (isEmpty()) append(stringResource(R.string.flow_node_plain))
 }
 
+/** As far as the repeat slider goes. The number itself goes to [Settings.MAX_REPEAT] — see the row. */
+private const val SLIDER_MAX_REPEAT = 50f
+
 /**
  * The three knobs for one row, behind a settings button rather than shown inline.
  *
@@ -433,6 +437,7 @@ private fun ClipNodeSettingsDialog(
     var delay by remember { mutableStateOf(node.delayBefore) }
     var repeat by remember { mutableStateOf(node.repeat) }
     var interval by remember { mutableStateOf(node.repeatIntervalMs) }
+    var typingRepeat by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -446,11 +451,16 @@ private fun ClipNodeSettingsDialog(
                     range = 0f..30_000f,
                 ) { delay = (it / 250f).roundToInt() * 250L }
 
+                // The slider stops at 50 and the number does not. Dragging is for the counts anyone reaches
+                // for — two, three, ten — and a slider stretched to 999 makes every one of those a pixel
+                // apart. The same split the loop count above already uses, and now the same ceiling the
+                // step level uses, so "repeat 200 times" means one thing wherever it is asked for.
                 SliderBlock(
                     label = stringResource(R.string.param_repeat),
                     value = stringResource(R.string.value_times, repeat),
                     position = repeat.toFloat(),
-                    range = 1f..50f,
+                    range = 1f..SLIDER_MAX_REPEAT,
+                    onTypeIn = { typingRepeat = true },
                 ) { repeat = it.roundToInt() }
 
                 // Only once there is something to separate. A single pass has no gap between passes, and
@@ -480,20 +490,45 @@ private fun ClipNodeSettingsDialog(
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.dialog_cancel)) }
         },
     )
+
+    // Over the settings dialog rather than replacing it, so the two numbers you did not come to change stay
+    // on screen and confirming is still one button away.
+    if (typingRepeat) {
+        NumberEntryDialog(
+            title = stringResource(R.string.param_repeat),
+            entry = TypedNumber(repeat, 1..Settings.MAX_REPEAT) { repeat = it },
+        ) { typingRepeat = false }
+    }
 }
 
+/**
+ * @param onTypeIn non-null when the value may be typed as well as dragged, which makes it the tappable
+ *   link the loop count above uses. Rows without one are ranges a slider can address on its own.
+ */
 @Composable
 private fun SliderBlock(
     label: String,
     value: String,
     position: Float,
     range: ClosedFloatingPointRange<Float>,
+    onTypeIn: (() -> Unit)? = null,
     onChange: (Float) -> Unit,
 ) {
     Column(Modifier.padding(top = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-            Text(value, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                value,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (onTypeIn == null) Color.Unspecified else MaterialTheme.colorScheme.primary,
+                modifier = if (onTypeIn == null) {
+                    Modifier
+                } else {
+                    Modifier
+                        .clickable(onClick = onTypeIn)
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                },
+            )
         }
         Slider(
             value = position.coerceIn(range.start, range.endInclusive),
