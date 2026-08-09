@@ -1116,7 +1116,7 @@ class TapFlowService : AccessibilityService() {
         Diag.clear()
         Diag.log(
             "playback start: flow '${open.file.name}', ${open.flow.clips.size} clip(s) " +
-                "-> ${plan.steps.size} step(s)"
+                "-> ${plan.totalSteps} step(s) over ${plan.steps.size} distinct"
         )
         exitEditing()
         player.play(plan.steps, recordedScreen = null, loops = open.flow.loopCount, plan = plan)
