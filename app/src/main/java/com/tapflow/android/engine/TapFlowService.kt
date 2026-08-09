@@ -522,8 +522,9 @@ class TapFlowService : AccessibilityService() {
         val screen = host.displaySize()
 
         toolbar.applyAppearance(current.uiScale, current.uiOpacity)
-        // Recomputed here so a rotation, or a change of scale, re-caps the scrolling area.
-        toolbar.setAvailableHeight(screen.y - dpToPx(32f).toInt())
+        // Recomputed here so a rotation, or a change of scale, re-caps the scrolling area. Not `screen.y`:
+        // that one includes the system bars, and a toolbar laid out against it runs under them.
+        toolbar.setAvailableHeight(host.usableHeight() - dpToPx(32f).toInt())
         toolbar.render(
             mode = mode,
             form = EngineState.toolbarForm.value,

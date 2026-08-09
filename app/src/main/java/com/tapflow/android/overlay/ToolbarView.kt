@@ -143,8 +143,9 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
     /**
      * A ScrollView that wraps its content but never grows past [maxHeightPx].
      *
-     * The button column is around 480dp tall, which does not fit a phone in landscape — the collapse
-     * button ended up below the bottom edge and could not be reached at all.
+     * The button column is around 480dp tall, which does not fit a phone in landscape. What overflows now
+     * scrolls; the two things that must never scroll away — the grip and the collapse handle — are outside
+     * it, one at each end.
      */
     private class CappedScrollView(context: Context) : ScrollView(context) {
         var maxHeightPx: Int = 0
@@ -217,10 +218,24 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
     private val eye = icon(R.drawable.ic_eye)
     private val quickSettings = icon(R.drawable.ic_tune)
     private val dismiss = icon(R.drawable.ic_close)
+
+    /**
+     * Shrinks the toolbar to the ball. Pinned below the scroller, not inside it.
+     *
+     * It used to be the last button of the scrolling column, and being last is what broke it: clip mode
+     * shows three more buttons than flow mode, so the column that ended above the screen edge in one mode
+     * ended at or past it in the other — and this was the button that fell off. Reported as "the collapse
+     * button is missing in clip mode, but it is still there in flow mode", which is exactly the shape of a
+     * button whose position depends on how many buttons precede it.
+     *
+     * Pinning it decouples it from that count entirely. It belongs out here on its own terms as well: like
+     * the grip it acts on the *window*, not on the clip or the flow, which is also why it has no visibility
+     * rule — every mode can be collapsed.
+     */
     private val collapse = icon(R.drawable.ic_collapse)
 
     /**
-     * Everything inside the scroller, in display order. The grip sits outside it.
+     * Everything inside the scroller, in display order. The grip and [collapse] sit outside it.
      *
      * Ordered so that each mode's own subset reads sensibly, since a mode simply hides the rest: leave
      * first, then the things that create steps, then the one that destroys them, then undo, then the
@@ -233,10 +248,10 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
     private val scrollingButtons = listOf(
         modeToggle, finishClip, primary, playFrom, secondary, edit, editFlow, insertStep, duplicateStep,
         insertGlobal, insertPause, insertWait, deleteStep, undo, stepPanelToggle, stepListToggle, newClip,
-        save, saveAs, load, newFlow, deleteFlow, eye, quickSettings, dismiss, collapse,
+        save, saveAs, load, newFlow, deleteFlow, eye, quickSettings, dismiss,
     )
 
-    private val allButtons = listOf(grip) + scrollingButtons
+    private val allButtons = listOf(grip) + scrollingButtons + collapse
 
     private val ball = ImageView(context).apply {
         scaleType = ImageView.ScaleType.CENTER_INSIDE
@@ -250,9 +265,11 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         scroller.addView(column, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
 
         // The grip is deliberately outside the scroller. Inside it, ScrollView would intercept the
-        // vertical drag and the toolbar could no longer be moved.
+        // vertical drag and the toolbar could no longer be moved. Collapse is outside it for its own
+        // reason — see the property.
         expanded.addView(grip)
         expanded.addView(scroller)
+        expanded.addView(collapse)
 
         addView(expanded, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
         addView(ball, LayoutParams(dp(BALL_DP), dp(BALL_DP)))
@@ -360,8 +377,8 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         // changing one, so none of them appear here. Undo is the reverse: it exists only where steps
         // can be mutated, which is recording and editing — idle can play and save but not alter.
         //
-        // The eye and the collapse handle are missing from this list on purpose: both are useful in
-        // every mode, so they are simply always visible.
+        // The eye is missing from this list on purpose: it is useful in every mode, so it is simply always
+        // visible. So is the collapse handle, which is not even in this view's column any more.
         // Flow mode is a fourth set, and a thin one. Clip mode's object is a *node* — so it needs
         // dragging, durations, re-recording, insertion, duplication, a whole column of them. Flow mode's
         // object is a *clip*: you cannot edit a node or save a node here, so none of that appears. The
@@ -512,19 +529,24 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
     private fun visibleWhen(condition: Boolean): Int = if (condition) VISIBLE else GONE
 
     /**
-     * @param availableHeightPx how tall the toolbar may be before its buttons start scrolling.
-     *   Landscape does not fit the whole column, and an unreachable collapse button is worse than
-     *   having to scroll for it.
+     * @param availableHeightPx how tall the toolbar may be before its buttons start scrolling. Must be a
+     *   height the user can actually touch, not the raw display height — a column laid out against the
+     *   whole panel ends under the navigation bar, where the system takes the presses first.
      */
     fun setAvailableHeight(availableHeightPx: Int) {
-        val gripHeight = grip.layoutParams?.height?.takeIf { it > 0 } ?: dp(44f)
+        // Both pinned rows come off the top, because neither of them scrolls: whatever is left is what the
+        // scroller may have.
+        val pinned = rowHeight(grip) + rowHeight(collapse)
         // Clamp before comparing. Comparing the raw value against the clamped one stored last time
         // never matches on a short screen, and then this forced a relayout on every refresh.
-        val forScroller = (availableHeightPx - gripHeight - dp(12f)).coerceAtLeast(dp(88f))
+        val forScroller = (availableHeightPx - pinned - dp(12f)).coerceAtLeast(dp(88f))
         if (scroller.maxHeightPx == forScroller) return
         scroller.maxHeightPx = forScroller
         scroller.requestLayout()
     }
+
+    /** Laid-out height when there is one, the unscaled default before the first layout pass. */
+    private fun rowHeight(view: View): Int = view.layoutParams?.height?.takeIf { it > 0 } ?: dp(44f)
 
     private var appliedScale = Float.NaN
     private var appliedOpacity = Float.NaN
