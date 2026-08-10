@@ -223,6 +223,7 @@
     <string name="storage_delete_body">The file goes. Flows that use it will show ! until you point them somewhere else.</string>
     <string name="browse_up">Up one folder</string>
     <string name="browse_empty">Nothing here.</string>
+    <string name="storage_root_gone">That folder cannot be reached. It may have been moved or deleted, or its card is not mounted.</string>
     <string name="browse_name_label">Name</string>
     <string name="browse_overwrite_title">Replace “%1$s”?</string>
     <string name="root_choose_title">Choose the folder for your clips</string>
