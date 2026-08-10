@@ -39,6 +39,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -220,6 +221,20 @@ fun HomeScreen(
         }
     }
 
+    // The root is a preference, not a StateFlow — one string read once at startup — so the row that shows it
+    // needs a nudge to redraw. A counter rather than mirroring the value: what changed is "there is a
+    // different folder now", and everything derived from it re-reads at that point.
+    var rootRevision by remember { mutableIntStateOf(0) }
+    val rootLabel = remember(rootRevision) { if (DocStore.hasRoot) DocStore.rootLabel else null }
+    val chooseRoot = rememberRootPicker { chosen ->
+        if (!chosen) return@rememberRootPicker
+        // Every row described a place inside the folder that was there before, so none of them describe
+        // anything now. What is *open* is left alone: its ref is relative too, so it goes on meaning the
+        // same place inside whichever folder is current.
+        Recents.clear()
+        rootRevision++
+    }
+
     val clipOpener = rememberFilePicker(DocKind.CLIP) { ref ->
         ref?.let { picked -> guarded { openClip(picked) } }
     }
@@ -319,6 +334,16 @@ fun HomeScreen(
                 OutlinedButton(onClick = { guarded(::startFresh) }) {
                     Text(stringResource(R.string.home_start_fresh))
                 }
+            }
+
+            // Above the two lists, because it is what they are lists *of*. Shown even once it is set: it is
+            // the one piece of configuration this app has, and a row that only appears when something is
+            // wrong is a row nobody knows exists until it is too late to have expected it.
+            item {
+                FolderRow(
+                    label = rootLabel ?: stringResource(R.string.root_row_unset),
+                    onChange = chooseRoot,
+                )
             }
 
             item {
@@ -562,6 +587,44 @@ private fun ToolbarSwitch(enabled: Boolean, checked: Boolean, onCheckedChange: (
  *   gesture. The asymmetry is real: a clip has no equivalent, since its steps are recorded on top of another
  *   app.
  */
+/**
+ * The folder everything lives in, and the way to change it.
+ *
+ * The app's only piece of configuration, and it earns the space: the two lists below it are lists of what is
+ * in here, and a flow points at its clips by where they sit inside it — which is what makes the whole folder
+ * portable, and what makes changing it a real event rather than a preference.
+ */
+@Composable
+private fun FolderRow(label: String, onChange: () -> Unit) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            Text(stringResource(R.string.root_row_title), style = MaterialTheme.typography.titleSmall)
+            Text(
+                label,
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                stringResource(R.string.root_row_body),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(4.dp))
+            // The warning belongs on the row rather than behind a confirm dialog: it says what changing the
+            // folder costs, which is what someone reads *before* deciding, not after having decided.
+            Text(
+                stringResource(R.string.root_changed_forgets),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(onClick = onChange) { Text(stringResource(R.string.root_change)) }
+        }
+    }
+}
+
 @Composable
 private fun RecentRow(
     doc: RecentDoc,

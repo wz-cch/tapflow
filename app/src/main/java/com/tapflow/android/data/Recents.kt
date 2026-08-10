@@ -97,6 +97,14 @@ object Recents {
     /** Takes a row out of the list without touching the file it points at. */
     fun forget(ref: String) = update { list -> list.filterNot { it.ref == ref } }
 
+    /**
+     * Drops every row, for the one event that invalidates all of them at once: the folder moved.
+     *
+     * A ref is a path *inside* the chosen folder, so against a different folder every row describes a place
+     * that is probably not there. Deletes nothing — this list never owned anything.
+     */
+    fun clear() = update { emptyList() }
+
     /** After a rename: same file, new ref and name. */
     fun renamed(from: String, to: String, name: String) = update { list ->
         list.map { if (it.ref == from) it.copy(ref = to, name = name) else it }

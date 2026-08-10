@@ -223,8 +223,15 @@
     <string name="browse_title_save">Save into</string>
     <string name="browse_up">Up one folder</string>
     <string name="browse_empty">Nothing here.</string>
-    <string name="browse_name_label">File name</string>
+    <string name="browse_name_label">Name</string>
     <string name="browse_overwrite_title">Replace “%1$s”?</string>
+    <string name="root_choose_title">Choose the folder for your clips</string>
+    <string name="root_choose_confirm">Use this folder</string>
+    <string name="root_row_title">Clip folder</string>
+    <string name="root_row_unset">Not chosen yet</string>
+    <string name="root_row_body">Clips and flows live in here, in whatever subfolders you make. A flow points at its clips by where they sit inside this folder, so moving or copying the whole folder keeps every flow working.</string>
+    <string name="root_change">Change folder</string>
+    <string name="root_changed_forgets">Changing the folder empties the recent list: the files in it are described by where they sit inside the old one.</string>
     <string name="note_title">Pause note</string>
     <string name="note_explain">Shown when a replay stops here. Leave it blank if you do not need one.</string>
     <string name="note_label">What to do by hand</string>
@@ -236,10 +243,6 @@
     <string name="toast_workspace_cleared">Workspace cleared</string>
     <string name="toast_open_clip_failed">Could not open that as a clip. The file may have moved, or it may not be a clip.</string>
     <string name="toast_open_flow_failed">Could not open that as a flow. The file may have moved, or it may not be a flow.</string>
-    <string name="toast_open_is_flow">That is a flow file, not a clip. Switch to flow mode to open it.</string>
-    <string name="toast_open_is_clip">That is a clip file, not a flow. Switch to clip mode to open it.</string>
-    <string name="toast_open_not_clip">That is not a clip file. A clip’s name ends in .clip — if you renamed it, rename it back and it will open.</string>
-    <string name="toast_open_not_flow">That is not a flow file. A flow’s name ends in .flow — if you renamed it, rename it back and it will open.</string>
     <string name="toast_delete_failed">Could not delete that file</string>
 
     <!-- Diagnostics -->
