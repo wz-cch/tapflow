@@ -16,6 +16,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -69,6 +70,9 @@ import java.io.File
  * @param canOpen whether tapping a file opens it. False where the panel exists only to name something new,
  *   and then tapping a file fills the name in instead — which is how you overwrite deliberately rather than
  *   by a single tap.
+ * @param onChooseFolder offered when the chosen folder cannot be reached. A folder the user picked can be
+ *   deleted, renamed or live on a card that is not mounted, and an empty list is the wrong way to say so —
+ *   "nothing here" and "here is gone" ask for completely different things next.
  */
 @Composable
 fun StorageDialog(
@@ -77,6 +81,7 @@ fun StorageDialog(
     suggestedName: String?,
     canOpen: Boolean,
     onDismiss: () -> Unit,
+    onChooseFolder: () -> Unit,
     onOpen: (String) -> Unit,
     onSave: (String) -> Unit,
 ) {
@@ -89,13 +94,23 @@ fun StorageDialog(
     // Bumped by anything that changes what is in the folder, which is only ever a delete: saving hands the
     // ref back and this panel goes away with it.
     var revision by remember { mutableIntStateOf(0) }
+    // Null until the first listing has been done. Asked on the same trip as the listing, because it is only
+    // worth asking when the listing came back empty and both answers cost a provider round trip.
+    var reachable by remember { mutableStateOf<Boolean?>(null) }
     val canSave = suggestedName != null
     val recent by Recents.docs.collectAsStateWithLifecycle()
 
     // Off the main thread. Listing a folder on a slow card is not instant, and this is often the first thing
     // on screen after a tap.
     LaunchedEffect(dir, revision) {
-        listing = withContext(Dispatchers.IO) { DocStore.list(dir, kind) }
+        val found = withContext(Dispatchers.IO) {
+            val entries = DocStore.list(dir, kind)
+            // Only when there is nothing to show. A folder with files in it is reachable by definition, and
+            // this check is a query of its own.
+            entries to (entries.isNotEmpty() || DocStore.rootReadable())
+        }
+        listing = found.first
+        reachable = found.second
     }
 
     fun save() {
@@ -183,12 +198,24 @@ fun StorageDialog(
                     }
                     if (listing.isEmpty()) {
                         item {
-                            Text(
-                                stringResource(R.string.browse_empty),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(vertical = 12.dp),
-                            )
+                            if (reachable == false) {
+                                Text(
+                                    stringResource(R.string.storage_root_gone),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.padding(vertical = 12.dp),
+                                )
+                                OutlinedButton(onClick = onChooseFolder) {
+                                    Text(stringResource(R.string.root_change))
+                                }
+                            } else {
+                                Text(
+                                    stringResource(R.string.browse_empty),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(vertical = 12.dp),
+                                )
+                            }
                         }
                     }
                 }

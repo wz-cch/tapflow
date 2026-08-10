@@ -4,6 +4,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -82,21 +84,36 @@ fun rememberFilePicker(kind: DocKind, onResult: (Picked) -> Unit): FilePicker {
     var startIn by remember { mutableStateOf("") }
     var suggested by remember { mutableStateOf<String?>(null) }
     var canOpen by remember { mutableStateOf(true) }
+    var rootRevision by remember { mutableIntStateOf(0) }
 
     val chooseRoot = rememberRootPicker { chosen ->
-        if (chosen) browsing = true else onResult(Picked.Cancelled)
+        when {
+            chosen -> {
+                rootRevision++
+                browsing = true
+            }
+            // Backing out of the folder question ends the whole thing only when it *was* the whole thing.
+            // Asked from inside an open panel — because the folder turned out to be gone — it just leaves
+            // that panel where it was, still saying so.
+            !browsing -> onResult(Picked.Cancelled)
+        }
     }
 
     if (browsing) {
-        StorageDialog(
-            kind = kind,
-            startIn = startIn,
-            suggestedName = suggested,
-            canOpen = canOpen,
-            onDismiss = { browsing = false; onResult(Picked.Cancelled) },
-            onOpen = { ref -> browsing = false; onResult(Picked.Open(ref)) },
-            onSave = { ref -> browsing = false; onResult(Picked.Save(ref)) },
-        )
+        // Keyed on the folder, so choosing a different one starts the panel over rather than leaving it
+        // standing in a path that belonged to the last one.
+        key(rootRevision) {
+            StorageDialog(
+                kind = kind,
+                startIn = startIn,
+                suggestedName = suggested,
+                canOpen = canOpen,
+                onDismiss = { browsing = false; onResult(Picked.Cancelled) },
+                onChooseFolder = chooseRoot,
+                onOpen = { ref -> browsing = false; onResult(Picked.Open(ref)) },
+                onSave = { ref -> browsing = false; onResult(Picked.Save(ref)) },
+            )
+        }
     }
 
     // Not remembered. It holds one lambda over state that is itself remembered, so a fresh instance per

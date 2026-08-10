@@ -220,6 +220,7 @@
     <string name="storage_delete_body">檔案會消失。用到它的流程會變成 ! ,直到你把那一列指到別的地方。</string>
     <string name="browse_up">上一層</string>
     <string name="browse_empty">這裡沒有東西。</string>
+    <string name="storage_root_gone">找不到那個資料夾。可能被搬走或刪掉了,也可能是那張卡沒掛上。</string>
     <string name="browse_name_label">名稱</string>
     <string name="browse_overwrite_title">覆蓋「%1$s」?</string>
     <string name="root_choose_title">選一個資料夾放片段</string>
