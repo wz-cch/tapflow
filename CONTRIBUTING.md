@@ -10,23 +10,32 @@
 
 | 分支 | 用途 | 從哪來 | 合併回 |
 |---|---|---|---|
-| `main` | 只有正式發佈版。每個 commit 都對應一個 tag | — | — |
+| `main` | 只有實機驗過的版本。發佈時打 tag | — | — |
 | `develop` | 整合分支,所有開發成果先進這裡 | `main` | — |
-| `feature/*` | 單一功能或里程碑 | `develop` | `develop` |
+| `feat/*` `fix/*` `refactor/*` `docs/*` `chore/*` | 一個分支做一件事 | `develop` | `develop` |
 | `release/*` | 發佈前的凍結與收尾 | `develop` | `main` + `develop` |
-| `hotfix/*` | 正式版的緊急修補 | `main` | `main` + `develop` |
+| `hotfix/*` | **已發佈版本**的緊急修補 | `main` | `main` + `develop` |
 
 ### 分支命名
 
+**前綴跟 commit 的 type 同一套**(`feat` `fix` `refactor` `docs` `chore` …),而不是一律 `feature/`。一個分支做一件事,名字就說那件事:
+
 ```
-feature/m1-record-replay
-feature/m2-canvas-editing
-feature/overlay-fallback
+feat/wait-countdown
+fix/pin-the-collapse-button
+refactor/expand-the-order-not-the-steps
+docs/catch-up-with-what-we-actually-do
 release/0.1.0
 hotfix/0.1.1-toolbar-crash
 ```
 
-一律小寫、用連字號、英文。`feature/` 底下若對應規格的里程碑,請帶上 `m1` ~ `m4` 前綴,方便對照 [docs/SPEC.md](docs/SPEC.md) 第十三節。
+一律小寫、用連字號、英文。名字寫**做了什麼**,不是寫改了哪個檔案。
+
+> **`fix/` 不是 `hotfix/`。** `fix/` 從 `develop` 開、合回 `develop`,是還沒發佈的東西的修正 —— 目前所有的修正都是這一種。`hotfix/` 只用在「已經發佈出去的版本壞了」,它從 `main` 開、要合兩邊。挑錯會讓一個普通修正跑到 `main` 上,而 `main` 的意思是「驗過的」。
+
+### tag 打在哪
+
+**只有發佈才打 tag,不是每個 `main` 的 commit 都有。** `main` 上會有實機驗完之後從 `develop` 合過來的 commit;版本號真的往前走的時候才 `git tag -a v0.1.0`。
 
 ### 典型流程
 
@@ -35,18 +44,18 @@ hotfix/0.1.1-toolbar-crash
 ```bash
 git switch develop
 git pull
-git switch -c feature/m1-record-replay
+git switch -c feat/wait-countdown
 ```
 
-做完後合回 `develop`(用 `--no-ff` 保留功能分支的形狀):
+做完後合回 `develop`(用 `--no-ff` 保留分支的形狀):
 
 ```bash
 git switch develop
-git pull
-git merge --no-ff feature/m1-record-replay
-git push
-git branch -d feature/m1-record-replay
+git merge --no-ff feat/wait-countdown
+git branch -d feat/wait-countdown
 ```
+
+**`push` 不在這串裡面,那是刻意的。** 這個專案的節奏是「做一批、出一個 APK、實機驗、然後才推」,所以 `develop` 常常會累積好幾個 commit 沒推 —— 那是正常狀態,不是忘了。
 
 發佈:
 
@@ -67,9 +76,32 @@ git push --all && git push --tags
 
 `main` 永遠可以直接編出可安裝的 APK。
 
+### 什麼時候可以合進 `main`
+
+**實機驗過之後,不是寫完之後。** CI 綠燈只保證編得起來(§5)。所以 `develop` 落後 `main` 幾十個 commit 是預期中的:那些是還沒上機驗的東西。
+
 ---
 
-## 2. Commit message
+## 2. 本機出 APK
+
+CI 會出 artifact,但等它一輪比在本機建慢得多,而測試迴圈的瓶頸就是這個。
+
+```bash
+gradle assembleDebug -PbuildId=$(git rev-parse --short HEAD)
+# app/build/outputs/apk/debug/app-debug.apk
+```
+
+**這個 repo 沒有 gradle wrapper**(CI 直接裝 Gradle),所以是 `gradle` 不是 `./gradlew`。
+
+`-PbuildId` 就是主畫面顯示的版本號 —— `0.1.0+<sha>`,跟 CI 的 artifact 名字同一個規則。不帶的話會是 `0.1.0-local`,那就分不出手上裝的是哪一版了,而「你測的是哪一版」每問一次就是一趟來回。
+
+> **每一次建置的 debug 簽章都不一樣,所以裝的時候可能要先反安裝。** 專案沒有 commit 任何 keystore,CI 也沒有 cache `~/.android` —— 所以這不是「本機 vs CI」的問題,**CI 自己前後兩次的簽章也不一樣**。裝不上去說套件衝突就是這件事。
+>
+> 而反安裝會清掉 SAF 的授權,所以裝完第一次要重新選一次資料夾。
+
+---
+
+## 3. Commit message
 
 遵循 [Conventional Commits](https://www.conventionalcommits.org/)。**英文,現在式命令語氣,句首小寫,句尾不加句號。**
 
@@ -134,7 +166,7 @@ build: bump versionName to 0.1.0
 
 ---
 
-## 3. 程式碼慣例
+## 4. 程式碼慣例
 
 ### 註解與文件
 
@@ -188,7 +220,7 @@ data class Clip(...) {
 
 ---
 
-## 4. Pull request
+## 5. Pull request
 
 自用專案不強制走 PR,但如果開了:
 
@@ -198,8 +230,15 @@ data class Clip(...) {
 
 ---
 
-## 5. 驗收
+## 6. 驗收
 
-每個里程碑的實機驗收清單在 [docs/SPEC.md](docs/SPEC.md) 第十五節。**合進 `develop` 之前要跑過對應那一段**,並在 commit 或 PR 裡寫明結果 —— 包含沒過的項目。
+每個里程碑的實機驗收清單在 [docs/SPEC.md](docs/SPEC.md) 第十五節。CI 只保證編得起來,保證不了「錄製時畫面真的有前進」這種事。
 
-CI 只保證編得起來,保證不了「錄製時畫面真的有前進」這種事。
+**驗收發生在合進 `develop` 之後、合進 `main` 之前,不是合進 `develop` 之前。** 這跟原本寫的順序相反,而換掉是因為實際上做不到:驗一批東西要出一個 APK,出 APK 要有一個能建的 branch,而那個 branch 就是 `develop`。所以:
+
+1. 做完合進 `develop`
+2. 從 `develop` 出 APK,把要驗的項目寫進 `UNVERIFIED.local.md`(這個檔**不 commit**,靠 `.git/info/exclude` 排除)
+3. 實機驗,結果回報 —— **沒過的比過的有價值**
+4. 過了才合進 `main`
+
+沒驗過的東西留在 `develop` 是正常的,那正是這兩條分支的分工。
