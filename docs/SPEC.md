@@ -1292,6 +1292,8 @@ ACTION_CANCEL        丟棄該手勢
 
 **② 建檔的 MIME type 要用一個 `MimeTypeMap` 不認識的。** 兩條建檔路徑都會從 MIME type 推出副檔名接上去(`ExternalStorageProvider.createDocument` 一邊,`DocumentFile.fromFile` 另一邊),所以 `application/json` 會把 `登入.clip` 變成 `登入.clip.json`。不認識的 type 會讓名字原封不動 —— 而現在**名字必須原封不動**,因為 ref 就是名字:provider 自己加了東西,指向這個檔案的每一個參照就都落空。建檔之後會核對,不對就改回來,改不回來就刪掉並失敗,而不是回傳一個解析不到的 ref。
 
+> 因此 `DocKind.matches()` 也**只認一種寫法**了。原本 `<名稱>.clip.json` 跟 `<名稱>.clip` 一樣算數,那是為了「檔案由系統選擇器建立、provider 可能自己加副檔名」的情形 —— 寫出來卻不肯讓人再打開是最糟的結果。現在沒有任何東西會加副檔名(名字在建檔前就組好、建完會核對),那個寫法沒有來源了,留著只會列出這個 app 已經產不出來的檔案。
+
 **③ 逐檔授權的上限消失了。** 原本每個檔案一份 `takePersistableUriPermission`,而系統對一個 app 能持有的數量有上限(舊版 128),超過會丟掉最舊的 —— 表現成某條流程的片段莫名其妙變 `!`。現在一份授權涵蓋整個資料夾,不論裡面有幾個檔案。
 
 ### 12.4 一個面板:存、開、刪都在裡面

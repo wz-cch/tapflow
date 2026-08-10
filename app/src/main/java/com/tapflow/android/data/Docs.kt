@@ -17,15 +17,15 @@ enum class DocKind(val extension: String) {
     ;
 
     /**
-     * Whether [fileName] looks like one of these.
+     * Whether [fileName] looks like one of these. One spelling, and only one.
      *
-     * `<name>.clip.json` is accepted as well as `<name>.clip` because a document provider may append an
-     * extension of its own when creating a file — `ExternalStorageProvider` derives one from the MIME type —
-     * and a file we wrote but then would not offer to reopen is the worst outcome available.
+     * `<name>.clip.json` used to be accepted as well, because the platform picker created the file and a
+     * document provider may append an extension derived from the MIME type — leaving a file we had written
+     * but would not offer to reopen, the worst outcome available. Nothing appends anything now: the browser
+     * composes the name before the file exists, asks for exactly that, and checks what it got. So the second
+     * spelling has no source, and keeping it would only mean listing files this app can no longer produce.
      */
-    fun matches(fileName: String): Boolean =
-        fileName.endsWith(extension, ignoreCase = true) ||
-            fileName.endsWith("$extension.json", ignoreCase = true)
+    fun matches(fileName: String): Boolean = fileName.endsWith(extension, ignoreCase = true)
 
     companion object {
         /** Which kind [fileName] looks like, or null when it is neither. */
