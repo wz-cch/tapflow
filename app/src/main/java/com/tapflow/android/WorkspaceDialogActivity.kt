@@ -33,6 +33,7 @@ import com.tapflow.android.text.defaultClipName
 import com.tapflow.android.text.defaultFlowName
 import com.tapflow.android.ui.BusyDialog
 import com.tapflow.android.ui.DiscardConfirmDialog
+import com.tapflow.android.ui.Picked
 import com.tapflow.android.ui.TapFlowTheme
 import com.tapflow.android.ui.rememberFilePicker
 import kotlinx.coroutines.Dispatchers
@@ -46,19 +47,15 @@ import kotlinx.coroutines.withContext
  * purpose — a focusable overlay takes input focus from the app underneath, which is what makes a pause point
  * usable — and a window that cannot take focus can neither raise a keyboard nor host the document picker.
  *
- * **Three of the four modes are now nothing but a picker.** Opening, saving as, and creating a flow used to be
- * dialogs of our own, listing a library folder's contents and asking for a name; a clip is a file now, so the
- * platform's picker does all three and does them better — it has search, other storage providers, and the
- * user's own idea of where things belong. What is left here is the wrapper that turns "the user chose a file"
- * into an open workspace, and one text field for a note.
- *
- * There is no folder gate any more. It used to stand in front of everything that touched storage, asking for
- * a folder to be granted before the first save could happen; nothing needs to be arranged in advance now, so
- * the whole state — configured, unreachable, checking — is gone.
+ * **Two modes, and one of them is the whole of storage.** Opening, saving as and creating a flow used to be
+ * three of them, which meant the user answered "which of these am I doing" on the toolbar before being shown
+ * the list they could have answered it from. They are one panel now (`ui/FileBrowser.kt`); what is left here
+ * is the wrapper that turns its answer into an open workspace or a written file, and one text field for a
+ * note.
  */
 class WorkspaceDialogActivity : ComponentActivity() {
 
-    enum class Mode { SAVE_AS, LOAD, NOTE, NEW_FLOW }
+    enum class Mode { STORAGE, NOTE }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -74,9 +71,7 @@ class WorkspaceDialogActivity : ComponentActivity() {
         setContent {
             TapFlowTheme {
                 when (mode) {
-                    Mode.SAVE_AS -> SaveAs(::finish)
-                    Mode.LOAD -> Open(::finish)
-                    Mode.NEW_FLOW -> NewFlow(::finish)
+                    Mode.STORAGE -> Storage(::finish)
                     Mode.NOTE -> {
                         val step = Workspace.stepById(intent.getStringExtra(EXTRA_STEP_ID)) as? PauseStep
                         if (step == null) finish() else NoteDialog(step, ::finish) { note -> saveNote(step, note) }
@@ -102,60 +97,64 @@ class WorkspaceDialogActivity : ComponentActivity() {
 }
 
 /**
- * Asks for a file, then does one thing with it and closes.
+ * Opens the storage panel, then does one thing with what came back and closes.
  *
- * @param guarded whether going ahead would throw away unsaved steps. Asked **after** a file has been chosen,
- *   which is the same rule the discard helper documents and the same one the home screen follows: backing out
- *   of a picker is ordinary, so a question in front of one is mostly answered for nothing.
- * @param suggestedName non-null to create a file rather than open one.
- * @param act what to do with the ref. Runs on the main thread and does its own IO, because each of the three
- *   callers needs a different mix — a read, a write, or both — and then has to touch [Session], which must not
- *   be touched off it.
+ * @param guardSave whether *writing* would throw away unsaved steps as well. Opening always would, so it is
+ *   not a parameter; saving a clip never does, and creating a flow does because it changes mode. Asked
+ *   **after** the panel is done with, which is the same rule the discard helper documents and the same one
+ *   the home screen follows: backing out is ordinary, so a question in front of the panel is mostly answered
+ *   for nothing.
+ * @param onOpen what to do with a file to read. Runs on the main thread and does its own IO, because it has
+ *   to touch [Session] afterwards, which must not be touched off it.
+ * @param onSave the same, for a file to write.
  */
 @Composable
 private fun PickThen(
     kind: DocKind,
-    suggestedName: String?,
-    guarded: Boolean,
+    suggestedName: String,
+    guardSave: Boolean,
     onFinish: () -> Unit,
-    act: suspend (String) -> Unit,
+    onOpen: suspend (String) -> Unit,
+    onSave: suspend (String) -> Unit,
 ) {
-    var pending by remember { mutableStateOf<String?>(null) }
+    var pending by remember { mutableStateOf<(suspend () -> Unit)?>(null) }
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    fun proceed(ref: String) {
+    fun proceed(act: suspend () -> Unit) {
         busy = true
         scope.launch {
             // Finishes even if the work throws. This activity is transparent and has nothing of its own on
             // screen, so a coroutine that dies quietly would leave a spinner over the app underneath with no
             // way out at all.
             try {
-                act(ref)
+                act()
             } finally {
                 onFinish()
             }
         }
     }
 
-    val picker = rememberFilePicker(kind) { ref ->
-        when {
-            ref == null -> onFinish()
-            guarded && Session.needsConfirm -> pending = ref
-            else -> proceed(ref)
+    fun take(guard: Boolean, act: suspend () -> Unit) {
+        if (guard && Session.needsConfirm) pending = act else proceed(act)
+    }
+
+    val picker = rememberFilePicker(kind) { picked ->
+        when (picked) {
+            Picked.Cancelled -> onFinish()
+            is Picked.Open -> take(true) { onOpen(picked.ref) }
+            is Picked.Save -> take(guardSave) { onSave(picked.ref) }
         }
     }
 
-    // Straight into the picker: this activity has nothing of its own to show. It exists because an overlay
+    // Straight into the panel: this activity has nothing of its own to show. It exists because an overlay
     // cannot host one — every window the service puts up is FLAG_NOT_FOCUSABLE.
-    LaunchedEffect(Unit) {
-        if (suggestedName != null) picker.create(suggestedName) else picker.open()
-    }
+    LaunchedEffect(Unit) { picker.browse(suggestedName) }
 
-    pending?.let { ref ->
+    pending?.let { act ->
         DiscardConfirmDialog(onDismiss = onFinish) {
             pending = null
-            proceed(ref)
+            proceed(act)
         }
     }
     // Cancellable, and here it matters more than anywhere: there is no screen of ours underneath to go back
@@ -164,102 +163,77 @@ private fun PickThen(
 }
 
 /**
- * Opens a clip or a flow, whichever the current mode is about.
+ * Storage, for whichever noun the toolbar is on: open one, or write one.
  *
- * Only the current mode's kind, which is the same rule the old list dialog followed and for the same reason:
- * opening a flow from clip mode would empty the workspace without ever passing the mode button, and that
- * button is the one place a mode change gets questioned.
+ * **Only the current mode's kind**, which is the same rule the old list dialog followed and for the same
+ * reason: opening a flow from clip mode would empty the workspace without ever passing the mode button, and
+ * that button is the one place a mode change gets questioned.
+ *
+ * The two halves are not symmetrical, and one parameter says how. Opening replaces what is open, so it asks
+ * before throwing away unsaved steps. Saving a clip is the opposite of throwing work away, so it does not.
+ * Creating a flow asks again, because having a flow open *is* a mode.
  */
 @Composable
-private fun Open(onFinish: () -> Unit) {
+private fun Storage(onFinish: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val flowMode = Repo.mode.value == AppMode.FLOW
+    // The name only, with no extension: the field is for the part the user owns. An already-saved clip
+    // suggests its own name, so save-as starts from "this thing, somewhere else".
+    val suggested = remember {
+        if (flowMode) {
+            defaultFlowName(context.resources, System.currentTimeMillis())
+        } else {
+            Workspace.source.value?.name ?: defaultClipName(context.resources, System.currentTimeMillis())
+        }
+    }
 
     PickThen(
         kind = if (flowMode) DocKind.FLOW else DocKind.CLIP,
-        suggestedName = null,
-        guarded = true,
-        onFinish = onFinish,
-    ) { ref ->
-        if (flowMode) {
-            val opened = withContext(Dispatchers.IO) { Repo.openFlow(ref) }
-            if (opened == null) {
-                context.toast(context.getString(R.string.toast_open_flow_failed))
-            } else {
-                Session.openFlow(opened)
-                context.toast(context.getString(R.string.toast_flow_loaded, opened.file.name))
-            }
-        } else {
-            val loaded = withContext(Dispatchers.IO) { Repo.openClip(ref) }
-            if (loaded == null) {
-                context.toast(context.getString(R.string.toast_open_clip_failed))
-            } else {
-                Session.openClip(loaded)
-                context.toast(context.getString(R.string.toast_loaded, loaded.file.name))
-            }
-        }
-    }
-}
-
-/**
- * Writes the workspace to a file the user names.
- *
- * The name is suggested, not asked for: whatever the picker is given is what appears in its own name field,
- * so there is no naming dialog of ours in front of it. The file that comes back becomes the one `💾`
- * overwrites from then on — the same as every editor's save-as.
- */
-@Composable
-private fun SaveAs(onFinish: () -> Unit) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    // The name only, with no extension: the picker's field is for the part the user owns.
-    val suggested = remember {
-        Workspace.source.value?.name ?: defaultClipName(context.resources, System.currentTimeMillis())
-    }
-
-    PickThen(
-        kind = DocKind.CLIP,
         suggestedName = suggested,
-        guarded = false,
+        guardSave = flowMode,
         onFinish = onFinish,
-    ) { ref ->
-        val result = withContext(Dispatchers.IO) {
-            Workspace.commit(Repo.fileAt(ref))
-        }
-        context.toast(
-            when (result) {
-                is Workspace.Saved.Ok -> context.getString(R.string.toast_saved, result.file.name)
-                Workspace.Saved.Nothing -> context.getString(R.string.toast_nothing_to_save)
-                Workspace.Saved.Failed -> context.getString(R.string.toast_save_failed)
+        onOpen = { ref ->
+            if (flowMode) {
+                val opened = withContext(Dispatchers.IO) { Repo.openFlow(ref) }
+                if (opened == null) {
+                    context.toast(context.getString(R.string.toast_open_flow_failed))
+                } else {
+                    Session.openFlow(opened)
+                    context.toast(context.getString(R.string.toast_flow_loaded, opened.file.name))
+                }
+            } else {
+                val loaded = withContext(Dispatchers.IO) { Repo.openClip(ref) }
+                if (loaded == null) {
+                    context.toast(context.getString(R.string.toast_open_clip_failed))
+                } else {
+                    Session.openClip(loaded)
+                    context.toast(context.getString(R.string.toast_loaded, loaded.file.name))
+                }
             }
-        )
-    }
-}
-
-/**
- * Creates an empty flow file and opens it.
- *
- * Guarded, because opening a flow switches mode and so empties the workspace. Creating one is flow mode's way
- * in, and it would be odd for it to leave you in clip mode.
- */
-@Composable
-private fun NewFlow(onFinish: () -> Unit) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val suggested = remember { defaultFlowName(context.resources, System.currentTimeMillis()) }
-
-    PickThen(
-        kind = DocKind.FLOW,
-        suggestedName = suggested,
-        guarded = true,
-        onFinish = onFinish,
-    ) { ref ->
-        val opened = withContext(Dispatchers.IO) { Repo.createFlow(ref) }
-        if (opened == null) {
-            context.toast(context.getString(R.string.toast_save_failed))
-        } else {
-            Session.openFlow(opened)
-            context.toast(context.getString(R.string.toast_flow_created, opened.file.name))
-        }
-    }
+        },
+        onSave = { ref ->
+            if (flowMode) {
+                val opened = withContext(Dispatchers.IO) { Repo.createFlow(ref) }
+                if (opened == null) {
+                    context.toast(context.getString(R.string.toast_save_failed))
+                } else {
+                    Session.openFlow(opened)
+                    context.toast(context.getString(R.string.toast_flow_created, opened.file.name))
+                }
+            } else {
+                // The file written to becomes the one `💾` overwrites from then on — the same as every
+                // editor's save-as.
+                val result = withContext(Dispatchers.IO) { Workspace.commit(Repo.fileAt(ref)) }
+                context.toast(
+                    when (result) {
+                        is Workspace.Saved.Ok -> context.getString(R.string.toast_saved, result.file.name)
+                        Workspace.Saved.Nothing -> context.getString(R.string.toast_nothing_to_save)
+                        Workspace.Saved.Failed -> context.getString(R.string.toast_save_failed)
+                    }
+                )
+            }
+        },
+    )
 }
 
 /**

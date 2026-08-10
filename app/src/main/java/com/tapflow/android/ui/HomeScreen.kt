@@ -235,14 +235,18 @@ fun HomeScreen(
         rootRevision++
     }
 
-    val clipOpener = rememberFilePicker(DocKind.CLIP) { ref ->
-        ref?.let { picked -> guarded { openClip(picked) } }
+    // Open-only for clips: a clip is made by recording on top of another app, so there is nothing this
+    // screen could write. Flows are the other way round — arranging is what makes one — so that panel does
+    // both, and the two buttons this screen used to have for it are one.
+    val clipOpener = rememberFilePicker(DocKind.CLIP) { picked ->
+        (picked as? Picked.Open)?.let { guarded { openClip(it.ref) } }
     }
-    val flowOpener = rememberFilePicker(DocKind.FLOW) { ref ->
-        ref?.let { picked -> guarded { openFlowFile(picked, arrange = false) } }
-    }
-    val flowCreator = rememberFilePicker(DocKind.FLOW) { ref ->
-        ref?.let { picked -> guarded { createFlow(picked) } }
+    val flowStorage = rememberFilePicker(DocKind.FLOW) { picked ->
+        when (picked) {
+            is Picked.Open -> guarded { openFlowFile(picked.ref, arrange = false) }
+            is Picked.Save -> guarded { createFlow(picked.ref) }
+            Picked.Cancelled -> Unit
+        }
     }
 
     Scaffold(
@@ -410,19 +414,14 @@ fun HomeScreen(
             }
 
             item {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { flowOpener.open() }) {
-                        Text(stringResource(R.string.home_open_flow))
+                // One button, because opening a flow and starting one are the same panel: the list opens
+                // them and the name field starts them. The name carries no extension — that is added when
+                // the file is written.
+                OutlinedButton(
+                    onClick = {
+                        flowStorage.browse(defaultFlowName(context.resources, System.currentTimeMillis()))
                     }
-                    // Flow mode's own "start without loading": a flow is made by arranging clips, which needs
-                    // a list on a real screen, so unlike a clip it cannot begin on the toolbar.
-                    OutlinedButton(
-                        onClick = {
-                            // The name only — the extension is added after the file exists.
-                            flowCreator.create(defaultFlowName(context.resources, System.currentTimeMillis()))
-                        }
-                    ) { Text(stringResource(R.string.flow_new_title)) }
-                }
+                ) { Text(stringResource(R.string.home_flow_files)) }
             }
 
             item {

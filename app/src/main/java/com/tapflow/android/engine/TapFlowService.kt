@@ -1158,7 +1158,7 @@ class TapFlowService : AccessibilityService() {
      * the rule is *for* cannot go wrong the same way when a fifth mode is added.
      */
     private fun openWorkspaceDialog(mode: WorkspaceDialogActivity.Mode, stepId: String? = null) {
-        if (mode == WorkspaceDialogActivity.Mode.SAVE_AS && Workspace.isEmpty) {
+        if (mode == WorkspaceDialogActivity.Mode.STORAGE && Workspace.isEmpty && !flowMode) {
             toast(getString(R.string.toast_nothing_to_save))
             return
         }
@@ -1857,7 +1857,7 @@ class TapFlowService : AccessibilityService() {
          * what every editor does, and it means `💾` always does something.
          */
         override fun onSave() {
-            val target = Workspace.source.value ?: return onSaveAs()
+            val target = Workspace.source.value ?: return onStorage()
             if (Workspace.isEmpty) {
                 toast(getString(R.string.toast_nothing_to_save))
                 return
@@ -1876,13 +1876,6 @@ class TapFlowService : AccessibilityService() {
             }
         }
 
-        override fun onSaveAs() = openWorkspaceDialog(WorkspaceDialogActivity.Mode.SAVE_AS)
-
-        /**
-         * Naming a flow needs a keyboard, so it goes the same way saving a clip does — an activity, because
-         * every overlay here is FLAG_NOT_FOCUSABLE and cannot raise one.
-         */
-        override fun onNewFlow() = openWorkspaceDialog(WorkspaceDialogActivity.Mode.NEW_FLOW)
 
         /**
          * Deletes the loaded flow, after asking.
@@ -1909,7 +1902,14 @@ class TapFlowService : AccessibilityService() {
             )
         }
 
-        override fun onLoad() = openWorkspaceDialog(WorkspaceDialogActivity.Mode.LOAD)
+        /**
+         * Opens the storage panel: the folder's contents, plus a name field to write a new file with.
+         *
+         * An activity, because naming needs a keyboard and every overlay this service puts up is
+         * FLAG_NOT_FOCUSABLE — which is not a detail to work around but the reason a pause point can hand
+         * the keyboard to the app underneath at all.
+         */
+        override fun onStorage() = openWorkspaceDialog(WorkspaceDialogActivity.Mode.STORAGE)
 
         /**
          * Opens the loaded flow's arrangement screen.
