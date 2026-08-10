@@ -11,80 +11,99 @@ import com.tapflow.android.data.DocKind
 import com.tapflow.android.data.DocStore
 
 /**
- * Something that asks the user for a file, and reports the ref or that they backed out.
+ * What the storage panel was left with.
  *
- * Cancellation is a result rather than silence, because two of the four callers are activities that exist
- * only to ask: with nothing reported they would sit on screen showing an empty dialog behind a picker that
- * has already gone.
+ * Three outcomes rather than a nullable ref, because the panel can now be left in two different useful ways
+ * — with a file to read, or with a place to write — and a caller that treats those the same is a bug the
+ * compiler should be able to find.
  */
-class FilePicker internal constructor(private val start: (String?, String?) -> Unit) {
+sealed interface Picked {
+    /** Read this one. */
+    data class Open(val ref: String) : Picked
+
+    /** Write to this one, which may or may not exist yet. */
+    data class Save(val ref: String) : Picked
 
     /**
-     * Asks for an existing file.
+     * Nothing was chosen.
      *
-     * @param near a ref to open the browser beside. Used when repointing a flow at a clip that moved, where
-     *   the folder holding the flow is overwhelmingly the right place to start looking.
+     * A result rather than silence, because two of the callers are activities that exist only to ask: with
+     * nothing reported they would sit on screen showing an empty dialog behind a panel that has already gone.
      */
-    fun open(near: String? = null) = start(null, near)
+    data object Cancelled : Picked
+}
+
+/** Opens the storage panel, in whichever of its shapes the caller has a use for. */
+class FilePicker internal constructor(private val start: (String?, Boolean, String?) -> Unit) {
 
     /**
-     * Asks where to write a new file, with [suggestedName] filled in.
+     * Existing files only.
      *
-     * **A bare name, without the extension.** The extension says what the file is, which makes it the app's
+     * @param near a ref to open the panel beside. Used when repointing a flow at a clip that moved, where the
+     *   folder holding the flow is overwhelmingly the right place to start looking.
+     */
+    fun open(near: String? = null) = start(null, true, near)
+
+    /**
+     * Naming something new only. Tapping an existing file fills the name in rather than opening it.
+     *
+     * **[suggestedName] carries no extension.** The extension says what the file is, which makes it the app's
      * to add and not the user's to type — put in front of them it is something to edit or delete, decoration
      * made out of the one part of the name everything else depends on.
      */
-    fun create(suggestedName: String) = start(suggestedName, null)
+    fun save(suggestedName: String) = start(suggestedName, false, null)
+
+    /** Both: the panel the toolbar opens, where "save this" and "open that" are one screen. */
+    fun browse(suggestedName: String, near: String? = null) = start(suggestedName, true, near)
 }
 
 /**
  * The one way this app gets at a file, in both directions and on both kinds of Android.
- *
- * There are exactly four places that need it — open, save-as, adding a clip to a flow, and repointing a
- * broken row — and every one of them goes through here.
  *
  * ### Everything happens inside the chosen folder
  *
  * Clips and flows live under one folder the user picked once, and a ref is a path inside it. So this asks two
  * questions, not one: **where is the folder** (only ever asked when there is no answer yet) and **which file
  * in it**. The first is the platform's tree picker on API 29+ and [FolderChooserDialog] below that; the second
- * is always [FileBrowserDialog], which is what makes the two versions of Android show the same list.
+ * is always [StorageDialog], which is what makes the two versions of Android show the same list.
  *
  * The tree picker is the only piece of the platform's file UI still in use. The single-document picker is
  * gone, and with it the check that used to be needed on the way back: it cannot filter to `.clip` — it filters
  * by MIME type and `.clip` has none — so every file was offered and the wrong kind had to be refused after
  * being chosen. Our own list only ever contains the right kind, so there is nothing to refuse.
  *
- * @param kind what may be picked, what the browser lists, and what a created file is named with.
- * @param onResult the ref that was chosen, or null when the user backed out — of the file, or of choosing a
- *   folder to look in, which amounts to the same thing.
+ * @param kind what may be picked, what the panel lists, and what a written file is named with.
+ * @param onResult see [Picked]. Backing out of choosing a folder reports [Picked.Cancelled] too — nothing can
+ *   be picked without one, so from here the two are the same outcome.
  */
 @Composable
-fun rememberFilePicker(kind: DocKind, onResult: (String?) -> Unit): FilePicker {
+fun rememberFilePicker(kind: DocKind, onResult: (Picked) -> Unit): FilePicker {
     var browsing by remember { mutableStateOf(false) }
     var startIn by remember { mutableStateOf("") }
     var suggested by remember { mutableStateOf<String?>(null) }
+    var canOpen by remember { mutableStateOf(true) }
 
-    // Backing out of choosing a folder is backing out of choosing a file: nothing can be picked without one,
-    // and the caller already knows what to do with "nothing was chosen".
-    val chooseRoot = rememberRootPicker { chosen -> if (chosen) browsing = true else onResult(null) }
+    val chooseRoot = rememberRootPicker { chosen ->
+        if (chosen) browsing = true else onResult(Picked.Cancelled)
+    }
 
     if (browsing) {
-        FileBrowserDialog(
+        StorageDialog(
             kind = kind,
             startIn = startIn,
             suggestedName = suggested,
-            onDismiss = { browsing = false; onResult(null) },
-        ) { ref ->
-            browsing = false
-            onResult(ref)
-        }
+            canOpen = canOpen,
+            onDismiss = { browsing = false; onResult(Picked.Cancelled) },
+            onOpen = { ref -> browsing = false; onResult(Picked.Open(ref)) },
+            onSave = { ref -> browsing = false; onResult(Picked.Save(ref)) },
+        )
     }
 
     // Not remembered. It holds one lambda over state that is itself remembered, so a fresh instance per
     // recomposition costs an object and removes the question of whether a captured one has gone stale.
-    return FilePicker { suggestedName, near ->
+    return FilePicker { suggestedName, opening, near ->
         suggested = suggestedName
+        canOpen = opening
         startIn = near?.let(DocStore::parentOf).orEmpty()
         if (DocStore.hasRoot) browsing = true else chooseRoot()
     }

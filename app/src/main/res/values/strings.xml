@@ -58,7 +58,6 @@
     <string name="flow_node_settings_title">Clip %1$d</string>
     <string name="home_loaded">LOADED</string>
     <string name="flow_summary">%1$d clips · about %2$s</string>
-    <string name="flow_new_title">New flow</string>
     <string name="flow_delete_title">Delete “%1$s”? A flow cannot be undone.</string>
     <string name="toast_flow_created">Created and loaded “%1$s”</string>
     <string name="toast_flow_loaded">Loaded “%1$s”</string>
@@ -87,10 +86,8 @@
     <string name="action_step_list">Step list</string>
     <string name="action_edit_mode">Edit mode</string>
     <string name="action_save">Save clip</string>
-    <string name="action_save_as">Save as a new file</string>
-    <string name="action_load">Load clip</string>
+    <string name="action_storage">Files: open one, or save this under a name</string>
     <string name="action_play_flow">Play this flow</string>
-    <string name="action_new_flow">New flow</string>
     <string name="action_delete_flow">Delete this flow</string>
     <string name="action_new_clip">Start a new clip</string>
     <string name="action_density">Marker density</string>
@@ -127,7 +124,7 @@
     <string name="home_recent_clips">Recent clips</string>
     <string name="home_recent_flows">Recent flows</string>
     <string name="home_open_clip">Open a clip file…</string>
-    <string name="home_open_flow">Open a flow file…</string>
+    <string name="home_flow_files">Flow files…</string>
     <string name="home_row_missing">! %1$s</string>
     <string name="row_forget">Remove from this list</string>
     <string name="row_delete_file">Delete the file</string>
@@ -162,6 +159,7 @@
     <string name="clip_delete_body">The file is deleted. Flows that use it will show ! until you point them somewhere else.</string>
     <string name="dialog_confirm">OK</string>
     <string name="dialog_cancel">Cancel</string>
+    <string name="dialog_done">Done</string>
     <string name="number_entry_range">Between %1$d and %2$d</string>
 
     <!-- Editing -->
@@ -219,8 +217,10 @@
     <string name="quick_full_settings">All settings in the app →</string>
 
     <!-- Workspace dialogs -->
-    <string name="browse_title_open">Choose a file</string>
-    <string name="browse_title_save">Save into</string>
+    <string name="storage_title_clip">Clips</string>
+    <string name="storage_title_flow">Flows</string>
+    <string name="storage_delete_title">Delete “%1$s”?</string>
+    <string name="storage_delete_body">The file goes. Flows that use it will show ! until you point them somewhere else.</string>
     <string name="browse_up">Up one folder</string>
     <string name="browse_empty">Nothing here.</string>
     <string name="browse_name_label">Name</string>

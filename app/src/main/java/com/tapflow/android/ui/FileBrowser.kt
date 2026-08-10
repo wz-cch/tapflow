@@ -22,24 +22,36 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tapflow.android.R
 import com.tapflow.android.data.DocKind
 import com.tapflow.android.data.DocStore
+import com.tapflow.android.data.RecentDoc
+import com.tapflow.android.data.Recents
+import com.tapflow.android.data.Repo
 import com.tapflow.android.data.suggestedFileName
+import com.tapflow.android.text.clipSummary
+import com.tapflow.android.text.flowSummary
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
- * Browses the chosen folder.
+ * The storage panel: one small screen that saves, opens and deletes.
+ *
+ * **One panel rather than a "save" one and an "open" one**, because splitting them made the user answer a
+ * question before it was asked — which of the two am I about to do — and then offered the same list twice
+ * with a different button under it. Naming a file and choosing a file are the same act on the same folder.
  *
  * **The app's only file UI, on every version of Android.** It replaced two platform pickers that disagreed
  * with each other: on API 29+ the document picker cannot filter to `.clip` — it filters by MIME type and
@@ -47,61 +59,70 @@ import java.io.File
  * Android 7 device this has to work on could not show a storage root at all. Listing the folder ourselves
  * answers both, and makes "only clips" and "only flows" simply true.
  *
- * Deliberately not a file manager. It walks into folders and picks a file; creating folders, renaming and
- * moving belong to the file manager the user already has, which does all of it better.
+ * Deliberately not a file manager. It walks into folders, picks a file, writes one and deletes one; creating
+ * folders, renaming and moving belong to the file manager the user already has, which does all of it better.
  *
  * @param startIn the folder to open in, relative to the root.
- * @param suggestedName non-null when saving, which is what adds the name field and turns tapping a file into
- *   filling that field in. Null when opening. Carries no extension — this dialog appends it on save, so the
- *   field only ever holds the part the user owns.
+ * @param suggestedName non-null when a file may be written from here, which is what puts the name row on
+ *   screen. It carries no extension — the extension says what the file is, so it is this dialog's to add and
+ *   never the user's to type.
+ * @param canOpen whether tapping a file opens it. False where the panel exists only to name something new,
+ *   and then tapping a file fills the name in instead — which is how you overwrite deliberately rather than
+ *   by a single tap.
  */
 @Composable
-fun FileBrowserDialog(
+fun StorageDialog(
     kind: DocKind,
     startIn: String,
     suggestedName: String?,
+    canOpen: Boolean,
     onDismiss: () -> Unit,
-    onPicked: (String) -> Unit,
+    onOpen: (String) -> Unit,
+    onSave: (String) -> Unit,
 ) {
+    val context = LocalContext.current
     var dir by remember { mutableStateOf(startIn) }
     var listing by remember { mutableStateOf<List<DocStore.Entry>>(emptyList()) }
     var name by remember { mutableStateOf(suggestedName.orEmpty()) }
     var overwriting by remember { mutableStateOf<String?>(null) }
-    val saving = suggestedName != null
+    var deleting by remember { mutableStateOf<DocStore.Entry?>(null) }
+    // Bumped by anything that changes what is in the folder, which is only ever a delete: saving hands the
+    // ref back and this panel goes away with it.
+    var revision by remember { mutableIntStateOf(0) }
+    val canSave = suggestedName != null
+    val recent by Recents.docs.collectAsStateWithLifecycle()
 
-    // Off the main thread. Listing a folder on a slow card is not instant, and this dialog is often the
-    // first thing on screen after a tap.
-    LaunchedEffect(dir) {
+    // Off the main thread. Listing a folder on a slow card is not instant, and this is often the first thing
+    // on screen after a tap.
+    LaunchedEffect(dir, revision) {
         listing = withContext(Dispatchers.IO) { DocStore.list(dir, kind) }
-    }
-
-    fun pick(entry: DocStore.Entry) {
-        if (!saving) {
-            onPicked(entry.ref)
-            return
-        }
-        // Tapping an existing file while saving fills the name in rather than saving over it immediately.
-        // One tap must not overwrite a file, and the name is now on screen to be edited or confirmed.
-        name = entry.name
     }
 
     fun save() {
         val target = DocStore.join(dir, suggestedFileName(name, kind))
-        if (listing.any { !it.isFolder && it.ref == target }) overwriting = target else onPicked(target)
+        if (listing.any { !it.isFolder && it.ref == target }) overwriting = target else onSave(target)
+    }
+
+    fun tapped(entry: DocStore.Entry) {
+        // Tapping a file while the panel cannot open one fills the name in rather than writing over it. One
+        // tap must not replace a file, and the name is now on screen to be edited or confirmed.
+        if (canOpen) onOpen(entry.ref) else name = entry.name
     }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            // An ✕ in the title as well as the cancel below it, and the duplication is deliberate: this dialog
-            // is a list of folders and files, and a list of things to tap does not look like something you can
-            // leave without tapping one. Every picker the user has ever used has a close in its corner.
+            // An ✕ in the title as well as the button below, and the duplication is deliberate: a list of
+            // things to tap does not look like something you can leave without tapping one. Every picker the
+            // user has ever used has a close in its corner.
             //
-            // It also survives the case the bottom button does not: with the keyboard up while saving, the
-            // button row can be pushed past the bottom of the screen. The title never is.
+            // It also survives the case the bottom row does not: with the keyboard up, that row can be pushed
+            // past the bottom of the screen. The title never is.
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    stringResource(if (saving) R.string.browse_title_save else R.string.browse_title_open),
+                    stringResource(
+                        if (kind == DocKind.CLIP) R.string.storage_title_clip else R.string.storage_title_flow
+                    ),
                     modifier = Modifier.weight(1f),
                 )
                 IconButton(onClick = onDismiss) {
@@ -111,8 +132,26 @@ fun FileBrowserDialog(
         },
         text = {
             Column {
+                if (canSave) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(
+                            value = name,
+                            onValueChange = { name = it },
+                            singleLine = true,
+                            // "Name", not "file name". The extension is not the user's to type, so asking for
+                            // a *file* name invites typing one — and it would then be appended twice.
+                            label = { Text(stringResource(R.string.browse_name_label)) },
+                            modifier = Modifier.weight(1f),
+                        )
+                        IconButton(onClick = ::save, enabled = name.isNotBlank()) {
+                            Text("💾", style = MaterialTheme.typography.titleLarge)
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
                 Text(
                     // The root's own name in front, so the line reads as a place rather than as a fragment.
+                    // It is also where a save lands, which is the other reason it is above the list.
                     DocStore.join(DocStore.rootLabel, dir),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -120,31 +159,26 @@ fun FileBrowserDialog(
                     // The end of a path says where you are; the beginning is the same for every folder.
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (saving) {
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = name,
-                        onValueChange = { name = it },
-                        singleLine = true,
-                        // "Name", not "file name". The extension is not the user's to type, so asking for a
-                        // *file* name invites typing one — and then it would be appended twice.
-                        label = { Text(stringResource(R.string.browse_name_label)) },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
                 LazyColumn(Modifier.heightIn(max = 320.dp)) {
                     if (dir.isNotEmpty()) {
                         item {
-                            BrowseRow("🗀", stringResource(R.string.browse_up)) {
-                                dir = DocStore.parentOf(dir)
-                            }
+                            FolderRow(stringResource(R.string.browse_up)) { dir = DocStore.parentOf(dir) }
                         }
                     }
                     items(listing, key = { it.ref }) { entry ->
                         if (entry.isFolder) {
-                            BrowseRow("🗀", entry.name) { dir = entry.ref }
+                            FolderRow(entry.name) { dir = entry.ref }
                         } else {
-                            BrowseRow("·", entry.name) { pick(entry) }
+                            FileRow(
+                                name = entry.name,
+                                // Only what is already known. The counts are cached by opening or saving a
+                                // file, so a folder full of clips this install has never touched draws with
+                                // no IO at all rather than parsing every one of them to fill in a subtitle.
+                                summary = recent.firstOrNull { it.ref == entry.ref }
+                                    ?.let { summaryOf(context, it) },
+                                onClick = { tapped(entry) },
+                                onDelete = { deleting = entry },
+                            )
                         }
                     }
                     if (listing.isEmpty()) {
@@ -160,15 +194,10 @@ fun FileBrowserDialog(
                 }
             }
         },
+        // Nothing to confirm: saving is the 💾 beside the name and opening is a tap on a row, so the only
+        // thing left for a bottom button is leaving.
         confirmButton = {
-            if (saving) {
-                TextButton(onClick = ::save, enabled = name.isNotBlank()) {
-                    Text(stringResource(R.string.dialog_confirm))
-                }
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.dialog_cancel)) }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.dialog_done)) }
         },
     )
 
@@ -177,7 +206,7 @@ fun FileBrowserDialog(
             onDismissRequest = { overwriting = null },
             title = { Text(stringResource(R.string.browse_overwrite_title, DocStore.label(target))) },
             confirmButton = {
-                TextButton(onClick = { overwriting = null; onPicked(target) }) {
+                TextButton(onClick = { overwriting = null; onSave(target) }) {
                     Text(stringResource(R.string.dialog_confirm))
                 }
             },
@@ -186,7 +215,34 @@ fun FileBrowserDialog(
             },
         )
     }
+
+    deleting?.let { entry ->
+        AlertDialog(
+            onDismissRequest = { deleting = null },
+            title = { Text(stringResource(R.string.storage_delete_title, entry.name)) },
+            text = { Text(stringResource(R.string.storage_delete_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    deleting = null
+                    // Straight through rather than reported back: deleting is the one action here that does
+                    // not end the panel, because it is maintenance rather than the thing you came to do.
+                    if (Repo.deleteFile(entry.ref)) revision++
+                }) { Text(stringResource(R.string.dialog_confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleting = null }) { Text(stringResource(R.string.dialog_cancel)) }
+            },
+        )
+    }
 }
+
+/** What a row already knows about itself, in the wording of the kind it is. */
+private fun summaryOf(context: android.content.Context, doc: RecentDoc): String =
+    if (doc.kind == DocKind.CLIP) {
+        clipSummary(context.resources, doc.stepCount, doc.pauseCount, doc.durationMs)
+    } else {
+        flowSummary(context.resources, doc.clipCount, doc.durationMs)
+    }
 
 /**
  * Chooses the folder itself, on API 28 and below.
@@ -263,6 +319,52 @@ fun FolderChooserDialog(onDismiss: () -> Unit, onPicked: (String) -> Unit) {
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.dialog_cancel)) }
         },
     )
+}
+
+/** A folder, in either dialog. Tapping it walks in; there is nothing else a folder does here. */
+@Composable
+private fun FolderRow(label: String, onClick: () -> Unit) = BrowseRow("\uD83D\uDDC0", label, onClick)
+
+/**
+ * A file, with the one piece of maintenance that belongs next to it.
+ *
+ * The delete is on the row rather than behind a menu because there are only two things to do with a file
+ * here and hiding one of them behind a second tap buys nothing. It is the only action in this panel that
+ * leaves the panel open.
+ */
+@Composable
+private fun FileRow(
+    name: String,
+    summary: String?,
+    onClick: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("\u00B7", modifier = Modifier.padding(horizontal = 12.dp))
+        Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
+            Text(
+                name,
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (summary != null) {
+                Text(
+                    summary,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        IconButton(onClick = onDelete) {
+            Text("\uD83D\uDDD1", style = MaterialTheme.typography.titleMedium)
+        }
+    }
 }
 
 @Composable

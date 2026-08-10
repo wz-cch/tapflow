@@ -120,9 +120,12 @@ fun FlowEditorScreen(flowRef: String, onBack: () -> Unit, onEditClip: () -> Unit
         scope.writeFile(context) { Repo.saveFlow(flow.withNodes(nodes)) }
     }
 
-    val clipPicker = rememberFilePicker(DocKind.CLIP) { ref ->
+    // Open-only. Writing a clip from here would mean creating an empty one, and a flow row pointing at an
+    // empty clip is a row that does nothing — clips come from recording.
+    val clipPicker = rememberFilePicker(DocKind.CLIP) { picked ->
         val at = addingAt
         addingAt = null
+        val ref = (picked as? Picked.Open)?.ref
         if (ref == null || at == null) return@rememberFilePicker
         scope.launch {
             // Read here rather than on the next open, so the row can show the clip's real name and summary

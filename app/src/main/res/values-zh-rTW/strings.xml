@@ -55,7 +55,6 @@
     <string name="flow_node_settings_title">第 %1$d 個片段</string>
     <string name="home_loaded">已讀取</string>
     <string name="flow_summary">%1$d 個片段 · 約 %2$s</string>
-    <string name="flow_new_title">新建流程</string>
     <string name="flow_delete_title">要刪除「%1$s」嗎?流程刪掉無法復原。</string>
     <string name="toast_flow_created">已建立並讀取「%1$s」</string>
     <string name="toast_flow_loaded">已讀取「%1$s」</string>
@@ -84,10 +83,8 @@
     <string name="action_step_list">步驟列表</string>
     <string name="action_edit_mode">編輯模式</string>
     <string name="action_save">儲存片段</string>
-    <string name="action_save_as">另存新檔</string>
-    <string name="action_load">讀取片段</string>
+    <string name="action_storage">檔案:開一個,或把現在這個存成一個名字</string>
     <string name="action_play_flow">播放這條流程</string>
-    <string name="action_new_flow">新建流程</string>
     <string name="action_delete_flow">刪除這條流程</string>
     <string name="action_new_clip">開新的片段</string>
     <string name="action_density">標記顯示密度</string>
@@ -124,7 +121,7 @@
     <string name="home_recent_clips">最近的片段</string>
     <string name="home_recent_flows">最近的流程</string>
     <string name="home_open_clip">開啟片段檔…</string>
-    <string name="home_open_flow">開啟流程檔…</string>
+    <string name="home_flow_files">流程檔…</string>
     <string name="home_row_missing">! %1$s</string>
     <string name="row_forget">從清單移除</string>
     <string name="row_delete_file">刪除檔案</string>
@@ -159,6 +156,7 @@
     <string name="clip_delete_body">檔案會被刪掉。用到它的流程會顯示 !,重新指定一次就好。</string>
     <string name="dialog_confirm">確定</string>
     <string name="dialog_cancel">取消</string>
+    <string name="dialog_done">完成</string>
     <string name="number_entry_range">範圍 %1$d 到 %2$d</string>
 
     <!-- 編輯 -->
@@ -216,8 +214,10 @@
     <string name="quick_full_settings">完整設定在 app 裡 →</string>
 
     <!-- 工作區對話框 -->
-    <string name="browse_title_open">選一個檔案</string>
-    <string name="browse_title_save">存到這裡</string>
+    <string name="storage_title_clip">片段</string>
+    <string name="storage_title_flow">流程</string>
+    <string name="storage_delete_title">刪除「%1$s」?</string>
+    <string name="storage_delete_body">檔案會消失。用到它的流程會變成 ! ,直到你把那一列指到別的地方。</string>
     <string name="browse_up">上一層</string>
     <string name="browse_empty">這裡沒有東西。</string>
     <string name="browse_name_label">名稱</string>

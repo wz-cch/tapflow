@@ -83,10 +83,15 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         fun onDeleteSelected()
         fun onSave()
 
-        /** Write to a new file, naming it. Never offered inside a flow — see the visibility block. */
-        fun onSaveAs()
+        /**
+         * Opens the storage panel: what is in the folder, plus a field to name a new file with.
+         *
+         * One button rather than open, save-as and new-flow, because those made the user answer "which of
+         * these am I about to do" *before* being shown the list they would have answered it from. Never
+         * offered inside a flow — see the visibility block.
+         */
+        fun onStorage()
 
-        fun onLoad()
         fun onNewClip()
 
         /**
@@ -109,11 +114,12 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         fun onFinishClip()
 
         /**
-         * Flow mode's four. Same icons as the clip versions where they overlap, and deliberately so: the
-         * noun follows the mode, and doubling the icons would make the column longer without making it
-         * clearer. What tells you which noun is in force is the mode button at the top of the column.
+         * Flow mode's own. Same icons as the clip versions where they overlap, and deliberately so: the noun
+         * follows the mode, and doubling the icons would make the column longer without making it clearer.
+         * What tells you which noun is in force is the mode button at the top of the column.
+         *
+         * Creating a flow is not here: it is the name field in the storage panel, the same as saving a clip.
          */
-        fun onNewFlow()
         fun onDeleteFlow()
 
         /**
@@ -191,17 +197,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
     private val newClip = icon(R.drawable.ic_new_clip)
     private val save = icon(R.drawable.ic_save)
 
-    /**
-     * Write the workspace to a file the user names, rather than over the one it came from.
-     *
-     * Its own button rather than a long-press on `💾`, because a hidden gesture is not a way to offer an
-     * action that creates a file. `💾` on a clip that has never been saved comes here on its own — there is
-     * nothing to overwrite then — which is how every editor behaves.
-     */
-    private val saveAs = icon(R.drawable.ic_save_as)
-
     private val load = icon(R.drawable.ic_folder_open)
-    private val newFlow = icon(R.drawable.ic_new_clip)
     private val deleteFlow = icon(R.drawable.ic_remove)
     private val editFlow = icon(R.drawable.ic_edit)
     private val modeToggle = icon(R.drawable.ic_mode_clip)
@@ -248,7 +244,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
     private val scrollingButtons = listOf(
         modeToggle, finishClip, primary, playFrom, secondary, edit, editFlow, insertStep, duplicateStep,
         insertGlobal, insertPause, insertWait, deleteStep, undo, stepPanelToggle, stepListToggle, newClip,
-        save, saveAs, load, newFlow, deleteFlow, eye, quickSettings, dismiss,
+        save, load, deleteFlow, eye, quickSettings, dismiss,
     )
 
     private val allButtons = listOf(grip) + scrollingButtons + collapse
@@ -295,10 +291,8 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         // Each of these opens one small screen that does one thing. Naming needs a text field, and
         // a text field needs input focus, which no overlay here may take.
         save.setOnClickListener { actions.onSave() }
-        saveAs.setOnClickListener { actions.onSaveAs() }
-        load.setOnClickListener { actions.onLoad() }
+        load.setOnClickListener { actions.onStorage() }
         newClip.setOnClickListener { actions.onNewClip() }
-        newFlow.setOnClickListener { actions.onNewFlow() }
         deleteFlow.setOnClickListener { actions.onDeleteFlow() }
         editFlow.setOnClickListener { actions.onEditFlow() }
         modeToggle.setOnClickListener { actions.onToggleMode() }
@@ -445,16 +439,16 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         deleteStep.visibility = visibleWhen(editing)
         newClip.visibility = visibleWhen(soloIdle)
         // Save survives the excursion, and it is the only one of the storage buttons that does: overwriting
-        // the file this clip came from is precisely what you came to do. Save-as does not, because writing the
-        // edit to a *different* file would leave the flow pointing at the untouched original — your fix would
-        // appear to have done nothing. Make variants from the home screen, where no flow is waiting.
+        // the file this clip came from is precisely what you came to do. The panel does not, and that is one
+        // decision covering both halves of it — writing the edit to a *different* file would leave the flow
+        // pointing at the untouched original, and opening anything would silently end the excursion. Make
+        // variants from the home screen, where no flow is waiting.
         save.visibility = visibleWhen(idle)
-        saveAs.visibility = visibleWhen(soloIdle)
-        // One button, and behind it the picker for the current mode's kind. It used to list both kinds, which
-        // under an explicit mode is a hole: opening a flow from clip mode would empty the workspace without
-        // ever passing the mode button, so the one thing that asks before discarding is skipped.
+        // One button, and behind it the whole of storage for the current mode's kind: what is in the folder,
+        // and a field to write a new one. It used to list both kinds, which under an explicit mode is a hole:
+        // opening a flow from clip mode would empty the workspace without ever passing the mode button, so
+        // the one thing that asks before discarding is skipped.
         load.visibility = visibleWhen(soloIdle || flowMode)
-        newFlow.visibility = visibleWhen(flowMode)
         deleteFlow.visibility = visibleWhen(flowMode)
         editFlow.visibility = visibleWhen(flowMode)
         quickSettings.visibility = visibleWhen(soloIdle || flowMode)
@@ -511,7 +505,6 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         setActionEnabled(deleteStep, hasSelection)
         setActionEnabled(stepPanelToggle, hasSelection)
         setActionEnabled(save, hasSteps)
-        setActionEnabled(saveAs, hasSteps)
         setActionEnabled(load, true)
         setActionEnabled(newClip, hasSteps)
         setActionEnabled(dismiss, true)
@@ -675,10 +668,8 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         stepPanelToggle.contentDescription = context.getString(R.string.action_step_panel)
         stepListToggle.contentDescription = context.getString(R.string.action_step_list)
         save.contentDescription = context.getString(R.string.action_save)
-        saveAs.contentDescription = context.getString(R.string.action_save_as)
-        load.contentDescription = context.getString(R.string.action_load)
+        load.contentDescription = context.getString(R.string.action_storage)
         newClip.contentDescription = context.getString(R.string.action_new_clip)
-        newFlow.contentDescription = context.getString(R.string.action_new_flow)
         deleteFlow.contentDescription = context.getString(R.string.action_delete_flow)
         editFlow.contentDescription = context.getString(R.string.action_edit_flow)
         modeToggle.contentDescription = context.getString(R.string.action_mode_clip)
