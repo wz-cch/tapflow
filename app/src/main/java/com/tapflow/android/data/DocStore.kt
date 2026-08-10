@@ -3,231 +3,295 @@ package com.tapflow.android.data
 import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
-import android.provider.DocumentsContract
 import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.documentfile.provider.DocumentFile
 import java.io.File
 
 /**
- * Reading and writing the files a clip or a flow lives in.
+ * The one folder clips and flows live in, and everything read or written inside it.
  *
- * ### A reference is a location, and the location is the identity
+ * ### A ref is a path inside the root
  *
- * Everything here takes a **ref**: a `content://` Uri string on API 29 and up, an absolute path on API 28
- * and below. That string is the whole identity of a saved clip or flow. There is no id inside the JSON, no
- * table mapping ids to files, and no library folder — a clip *is* the file you picked, in whatever folder
- * you keep it in, and a flow references its clips by their refs.
+ * Everything here takes a **ref**: a relative path under the chosen folder, `/`-separated, extension
+ * included — `clips/monster/stage3.clip`, or `stage3.clip` for a file sitting at the top. That string is the
+ * whole identity of a saved clip or flow. There is no id inside the JSON and no table mapping ids to
+ * locations; a clip *is* the file, and a flow references its clips by where they sit relative to the root.
  *
- * This replaced a model with one granted library folder, and the reason was that the folder defeated the
- * purpose it was introduced for. Access had to be arranged in advance, so a save could only land in the one
- * folder that had been chosen; worse, a flow could not reference clips from two different folders at once,
- * which is exactly what a folder is *for* — `common/delay.clip` alongside `battle/stage3.clip`.
+ * **Relative, and that is the point.** Refs used to be absolute — a `content://` document Uri or an absolute
+ * path — which tied every flow to one device and one location. Moving the folder, renaming it, syncing it, or
+ * copying it to a second phone broke every reference in it. Against a root, all of those keep working: the
+ * flow says "the clip two folders down", and the root says where down starts.
  *
- * ### One store, both mechanisms, chosen by the ref
+ * ### One implementation, two kinds of root
  *
- * The split is by scheme rather than by version, and that is what keeps it small. Scoped storage means API
- * 29+ can only touch documents the user handed over through a picker; API 28 and below has plain read/write
- * access to shared storage. But once a file has been picked, "read this ref" is one function with two
- * branches, not two backends with parallel bookkeeping.
+ * The root is a tree the user granted (API 29+) or a plain directory (API 28 and below, where scoped storage
+ * does not exist yet and `WRITE_EXTERNAL_STORAGE` is real read/write access). Both are wrapped in
+ * [DocumentFile] — `fromTreeUri` and `fromFile` — so listing, creating, renaming and deleting are one code
+ * path. Only reading and writing the bytes branch, because `ContentResolver`'s truncating mode is not
+ * something a `file://` Uri is required to honour.
  *
- * The version *does* decide which picker is used — see [usesSystemPicker], and `ui/FilePicker.kt` — because
- * the system document picker lists no storage roots at all on the Android 7 device this has to work on.
+ * That is what replaced a version split that went much deeper: two pickers, two ideas of what a ref was, and
+ * two answers to "which files exist".
+ *
+ * ### It is not a file manager
+ *
+ * There is no create-folder, no move, and no copy. The user has a file manager and it does all of that
+ * better; organising the folder is done there, and this only has to walk into what is already organised.
  */
 object DocStore {
 
     private const val TAG = "DocStore"
+    private const val KEY_ROOT = "doc_root"
 
     private lateinit var appContext: Context
+    private lateinit var prefs: SharedPreferences
 
-    fun init(context: Context) {
+    /** Where the folder is. A tree Uri on API 29+, an absolute path below that. */
+    private var rootRef: String = ""
+
+    fun init(context: Context, preferences: SharedPreferences) {
         if (::appContext.isInitialized) return
         appContext = context.applicationContext
+        prefs = preferences
+        rootRef = prefs.getString(KEY_ROOT, "").orEmpty()
     }
 
-    /**
-     * Whether the platform's own document picker is the way to choose a file.
-     *
-     * False on API 28 and below, where the app browses shared storage itself. Not a preference: the document
-     * picker on the Android 7 device this was tested against listed only "Recent", which shows no folders
-     * and therefore nothing, and no intent extra changed that. There is nothing to fall back *to* on that
-     * release except a browser of our own — and once written, it is also the only route that needs no
-     * per-file grant, so on those versions it is simply better.
-     */
-    val usesSystemPicker: Boolean get() = Build.VERSION.SDK_INT > LEGACY_MAX
+    // --- The root ------------------------------------------------------------
 
-    /** Only ever asked for on API 28 and below; scoped storage replaced it with per-file grants. */
+    /** Whether a folder has been chosen. Cheap — it does not go near the disk. */
+    val hasRoot: Boolean get() = rootRef.isNotEmpty()
+
+    /**
+     * What to call the chosen folder on screen.
+     *
+     * The last path segment of either form, which for a tree Uri is the document id — `primary:tapflow`
+     * — so the part after the colon is the folder as the user knows it.
+     */
+    val rootLabel: String
+        get() = Uri.decode(rootRef).substringAfterLast('/').substringAfterLast(':').ifEmpty { rootRef }
+
+    /**
+     * Whether choosing the root goes through the platform's tree picker.
+     *
+     * False on API 28 and below, where the app browses the file system itself. Not a preference: the document
+     * picker on the Android 7 device this was tested against listed only "Recent", which shows no folders and
+     * therefore nothing, and no intent extra changed that. There is nothing to fall back *to* on that release
+     * except a browser of our own.
+     */
+    val usesTreePicker: Boolean get() = Build.VERSION.SDK_INT > LEGACY_MAX
+
+    /** Only ever asked for on API 28 and below; scoped storage replaced it with granted trees. */
     val legacyPermission: String get() = Manifest.permission.WRITE_EXTERNAL_STORAGE
 
     val needsLegacyPermission: Boolean
-        get() = !usesSystemPicker &&
+        get() = !usesTreePicker &&
             ContextCompat.checkSelfPermission(appContext, legacyPermission) !=
             PackageManager.PERMISSION_GRANTED
 
-    /** Where the legacy browser starts. Meaningless on API 29+, which has no path to browse. */
-    val legacyRoot: File get() = Environment.getExternalStorageDirectory()
-
-    // --- Grants --------------------------------------------------------------
+    /** Where the legacy folder chooser starts. Meaningless on API 29+, which has no path to browse. */
+    val legacyStart: File get() = Environment.getExternalStorageDirectory()
 
     /**
-     * Keeps access to a file the user just picked, so it can be reopened after a restart.
+     * Remembers the folder, and asks the system to remember the grant behind it.
      *
-     * Silent, and it has to be: the grant was already given by the act of picking, and this only asks the
-     * system to remember it. Nothing is prompted, and a provider that refuses to make it persistable costs
-     * only the next launch — the file stays readable for this session.
-     *
-     * There is a system-wide ceiling on how many of these one app may hold (128 on older releases). Past it
-     * the oldest is dropped, which surfaces as a flow's clip showing `!` — the same way it would if the file
-     * had been moved, and with the same one-tap remedy. Not worth pre-empting by releasing grants for old
-     * entries: the recent-files list is not the set of files in use, since a flow references clips that may
-     * never have been opened on their own.
+     * Persisting is silent and may fail: the grant was already given by the act of choosing, and a provider
+     * that refuses to make it permanent costs only the next launch. One grant now covers everything, however
+     * many files are in there — which is the other reason this shape is better than per-file grants, whose
+     * system-wide ceiling used to surface as a flow's clip going missing for no reason the user could see.
      */
-    fun persistAccess(uri: Uri) {
-        if (!usesSystemPicker) return
-        runCatching {
-            appContext.contentResolver.takePersistableUriPermission(
-                uri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
-            )
-        }.onFailure { Log.w(TAG, "Could not persist access to $uri; this session only", it) }
+    fun setRoot(value: String) {
+        if (value.startsWith(CONTENT)) {
+            runCatching {
+                appContext.contentResolver.takePersistableUriPermission(
+                    Uri.parse(value),
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
+            }.onFailure { Log.w(TAG, "Could not persist access to $value; this session only", it) }
+        }
+        rootRef = value
+        prefs.edit().putString(KEY_ROOT, value).apply()
+        folders.clear()
     }
 
-    // --- Reading -------------------------------------------------------------
+    /** Whether the chosen folder is actually there. Does IO, so not for drawing a row. */
+    fun rootReadable(): Boolean = root() != null
+
+    // --- Listing -------------------------------------------------------------
+
+    /** One row of a folder: a subfolder, or a file of the kind being looked for. */
+    data class Entry(val name: String, val ref: String, val isFolder: Boolean)
+
+    /**
+     * What is inside [dir], as the browser should show it: folders first, then the files of [kind].
+     *
+     * Hidden entries are skipped — `.thumbnails` and friends are noise in a list whose only job is to get you
+     * to your own folder, and nothing this app writes is hidden.
+     *
+     * Filtering by kind here is what makes "only clips" and "only flows" true on both versions of Android. It
+     * used to be impossible on API 29+, where the platform picker filters by MIME type and `.clip` has none.
+     */
+    fun list(dir: String, kind: DocKind?): List<Entry> {
+        val here = folder(dir) ?: return emptyList()
+        val children = runCatching { here.listFiles() }.getOrNull().orEmpty()
+        val (dirs, files) = children
+            .mapNotNull { child -> child.name?.let { it to child } }
+            .filterNot { (name, _) -> name.startsWith(".") }
+            .partition { (_, child) -> child.isDirectory }
+        return dirs.map { (name, _) -> Entry(name, join(dir, name), isFolder = true) }
+            .sortedBy { it.name.lowercase() } +
+            files.map { (name, _) -> name }
+                .filter { kind == null || kind.matches(it) }
+                .sorted()
+                .map { Entry(displayName(it), join(dir, it), isFolder = false) }
+    }
+
+    // --- Files ---------------------------------------------------------------
+
+    /**
+     * The file's name, extension included. Pure string work: the ref *is* the location and the name.
+     *
+     * That it needs no IO is a consequence of refs being relative, and a welcome one — the home screen used to
+     * ask a provider for twenty names before it could draw twenty rows.
+     */
+    fun fileName(ref: String): String = ref.substringAfterLast('/')
+
+    /** The name without its extension. What a person calls it. */
+    fun label(ref: String): String = displayName(fileName(ref))
 
     /** The file's whole contents, or null when it cannot be read. */
     fun read(ref: String): String? = runCatching {
-        val uri = contentUri(ref)
-        if (uri != null) {
-            appContext.contentResolver.openInputStream(uri)!!.use { it.readBytes().decodeToString() }
+        val doc = docAt(ref) ?: return null
+        if (doc.uri.scheme == FILE) {
+            File(doc.uri.path!!).readText()
         } else {
-            File(ref).readText()
+            appContext.contentResolver.openInputStream(doc.uri)!!.use { it.readBytes().decodeToString() }
         }
     }.onFailure { Log.w(TAG, "Could not read $ref", it) }.getOrNull()
 
     /**
-     * The file's name, extension included, or null when it cannot be asked.
+     * Writes [text] to [ref], creating the file when it is not there yet. False means it did not land.
      *
-     * Null is the same answer as "the file is gone", and is treated that way, because from here there is no
-     * difference worth acting on: a document whose provider has forgotten the grant and one that was deleted
-     * both mean the ref no longer points at anything that can be opened.
-     */
-    fun fileName(ref: String): String? = runCatching {
-        val uri = contentUri(ref)
-        if (uri != null) DocumentFile.fromSingleUri(appContext, uri)?.name else File(ref).name
-    }.onFailure { Log.w(TAG, "Could not read the name of $ref", it) }.getOrNull()
-
-    /** The file's name without its extension, or "" when it will not answer. What a person calls it. */
-    fun label(ref: String): String = fileName(ref)?.let(::displayName).orEmpty()
-
-    /** Whether the file is still there. Does IO. */
-    fun exists(ref: String): Boolean = runCatching {
-        val uri = contentUri(ref)
-        if (uri != null) DocumentFile.fromSingleUri(appContext, uri)?.exists() == true else File(ref).isFile
-    }.getOrDefault(false)
-
-    // --- Writing -------------------------------------------------------------
-
-    /**
-     * Overwrites the file at [ref]. False means it did not land, and the caller must not pretend otherwise.
-     *
-     * `"wt"` rather than `"w"` on the SAF side, and this is the single most common way SAF persistence
+     * `"wt"` rather than `"w"` on the provider side, and this is the single most common way SAF persistence
      * corrupts data: plain `"w"` is not required to truncate, so writing shorter JSON over longer leaves the
      * tail of the previous version behind and the file stops parsing. It is not a race — deleting a step from
      * a clip shrinks the file, so it would happen on demand.
      */
     fun write(ref: String, text: String): Boolean = runCatching {
-        val uri = contentUri(ref)
-        if (uri != null) {
-            appContext.contentResolver.openOutputStream(uri, "wt")!!.use {
+        val doc = docAt(ref) ?: create(ref) ?: return false
+        if (doc.uri.scheme == FILE) {
+            // writeText truncates, so the shorter-over-longer trap above simply does not exist here.
+            File(doc.uri.path!!).writeText(text)
+        } else {
+            appContext.contentResolver.openOutputStream(doc.uri, "wt")!!.use {
                 it.write(text.encodeToByteArray())
             }
-        } else {
-            // writeText truncates, so the shorter-over-longer trap above simply does not exist here.
-            File(ref).writeText(text)
         }
         true
     }.onFailure { Log.e(TAG, "Could not write $ref", it) }.getOrDefault(false)
 
     /**
-     * Renames the file, returning the ref it now lives at, or null on failure.
+     * Makes an empty file at [ref], or null when it could not be made.
      *
-     * The ref changes, and on the SAF side it changes into something unrelated to the name — which is why
-     * this returns it rather than mutating anything: whoever asked for the rename is the only one who knows
-     * what else refers to the old value.
-     *
-     * **Renaming deliberately does not touch any other file.** A flow that referenced the old name breaks
-     * and shows `!`, which is the same thing that happens when a file is renamed outside the app — and that
-     * has to keep working, so making the in-app route special would buy a difference nobody can rely on.
+     * **The name we ask for has to be the name we get**, because the ref *is* the name — a provider that
+     * appends something of its own would leave every reference to this file pointing at nothing. [MIME] is
+     * unmapped precisely so nothing is appended; this checks anyway, puts the name back if it can, and fails
+     * loudly rather than handing back a ref that does not resolve.
      */
-    fun rename(ref: String, fileName: String): String? = runCatching {
-        val uri = contentUri(ref)
-        if (uri != null) {
-            DocumentsContract.renameDocument(appContext.contentResolver, uri, fileName)?.toString()
-        } else {
-            val from = File(ref)
-            val to = File(from.parentFile ?: return@runCatching null, fileName)
-            if (to.exists() || !from.renameTo(to)) null else to.absolutePath
-        }
-    }.onFailure { Log.w(TAG, "Could not rename $ref", it) }.getOrNull()
-
-    /**
-     * Makes sure a file the picker just created carries our extension, and returns where it now lives.
-     *
-     * **The extension is ours to add, not the user's to type.** The system picker has one name field and no
-     * notion of a separate extension, so a suggested `Login.clip` puts `.clip` *in* that field — visible,
-     * editable, and deletable, which makes a decoration out of something load-bearing. So the suggestion is
-     * the bare name and this puts the extension back afterwards.
-     *
-     * A rename rather than asking the picker for it, because there is nothing to ask: an unmapped MIME type is
-     * what stops `ExternalStorageProvider` appending an extension of its own (see [MIME]), and that same
-     * unmapped type means it will not append ours either.
-     *
-     * A provider that refuses to rename costs the extension and nothing else — the file is still opened by
-     * parsing it, so it stays usable. That is why this returns the original ref instead of failing.
-     */
-    fun ensureExtension(ref: String, kind: DocKind): String {
-        val name = fileName(ref) ?: return ref
-        if (kind.matches(name)) return ref
-        return rename(ref, name + kind.extension) ?: ref
+    private fun create(ref: String): DocumentFile? {
+        val parent = folder(parentOf(ref)) ?: return null
+        val wanted = fileName(ref)
+        val made = parent.createFile(MIME, wanted) ?: return null
+        if (made.name == wanted) return made
+        Log.w(TAG, "The provider named it ${made.name} rather than $wanted")
+        if (made.renameTo(wanted) && made.name == wanted) return made
+        made.delete()
+        return null
     }
 
+    /**
+     * Renames the file, returning the ref it now lives at, or null on failure.
+     *
+     * **Renaming deliberately does not touch any other file.** A flow that referenced the old name breaks and
+     * shows `!`, which is the same thing that happens when a file is renamed outside the app — and that has to
+     * keep working, so making the in-app route special would buy a difference nobody can rely on.
+     */
+    fun rename(ref: String, fileName: String): String? = runCatching {
+        val doc = docAt(ref) ?: return null
+        val to = join(parentOf(ref), fileName)
+        if (docAt(to) != null) return null
+        if (!doc.renameTo(fileName)) null else to
+    }.onFailure { Log.w(TAG, "Could not rename $ref", it) }.getOrNull()
+
     fun delete(ref: String): Boolean = runCatching {
-        val uri = contentUri(ref)
-        if (uri != null) {
-            DocumentsContract.deleteDocument(appContext.contentResolver, uri)
-        } else {
-            File(ref).delete()
-        }
+        docAt(ref)?.delete() == true
     }.onFailure { Log.w(TAG, "Could not delete $ref", it) }.getOrDefault(false)
 
-    /**
-     * The Uri a picker should open at when reopening something near [ref], or null when there is nothing to
-     * suggest.
-     *
-     * A document's own Uri, handed to `EXTRA_INITIAL_URI`, lands the picker in the folder that holds it —
-     * which is the whole point at the one place this is used: repointing a flow at a clip that moved almost
-     * always means finding it next to the flow itself.
-     */
-    fun initialLocation(ref: String?): Uri? = ref?.let(::contentUri)
+    /** Whether the file is still there. Does IO. */
+    fun exists(ref: String): Boolean = runCatching { docAt(ref) != null }.getOrDefault(false)
 
-    /** A ref is a content Uri or a path; this is the one place that distinction is made. */
-    private fun contentUri(ref: String): Uri? =
-        if (ref.startsWith("content://")) Uri.parse(ref) else null
+    // --- Paths ---------------------------------------------------------------
+
+    /** The folder a ref sits in, or "" for the root itself. */
+    fun parentOf(ref: String): String = ref.substringBeforeLast('/', "")
+
+    fun join(dir: String, name: String): String = if (dir.isEmpty()) name else "$dir/$name"
+
+    // --- Resolution ----------------------------------------------------------
+
+    /**
+     * Folders resolved so far, keyed by ref.
+     *
+     * A lookup costs a listing of every folder on the way down, so a flow of five clips two folders deep would
+     * pay for the same two walks five times over. Folders are the stable part of the tree, so they are the
+     * safe part to remember; files are not cached, and the whole thing is dropped whenever this object changes
+     * anything structural or the root moves.
+     */
+    private val folders = HashMap<String, DocumentFile>()
+
+    private fun root(): DocumentFile? {
+        if (rootRef.isEmpty()) return null
+        val doc = if (rootRef.startsWith(CONTENT)) {
+            DocumentFile.fromTreeUri(appContext, Uri.parse(rootRef))
+        } else {
+            DocumentFile.fromFile(File(rootRef))
+        }
+        return doc?.takeIf { it.isDirectory }
+    }
+
+    private fun folder(dir: String): DocumentFile? {
+        if (dir.isEmpty()) return root()
+        folders[dir]?.let { return it }
+        val parent = folder(parentOf(dir)) ?: return null
+        val here = parent.findFile(fileName(dir))?.takeIf { it.isDirectory } ?: return null
+        folders[dir] = here
+        return here
+    }
+
+    private fun docAt(ref: String): DocumentFile? {
+        if (ref.isEmpty()) return null
+        val parent = folder(parentOf(ref)) ?: return null
+        return parent.findFile(fileName(ref))?.takeIf { it.isFile }
+    }
 
     /** The last release without scoped storage, and so the last one that can browse a path itself. */
     private const val LEGACY_MAX = 28
 
+    private const val CONTENT = "content://"
+    private const val FILE = "file"
+
     /**
      * A MIME type no `MimeTypeMap` knows, so the name we ask for is the name we get.
      *
-     * `ExternalStorageProvider.createDocument` derives an extension from the MIME type and appends it when
-     * the given name does not already end in it — so `"application/json"` would turn `Login.clip` into
-     * `Login.clip.json`. An unmapped type leaves the name alone. [DocKind.matches] accepts the appended form
-     * anyway, in case some other provider appends regardless.
+     * Both creation paths derive an extension from the MIME type and append it when the given name does not
+     * already end in it — `ExternalStorageProvider.createDocument` on one side and `DocumentFile.fromFile` on
+     * the other — so `"application/json"` would turn `Login.clip` into `Login.clip.json`. An unmapped type
+     * leaves the name alone.
      */
     const val MIME = "application/vnd.tapflow"
 }

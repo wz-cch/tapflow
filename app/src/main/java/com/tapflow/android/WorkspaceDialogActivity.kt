@@ -223,7 +223,7 @@ private fun SaveAs(onFinish: () -> Unit) {
         onFinish = onFinish,
     ) { ref ->
         val result = withContext(Dispatchers.IO) {
-            Workspace.commit(Repo.prepareNew(ref, DocKind.CLIP))
+            Workspace.commit(Repo.fileAt(ref))
         }
         context.toast(
             when (result) {

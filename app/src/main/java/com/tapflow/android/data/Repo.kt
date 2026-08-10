@@ -88,7 +88,7 @@ object Repo {
             .getOrDefault(AppMode.CLIP)
         overlayEnabled.value = prefs.getBoolean(KEY_OVERLAY_ON, false)
 
-        DocStore.init(appContext)
+        DocStore.init(appContext, prefs)
         // One small file in filesDir, unlike the folder walk this replaced — which is why it can be read
         // here, on whichever thread starts the app, instead of being deferred to the first screen.
         Recents.init(recentFile)
@@ -207,19 +207,17 @@ object Repo {
     }
 
     /**
-     * A file the picker just created, with our extension guaranteed and its name read back.
+     * The file at [ref], named.
      *
-     * Every creation goes through here, because the extension is the one thing the picker cannot be asked to
-     * get right — see [DocStore.ensureExtension].
+     * No IO: a ref is a path inside the chosen folder, so the name is the last segment of it. This used to
+     * have a second job — putting our extension back on whatever the platform picker had created — which the
+     * browser now does before the file exists, by naming it itself.
      */
-    fun prepareNew(ref: String, kind: DocKind): DocFile {
-        val at = DocStore.ensureExtension(ref, kind)
-        return DocFile(at, fileLabel(at))
-    }
+    fun fileAt(ref: String): DocFile = DocFile(ref, fileLabel(ref))
 
-    /** Writes a brand-new empty flow to a file the user just created. */
+    /** Writes a brand-new empty flow to the ref the browser just named. */
     fun createFlow(ref: String): OpenFlow? {
-        val opened = OpenFlow(prepareNew(ref, DocKind.FLOW), Flow(clips = emptyList()), emptyMap())
+        val opened = OpenFlow(fileAt(ref), Flow(clips = emptyList()), emptyMap())
         return if (saveFlow(opened)) opened else null
     }
 

@@ -3,7 +3,6 @@ package com.tapflow.android.text
 import android.content.res.Resources
 import com.tapflow.android.R
 import com.tapflow.android.data.Clip
-import com.tapflow.android.data.DocKind
 import com.tapflow.android.data.Flow
 import com.tapflow.android.data.GestureKind
 import com.tapflow.android.data.GestureStep
@@ -102,24 +101,6 @@ fun MarkerDensity.label(res: Resources): String = res.getString(
         MarkerDensity.ALL -> R.string.density_all
         MarkerDensity.RECENT -> R.string.density_recent
         MarkerDensity.HIDDEN -> R.string.density_hidden
-    }
-)
-
-/**
- * Why a picked file is not the kind that was asked for.
- *
- * Four sentences rather than one, because "you picked the other kind" and "that is not one of ours at all"
- * call for different next moves: switch mode, or rename the file back. The system picker cannot be narrowed to
- * one extension (see `ui/FilePicker.kt`), so this message is doing the work a filter would have done.
- *
- * @param actual what the file's name says it is, or null when its name says neither.
- */
-fun wrongKind(res: Resources, wanted: DocKind, actual: DocKind?): String = res.getString(
-    when {
-        wanted == DocKind.CLIP && actual == DocKind.FLOW -> R.string.toast_open_is_flow
-        wanted == DocKind.FLOW && actual == DocKind.CLIP -> R.string.toast_open_is_clip
-        wanted == DocKind.CLIP -> R.string.toast_open_not_clip
-        else -> R.string.toast_open_not_flow
     }
 )
 

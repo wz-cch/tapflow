@@ -4,12 +4,12 @@ package com.tapflow.android.data
  * What a file is, told by its extension.
  *
  * A clip and a flow are both text files, and this is the only thing that distinguishes them from the
- * outside. Nothing about *where* a file sits carries meaning — there are no folders in this app's model,
- * only files the user picked — so the name is where the kind has to live.
+ * outside. Folders carry no meaning of their own — they are how the user organises their own work, not
+ * something the app reads anything into — so the name is where the kind has to live.
  *
- * Reading does not trust it, though. [DocKind.of] decides which picker filter and which label to use, but a
- * file is accepted or rejected by whether it *parses* as the kind that was asked for: a clip copied to
- * `notes.txt` is still a clip, and a `.clip` full of something else is not one.
+ * **It decides what is listed.** The browser shows only the kind being asked for, which is why picking the
+ * wrong one is not a thing that can happen any more. What a file *is*, though, is still decided by parsing
+ * it: a `.clip` full of something else fails to open, and says so.
  */
 enum class DocKind(val extension: String) {
     CLIP(".clip"),
@@ -60,7 +60,11 @@ fun suggestedFileName(name: String, kind: DocKind): String {
         .trim()
         .take(MAX_FILE_NAME)
         .trim()
-    return (cleaned.ifEmpty { FALLBACK_FILE_NAME }) + kind.extension
+    // Anything already ending in the extension comes off first. The name field asks for a name and never
+    // shows one, but a person who types `Login.clip` anyway means the same file as one who types `Login` —
+    // and appending unconditionally turned that into `Login.clip.clip`, whose display name was `Login.clip`.
+    // That is where the extension appeared to come back on its own.
+    return displayName(cleaned).ifEmpty { FALLBACK_FILE_NAME } + kind.extension
 }
 
 /** Reserved on FAT and exFAT as well as ext4, since an SD card is a normal place to keep these. */

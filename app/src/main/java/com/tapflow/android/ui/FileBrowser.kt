@@ -33,25 +33,24 @@ import androidx.compose.ui.unit.dp
 import com.tapflow.android.R
 import com.tapflow.android.data.DocKind
 import com.tapflow.android.data.DocStore
-import com.tapflow.android.data.displayName
 import com.tapflow.android.data.suggestedFileName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
- * Browses shared storage on API 28 and below.
+ * Browses the chosen folder.
  *
- * **Written because the platform's picker cannot be relied on there.** On the Android 7 device this has to
- * work on, `ACTION_OPEN_DOCUMENT` lists only "Recent" — no storage root at all — and no intent extra changes
- * it: that DocumentsUI never exposed `ExternalStorageProvider`'s roots. There is no lever left, so on those
- * releases the app browses the file system itself, which it may do because scoped storage does not exist yet
- * and `WRITE_EXTERNAL_STORAGE` is plain read/write access.
+ * **The app's only file UI, on every version of Android.** It replaced two platform pickers that disagreed
+ * with each other: on API 29+ the document picker cannot filter to `.clip` — it filters by MIME type and
+ * `.clip` has none — so it showed every file and the wrong kind had to be refused after the fact, while the
+ * Android 7 device this has to work on could not show a storage root at all. Listing the folder ourselves
+ * answers both, and makes "only clips" and "only flows" simply true.
  *
- * Deliberately not a general file manager. It lists folders and the one kind of file being asked for, and it
- * has no create-folder, no rename and no delete — a file manager exists on every device and does all of that
- * better. What it must do is let any folder be reached, since that is the whole promise of the model.
+ * Deliberately not a file manager. It walks into folders and picks a file; creating folders, renaming and
+ * moving belong to the file manager the user already has, which does all of it better.
  *
+ * @param startIn the folder to open in, relative to the root.
  * @param suggestedName non-null when saving, which is what adds the name field and turns tapping a file into
  *   filling that field in. Null when opening. Carries no extension — this dialog appends it on save, so the
  *   field only ever holds the part the user owns.
@@ -59,36 +58,36 @@ import java.io.File
 @Composable
 fun FileBrowserDialog(
     kind: DocKind,
+    startIn: String,
     suggestedName: String?,
     onDismiss: () -> Unit,
     onPicked: (String) -> Unit,
 ) {
-    val root = remember { DocStore.legacyRoot }
-    var dir by remember { mutableStateOf(root) }
-    var listing by remember { mutableStateOf<List<File>>(emptyList()) }
+    var dir by remember { mutableStateOf(startIn) }
+    var listing by remember { mutableStateOf<List<DocStore.Entry>>(emptyList()) }
     var name by remember { mutableStateOf(suggestedName.orEmpty()) }
-    var overwriting by remember { mutableStateOf<File?>(null) }
+    var overwriting by remember { mutableStateOf<String?>(null) }
     val saving = suggestedName != null
 
     // Off the main thread. Listing a folder on a slow card is not instant, and this dialog is often the
     // first thing on screen after a tap.
     LaunchedEffect(dir) {
-        listing = withContext(Dispatchers.IO) { browse(dir, kind) }
+        listing = withContext(Dispatchers.IO) { DocStore.list(dir, kind) }
     }
 
-    fun pick(file: File) {
+    fun pick(entry: DocStore.Entry) {
         if (!saving) {
-            onPicked(file.absolutePath)
+            onPicked(entry.ref)
             return
         }
         // Tapping an existing file while saving fills the name in rather than saving over it immediately.
         // One tap must not overwrite a file, and the name is now on screen to be edited or confirmed.
-        name = displayName(file.name)
+        name = entry.name
     }
 
     fun save() {
-        val target = File(dir, suggestedFileName(name, kind))
-        if (target.exists()) overwriting = target else onPicked(target.absolutePath)
+        val target = DocStore.join(dir, suggestedFileName(name, kind))
+        if (listing.any { !it.isFolder && it.ref == target }) overwriting = target else onPicked(target)
     }
 
     AlertDialog(
@@ -113,7 +112,8 @@ fun FileBrowserDialog(
         text = {
             Column {
                 Text(
-                    dir.absolutePath,
+                    // The root's own name in front, so the line reads as a place rather than as a fragment.
+                    DocStore.join(DocStore.rootLabel, dir),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -126,23 +126,25 @@ fun FileBrowserDialog(
                         value = name,
                         onValueChange = { name = it },
                         singleLine = true,
+                        // "Name", not "file name". The extension is not the user's to type, so asking for a
+                        // *file* name invites typing one — and then it would be appended twice.
                         label = { Text(stringResource(R.string.browse_name_label)) },
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
                 LazyColumn(Modifier.heightIn(max = 320.dp)) {
-                    if (dir.absolutePath != root.absolutePath) {
+                    if (dir.isNotEmpty()) {
                         item {
                             BrowseRow("🗀", stringResource(R.string.browse_up)) {
-                                dir = dir.parentFile ?: root
+                                dir = DocStore.parentOf(dir)
                             }
                         }
                     }
-                    items(listing, key = { it.absolutePath }) { entry ->
-                        if (entry.isDirectory) {
-                            BrowseRow("🗀", entry.name) { dir = entry }
+                    items(listing, key = { it.ref }) { entry ->
+                        if (entry.isFolder) {
+                            BrowseRow("🗀", entry.name) { dir = entry.ref }
                         } else {
-                            BrowseRow("·", displayName(entry.name)) { pick(entry) }
+                            BrowseRow("·", entry.name) { pick(entry) }
                         }
                     }
                     if (listing.isEmpty()) {
@@ -173,9 +175,9 @@ fun FileBrowserDialog(
     overwriting?.let { target ->
         AlertDialog(
             onDismissRequest = { overwriting = null },
-            title = { Text(stringResource(R.string.browse_overwrite_title, displayName(target.name))) },
+            title = { Text(stringResource(R.string.browse_overwrite_title, DocStore.label(target))) },
             confirmButton = {
-                TextButton(onClick = { overwriting = null; onPicked(target.absolutePath) }) {
+                TextButton(onClick = { overwriting = null; onPicked(target) }) {
                     Text(stringResource(R.string.dialog_confirm))
                 }
             },
@@ -184,6 +186,83 @@ fun FileBrowserDialog(
             },
         )
     }
+}
+
+/**
+ * Chooses the folder itself, on API 28 and below.
+ *
+ * Its own dialog rather than a mode of the browser above, because it works one level lower: there is no root
+ * yet, so it walks the file system directly and answers with an absolute path. On API 29+ the platform's tree
+ * picker does this job, and it is the only piece of the platform's file UI still in use.
+ */
+@Composable
+fun FolderChooserDialog(onDismiss: () -> Unit, onPicked: (String) -> Unit) {
+    val start = remember { DocStore.legacyStart }
+    var dir by remember { mutableStateOf(start) }
+    var listing by remember { mutableStateOf<List<File>>(emptyList()) }
+
+    LaunchedEffect(dir) {
+        listing = withContext(Dispatchers.IO) {
+            runCatching { dir.listFiles() }.getOrNull().orEmpty()
+                .filter { it.isDirectory && !it.name.startsWith(".") }
+                .sortedBy { it.name.lowercase() }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.root_choose_title), modifier = Modifier.weight(1f))
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.dialog_cancel))
+                }
+            }
+        },
+        text = {
+            Column {
+                Text(
+                    dir.absolutePath,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                LazyColumn(Modifier.heightIn(max = 320.dp)) {
+                    if (dir.absolutePath != start.absolutePath) {
+                        item {
+                            BrowseRow("🗀", stringResource(R.string.browse_up)) {
+                                dir = dir.parentFile ?: start
+                            }
+                        }
+                    }
+                    items(listing, key = { it.absolutePath }) { entry ->
+                        BrowseRow("🗀", entry.name) { dir = entry }
+                    }
+                    if (listing.isEmpty()) {
+                        item {
+                            Text(
+                                stringResource(R.string.browse_empty),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(vertical = 12.dp),
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        // Says what it will do rather than agreeing with a question, because the question — "which folder?" —
+        // is answered by where you have navigated to, not by this button.
+        confirmButton = {
+            TextButton(onClick = { onPicked(dir.absolutePath) }) {
+                Text(stringResource(R.string.root_choose_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.dialog_cancel)) }
+        },
+    )
 }
 
 @Composable
@@ -202,19 +281,4 @@ private fun BrowseRow(glyph: String, label: String, onClick: () -> Unit) {
             overflow = TextOverflow.Ellipsis,
         )
     }
-}
-
-/**
- * One folder's contents: folders first, then the files of the kind being asked for.
- *
- * Hidden entries are skipped. `.thumbnails` and friends are noise in a list whose only job is to get you to
- * your own folder, and nothing this app writes is hidden.
- */
-private fun browse(dir: File, kind: DocKind): List<File> {
-    val children = runCatching { dir.listFiles() }.getOrNull().orEmpty()
-    val (dirs, files) = children
-        .filterNot { it.name.startsWith(".") }
-        .partition { it.isDirectory }
-    return dirs.sortedBy { it.name.lowercase() } +
-        files.filter { kind.matches(it.name) }.sortedBy { it.name.lowercase() }
 }

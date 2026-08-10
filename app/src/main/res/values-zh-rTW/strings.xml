@@ -220,8 +220,15 @@
     <string name="browse_title_save">存到這裡</string>
     <string name="browse_up">上一層</string>
     <string name="browse_empty">這裡沒有東西。</string>
-    <string name="browse_name_label">檔名</string>
+    <string name="browse_name_label">名稱</string>
     <string name="browse_overwrite_title">覆蓋「%1$s」?</string>
+    <string name="root_choose_title">選一個資料夾放片段</string>
+    <string name="root_choose_confirm">就用這個資料夾</string>
+    <string name="root_row_title">片段資料夾</string>
+    <string name="root_row_unset">還沒選</string>
+    <string name="root_row_body">片段與流程都放在這裡面,底下要開幾層資料夾都可以。流程記的是片段在這個資料夾裡的位置,所以整個資料夾搬走或複製到另一台,流程都還活著。</string>
+    <string name="root_change">換一個資料夾</string>
+    <string name="root_changed_forgets">換資料夾會清空最近開啟的清單:那些檔案是用它們在舊資料夾裡的位置記下來的。</string>
     <string name="note_title">暫停備註</string>
     <string name="note_explain">重播停在這一步時會顯示。不需要就留空。</string>
     <string name="note_label">要手動做什麼</string>
@@ -233,10 +240,6 @@
     <string name="toast_workspace_cleared">工作區已清空</string>
     <string name="toast_open_clip_failed">這個檔案讀不成片段。可能被搬走了,或本來就不是片段檔。</string>
     <string name="toast_open_flow_failed">這個檔案讀不成流程。可能被搬走了,或本來就不是流程檔。</string>
-    <string name="toast_open_is_flow">這是流程檔,不是片段檔。要開它請切到流程模式。</string>
-    <string name="toast_open_is_clip">這是片段檔,不是流程檔。要開它請切到片段模式。</string>
-    <string name="toast_open_not_clip">這不是片段檔。片段的副檔名是 .clip —— 如果你改過名字,改回來就開得起來。</string>
-    <string name="toast_open_not_flow">這不是流程檔。流程的副檔名是 .flow —— 如果你改過名字,改回來就開得起來。</string>
     <string name="toast_delete_failed">刪不掉這個檔案</string>
 
     <!-- 診斷 -->
