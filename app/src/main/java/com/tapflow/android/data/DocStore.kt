@@ -291,7 +291,8 @@ object DocStore {
      * Both creation paths derive an extension from the MIME type and append it when the given name does not
      * already end in it — `ExternalStorageProvider.createDocument` on one side and `DocumentFile.fromFile` on
      * the other — so `"application/json"` would turn `Login.clip` into `Login.clip.json`. An unmapped type
-     * leaves the name alone.
+     * leaves the name alone. [create] verifies it anyway, because a name that came back different is a file
+     * nothing can reach: the ref *is* the name.
      */
     const val MIME = "application/vnd.tapflow"
 }
