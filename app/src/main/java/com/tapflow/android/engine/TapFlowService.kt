@@ -1508,8 +1508,48 @@ class TapFlowService : AccessibilityService() {
         }
 
         override fun onAdjustDelay(deltaMs: Long) = adjustSelected { step ->
-            val next = (step.delayBefore + deltaMs).coerceIn(0L, Timing.MAX_RECORDED_GAP_MS)
-            when (step) {
+            setDelay(step, step.delayBefore + deltaMs)
+        }
+
+        /**
+         * The same two numbers, typed.
+         *
+         * Both bounded by what the stepper can already reach, so the pad cannot produce a step the buttons
+         * could not have produced — one of them is a shortcut to the other, not a second set of rules.
+         */
+        override fun onEditDuration() {
+            val step = Workspace.stepById(EngineState.selectedStepId.value) as? GestureStep ?: return
+            openNumberPad(
+                PadRequest(
+                    title = getString(R.string.duration_pad_title),
+                    unit = getString(R.string.repeat_interval_pad_unit),
+                    initialValue = step.duration.toInt(),
+                    max = Timing.MAX_RECORDED_GAP_MS.toInt(),
+                ) { ms ->
+                    // Floored at one, the same as the stepper: a gesture of zero length is not dispatched
+                    // as an instant tap, it is dispatched as nothing.
+                    Workspace.updateStep(step.withDuration(ms.coerceAtLeast(1).toLong()))
+                }
+            )
+        }
+
+        override fun onEditDelay() {
+            val step = Workspace.stepById(EngineState.selectedStepId.value) ?: return
+            openNumberPad(
+                PadRequest(
+                    title = getString(R.string.delay_pad_title),
+                    unit = getString(R.string.repeat_interval_pad_unit),
+                    initialValue = step.delayBefore.toInt(),
+                    max = Timing.MAX_RECORDED_GAP_MS.toInt(),
+                ) { ms ->
+                    Workspace.updateStep(setDelay(step, ms.toLong()))
+                }
+            )
+        }
+
+        private fun setDelay(step: Step, ms: Long): Step {
+            val next = ms.coerceIn(0L, Timing.MAX_RECORDED_GAP_MS)
+            return when (step) {
                 is GestureStep -> step.copy(delayBefore = next)
                 is PauseStep -> step.copy(delayBefore = next)
                 is GlobalStep -> step.copy(delayBefore = next)

@@ -62,6 +62,16 @@ class StepPanelView(context: Context, private val actions: Actions) : LinearLayo
         fun onAdjustDuration(deltaMs: Long)
         fun onAdjustDelay(deltaMs: Long)
 
+        /**
+         * The same two numbers, typed rather than nudged.
+         *
+         * A stepper is right for "a bit longer" and hopeless for "make it 2500": at 50ms a tap that is
+         * fifty taps, and the value is right there on the row being read while you do it. So the row
+         * offers both — the buttons for adjusting, the number itself for saying.
+         */
+        fun onEditDuration()
+        fun onEditDelay()
+
         /** Opens the number pad for how long a timed wait should last. */
         fun onEditWaitSeconds()
 
@@ -211,12 +221,19 @@ class StepPanelView(context: Context, private val actions: Actions) : LinearLayo
     private val intervalRow =
         pickerRow(R.string.param_repeat_interval, intervalValue) { actions.onEditRepeatInterval() }
 
-    private val durationRow = stepperRow(R.string.param_duration, durationValue, DURATION_STEP_MS) {
-        actions.onAdjustDuration(it)
-    }
-    private val delayRow = stepperRow(R.string.param_delay, delayValue, DELAY_STEP_MS) {
-        actions.onAdjustDelay(it)
-    }
+    private val durationRow = stepperRow(
+        R.string.param_duration,
+        durationValue,
+        DURATION_STEP_MS,
+        onType = { actions.onEditDuration() },
+    ) { actions.onAdjustDuration(it) }
+
+    private val delayRow = stepperRow(
+        R.string.param_delay,
+        delayValue,
+        DELAY_STEP_MS,
+        onType = { actions.onEditDelay() },
+    ) { actions.onAdjustDelay(it) }
 
     /**
      * A ScrollView that wraps its content but never grows past [maxHeightPx].
@@ -399,11 +416,26 @@ class StepPanelView(context: Context, private val actions: Actions) : LinearLayo
         labelRes: Int,
         value: TextView,
         stepMs: Long,
+        onType: () -> Unit,
         onAdjust: (Long) -> Unit,
     ): LinearLayout = LinearLayout(context).apply {
         orientation = HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         addView(label(labelRes), LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+        // The number is the way in to typing one. No third button: the row is already label, value, minus,
+        // plus, and a `Change` beside a stepper reads as a second way to do what the stepper does.
+        //
+        // It wears the same pill the `Change` buttons on the picker rows wear, rather than a colour of its
+        // own — one thing on this panel means "tappable", and inventing a second would make the reader work
+        // out which of the two they are looking at.
+        value.isClickable = true
+        value.setPadding(dp(10f), dp(8f), dp(10f), dp(8f))
+        value.background = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = dp(8f).toFloat()
+            setColor(ContextCompat.getColor(context, R.color.overlay_panel_pressed))
+        }
+        value.setOnClickListener { onType() }
         addView(value)
         addView(iconButton(R.drawable.ic_remove) { onAdjust(-stepMs) })
         addView(iconButton(R.drawable.ic_add) { onAdjust(stepMs) })
