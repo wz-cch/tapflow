@@ -77,29 +77,25 @@ class MainActivity : ComponentActivity() {
                         DiagnosticsScreen(onBack = { screen.value = Screen.HOME })
                     }
 
+                    // A null ref is a flow that does not exist yet — "arrange one, then name it", the same
+                    // order a clip has. It is not a missing argument, so there is nothing to bounce home for.
                     Screen.FLOW -> {
-                        val ref = editingFlowRef.value
-                        if (ref == null) {
-                            screen.value = Screen.HOME
-                        } else {
-                            // Editing a flow writes straight back, so there is never anything unsaved to
-                            // ask about on the way out.
-                            val leave = {
-                                if (flowEditorExits.value) finish() else screen.value = Screen.HOME
-                            }
-                            BackHandler { leave() }
-                            FlowEditorScreen(
-                                flowRef = ref,
-                                onBack = leave,
-                                // The clip is already loaded and the breadcrumb set; this is the handover.
-                                // Same two steps as loading from the home screen, and for the same reason:
-                                // editing happens on the toolbar, on top of the app being scripted.
-                                onEditClip = {
-                                    Repo.setOverlayEnabled(true)
-                                    finish()
-                                },
-                            )
+                        val leave = {
+                            if (flowEditorExits.value) finish() else screen.value = Screen.HOME
                         }
+                        // No BackHandler here any more: the editor holds one of its own, because only it
+                        // knows whether leaving would throw an arrangement away.
+                        FlowEditorScreen(
+                            flowRef = editingFlowRef.value,
+                            onBack = leave,
+                            // The clip is already loaded and the breadcrumb set; this is the handover.
+                            // Same two steps as loading from the home screen, and for the same reason:
+                            // editing happens on the toolbar, on top of the app being scripted.
+                            onEditClip = {
+                                Repo.setOverlayEnabled(true)
+                                finish()
+                            },
+                        )
                     }
                 }
             }
@@ -118,7 +114,10 @@ class MainActivity : ComponentActivity() {
         }
         // The toolbar's pencil in flow mode. That flow is already loaded, so closing the editor should go
         // back to the target app rather than land on a home screen nobody asked for.
-        intent?.getStringExtra(EXTRA_OPEN_FLOW)?.let { ref ->
+        // Either a flow to arrange or a request to start one. Both come from the toolbar's pencil, so both
+        // land back on the target app when the editor closes rather than on a home screen nobody asked for.
+        val ref = intent?.getStringExtra(EXTRA_OPEN_FLOW)
+        if (ref != null || intent?.getBooleanExtra(EXTRA_NEW_FLOW, false) == true) {
             editingFlowRef.value = ref
             flowEditorExits.value = true
             screen.value = Screen.FLOW
@@ -128,5 +127,6 @@ class MainActivity : ComponentActivity() {
     companion object {
         const val EXTRA_OPEN_SETTINGS = "com.tapflow.android.OPEN_SETTINGS"
         const val EXTRA_OPEN_FLOW = "com.tapflow.android.OPEN_FLOW"
+        const val EXTRA_NEW_FLOW = "com.tapflow.android.NEW_FLOW"
     }
 }

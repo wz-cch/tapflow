@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
@@ -46,12 +47,17 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tapflow.android.R
 import com.tapflow.android.data.Clip
 import com.tapflow.android.data.ClipNode
+import com.tapflow.android.data.DocFile
 import com.tapflow.android.data.DocKind
+import com.tapflow.android.data.DocStore
 import com.tapflow.android.data.Flow
+import com.tapflow.android.data.LoadedClip
+import com.tapflow.android.data.OpenFlow
 import com.tapflow.android.data.Repo
 import com.tapflow.android.data.Settings
 import com.tapflow.android.engine.Session
 import com.tapflow.android.text.clipSummary
+import com.tapflow.android.text.defaultFlowName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -66,31 +72,51 @@ import kotlin.math.roundToInt
  *
  * ### Entering reads the flow
  *
- * All three ways in — arranging from the home screen, the toolbar's pencil, and coming back from editing one
- * of the clips — hand over a file reference, and this screen reads it. Unconditionally, even when that flow is
- * already open, because the one case that matters is the third: the clip that was just edited is one of the
- * files this flow points at, so re-reading is how the edit arrives. Making it conditional would mean deciding
- * *when* a re-read is needed, and the answer would be wrong exactly once.
+ * The ways in that name a flow — arranging from the home screen, the toolbar's pencil, coming back from
+ * editing one of the clips — hand over a file reference, and this screen reads it. Unconditionally, even when
+ * that flow is already open, because the one case that matters is the last: the clip that was just edited is
+ * one of the files this flow points at, so re-reading is how the edit arrives. Making it conditional would
+ * mean deciding *when* a re-read is needed, and the answer would be wrong exactly once.
  *
- * Every change writes straight back. A flow is a list of references with nothing accumulating in it, so there
- * is no unsaved state to protect and therefore no save button — the same reason the toolbar has none in flow
- * mode. Those writes go through [writeFile], off the main thread and reported when they fail: without that,
- * a failed write would leave the in-memory flow untouched too, and the tap would appear to do nothing.
+ * ### It is arranged in memory, and named when it is saved
+ *
+ * **This used to write straight back on every tap, and a new flow was a file before it was an arrangement.**
+ * Which made flows the opposite of clips: a clip is recorded and then named, a flow had to be named before it
+ * could be started. Two costs came out of that — the order was inconsistent for no reason anyone could give,
+ * and every abandoned experiment left an empty `.flow` behind.
+ *
+ * So the arrangement lives here until it is saved, and leaving with changes asks. **The unsaved window is
+ * exactly this screen**, which is what keeps the rest of the app as simple as it was: outside the editor a
+ * flow is still always saved, so flow mode still needs no `💾`, and the five places that ask about discarding
+ * a workspace still only have to think about clips.
+ *
+ * There is no draft behind it, deliberately. The clip workspace has one because its unsaved state outlives
+ * any screen; this one does not, and a draft would have to answer "does the draft or the file win" against
+ * the re-read rule above — a question whose wrong answer is silent.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 /**
- * @param flowRef the flow's file. Read on entry; see above.
+ * @param flowRef the flow's file, or null to arrange one that does not exist yet. Read on entry; see above.
  * @param onEditClip one of this flow's clips has been opened for editing. Handing over to the toolbar is all
  *   that is left, and only the activity can do it.
  */
 @Composable
-fun FlowEditorScreen(flowRef: String, onBack: () -> Unit, onEditClip: () -> Unit) {
+fun FlowEditorScreen(flowRef: String?, onBack: () -> Unit, onEditClip: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val open by Repo.currentFlow.collectAsStateWithLifecycle()
-    var loading by remember(flowRef) { mutableStateOf(true) }
+
+    // The arrangement being worked on, held here rather than written through on every tap. A new flow has no
+    // file until it is saved, which is what makes "make it, then name it" possible — the same order a clip
+    // has always had. Keyed on the ref so arriving at a different flow starts clean.
+    var file by remember(flowRef) { mutableStateOf<DocFile?>(null) }
+    var working by remember(flowRef) { mutableStateOf(Flow(clips = emptyList())) }
+    var resolved by remember(flowRef) { mutableStateOf<Map<String, LoadedClip>>(emptyMap()) }
+    var dirty by remember(flowRef) { mutableStateOf(false) }
+    var loading by remember(flowRef) { mutableStateOf(flowRef != null) }
+    var ready by remember(flowRef) { mutableStateOf(flowRef == null) }
 
     LaunchedEffect(flowRef) {
+        if (flowRef == null) return@LaunchedEffect
         val opened = withContext(Dispatchers.IO) { Repo.openFlow(flowRef) }
         loading = false
         if (opened == null) {
@@ -98,27 +124,104 @@ fun FlowEditorScreen(flowRef: String, onBack: () -> Unit, onEditClip: () -> Unit
             context.toastLong(context.getString(R.string.toast_open_flow_failed))
             onBack()
         } else {
+            file = opened.file
+            working = opened.flow
+            resolved = opened.clips.mapValues { LoadedClip(DocFile(it.key, DocStore.label(it.key)), it.value) }
             Session.openFlow(opened)
+            ready = true
         }
     }
 
-    val flow = open?.takeIf { it.file.ref == flowRef }
-    if (flow == null) {
+    if (!ready) {
         // Cancellable: there is nothing else on screen yet, so a slow read would otherwise be a spinner with
         // no exit — the dialog swallows back before the editor's own handler sees it.
         if (loading) BusyDialog(onCancel = onBack)
         return
     }
 
+    val nodes = working.clips
+
+    // Three lookups over the clips read so far. They live here rather than on a shared type because what is
+    // being arranged is not an OpenFlow — it may have no file yet — and one nullable field would have made
+    // every saved-flow caller in the app handle a case that cannot reach them.
+    fun nameAt(index: Int): String {
+        val node = nodes.getOrNull(index) ?: return ""
+        return resolved[node.ref]?.file?.name ?: node.name
+    }
+
+    fun clipAt(index: Int): LoadedClip? = nodes.getOrNull(index)?.let { resolved[it.ref] }
+    val missingCount = nodes.count { it.ref !in resolved }
+
     // Saveable: the picker is another activity, so a rotation while it is open would otherwise lose which
     // row the result belongs to and silently drop the choice.
     var addingAt by rememberSaveable { mutableStateOf<Int?>(null) }
     var editing by remember { mutableStateOf<Int?>(null) }
 
-    /** Writes a changed node list back to the file, keeping the clips already read. */
-    fun update(nodes: List<ClipNode>) {
-        scope.writeFile(context) { Repo.saveFlow(flow.withNodes(nodes)) }
+    /** Non-null while the unsaved-changes question is on screen; holds what that question is blocking. */
+    var asking by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    /**
+     * What to do once a name has been chosen and the write has landed.
+     *
+     * Deliberately not the same field as [asking]. They overlapped in the first version of this, and the
+     * result was the question reappearing on top of the name picker it had just opened — one field cannot
+     * mean both "a question is up" and "something is waiting behind a picker".
+     */
+    var afterSave by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    fun update(next: List<ClipNode>) {
+        working = working.copy(clips = next)
+        dirty = true
     }
+
+    fun writeTo(target: DocFile, andThen: () -> Unit) {
+        scope.launch {
+            val opened = OpenFlow(target, working, resolved)
+            val ok = withContext(Dispatchers.IO) { Repo.saveFlow(opened) }
+            if (!ok) {
+                context.toastLong(context.getString(R.string.toast_save_failed))
+                return@launch
+            }
+            file = target
+            dirty = false
+            // Makes it the loaded flow, so flow mode's play button runs what was just written rather than
+            // whatever was open before.
+            Session.openFlow(opened)
+            andThen()
+        }
+    }
+
+    // Save-only: the name field is the point, and tapping an existing flow fills the name in rather than
+    // opening it — opening from here would throw away the arrangement you came to name.
+    val namePicker = rememberFilePicker(DocKind.FLOW) { picked ->
+        val ref = (picked as? Picked.Save)?.ref
+        val after = afterSave
+        afterSave = null
+        if (ref == null) return@rememberFilePicker
+        writeTo(DocFile(ref, DocStore.label(ref))) { after?.invoke() }
+    }
+
+    /** Saves, asking for a name first when this flow has never had one. */
+    fun save(andThen: () -> Unit) {
+        val target = file
+        if (target == null) {
+            afterSave = andThen
+            namePicker.save(defaultFlowName(context.resources, System.currentTimeMillis()))
+        } else {
+            writeTo(target, andThen)
+        }
+    }
+
+    /** Runs [action] once the arrangement is safe to leave behind. */
+    fun guarded(action: () -> Unit) {
+        if (dirty) asking = action else action()
+    }
+
+    fun leave() = guarded(onBack)
+
+    // The editor's own back, so the system gesture and the arrow ask the same question. Registered before
+    // the dialogs below, which put their own handlers on top while they are up.
+    BackHandler { leave() }
 
     // Open-only. Writing a clip from here would mean creating an empty one, and a flow row pointing at an
     // empty clip is a row that does nothing — clips come from recording.
@@ -139,15 +242,17 @@ fun FlowEditorScreen(flowRef: String, onBack: () -> Unit, onEditClip: () -> Unit
                 return@launch
             }
             val node = ClipNode(ref = loaded.file.ref, name = loaded.file.name)
+            resolved = resolved + (loaded.file.ref to loaded)
             // `at` is the row being repointed, or the size of the list when appending.
-            val nodes = if (at in flow.flow.clips.indices) {
-                flow.flow.clips.mapIndexed { index, existing ->
-                    if (index == at) existing.copy(ref = node.ref, name = node.name) else existing
+            update(
+                if (at in nodes.indices) {
+                    nodes.mapIndexed { index, existing ->
+                        if (index == at) existing.copy(ref = node.ref, name = node.name) else existing
+                    }
+                } else {
+                    nodes + node
                 }
-            } else {
-                flow.flow.clips + node
-            }
-            scope.writeFile(context) { Repo.saveFlow(flow.withNodes(nodes, loaded)) }
+            )
         }
     }
 
@@ -155,11 +260,22 @@ fun FlowEditorScreen(flowRef: String, onBack: () -> Unit, onEditClip: () -> Unit
         topBar = {
             TopAppBar(
                 title = {
-                    Text(flow.file.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        file?.name ?: stringResource(R.string.flow_untitled),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = { leave() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                    }
+                },
+                actions = {
+                    // Enabled only when there is something to write. A save button that is always live
+                    // invites pressing it to find out whether it was needed.
+                    TextButton(onClick = { save {} }, enabled = dirty) {
+                        Text(stringResource(R.string.flow_action_save))
                     }
                 },
             )
@@ -173,24 +289,25 @@ fun FlowEditorScreen(flowRef: String, onBack: () -> Unit, onEditClip: () -> Unit
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             item {
-                LoopRow(flow.flow) { updated ->
-                    scope.writeFile(context) { Repo.saveFlow(flow.withFlow(updated)) }
+                LoopRow(working) { updated ->
+                    working = updated
+                    dirty = true
                 }
             }
 
             // Above the rows, because it explains them: a reference is a location, so this is what a moved or
             // renamed clip looks like, and every one of those rows offers the one thing that fixes it.
-            if (flow.missingCount > 0) {
+            if (missingCount > 0) {
                 item {
                     Text(
-                        stringResource(R.string.flow_missing_note, flow.missingCount),
+                        stringResource(R.string.flow_missing_note, missingCount),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
             }
 
-            if (flow.flow.clips.isEmpty()) {
+            if (nodes.isEmpty()) {
                 item {
                     Text(
                         stringResource(R.string.flow_editor_empty),
@@ -200,36 +317,42 @@ fun FlowEditorScreen(flowRef: String, onBack: () -> Unit, onEditClip: () -> Unit
                 }
             }
 
-            itemsIndexed(flow.flow.clips) { index, node ->
+            itemsIndexed(nodes) { index, node ->
                 ClipNodeRow(
                     position = index + 1,
                     node = node,
-                    name = flow.nameAt(index),
-                    clip = flow.clipAt(index)?.clip,
+                    name = nameAt(index),
+                    clip = clipAt(index)?.clip,
                     canMoveUp = index > 0,
-                    canMoveDown = index < flow.flow.clips.lastIndex,
-                    onMove = { delta -> update(flow.flow.clips.moved(index, delta)) },
-                    onRemove = { update(flow.flow.clips.minusAt(index)) },
+                    canMoveDown = index < nodes.lastIndex,
+                    onMove = { delta -> update(nodes.moved(index, delta)) },
+                    onRemove = { update(nodes.minusAt(index)) },
                     onOpenSettings = { editing = index },
-                    // Nothing to confirm. The flow is written on every change here, so it is already on
-                    // disk, and flow mode keeps the workspace empty — so leaving for the clip cannot lose
-                    // anything on either side.
+                    // Guarded, and this is where the in-memory arrangement earns the question: going to the
+                    // clip leaves this screen, and the way back is a reference to a *file*. An arrangement
+                    // that has never been written has no file to come back to.
+                    // Saves first rather than offering to discard, and that is the one place the two
+                    // questions differ: leaving for the clip means coming *back*, and the way back is a
+                    // reference to a file. An arrangement that was thrown away has nowhere to return to.
                     onEditClip = {
-                        flow.clipAt(index)?.let { loaded ->
-                            Session.editClipFromFlow(flow.file.ref, loaded)
-                            onEditClip()
+                        val loaded = clipAt(index) ?: return@ClipNodeRow
+                        val handOver = {
+                            file?.ref?.let { ref ->
+                                Session.editClipFromFlow(ref, loaded)
+                                onEditClip()
+                            }
+                            Unit
                         }
+                        if (file == null || dirty) save(handOver) else handOver()
                     },
                     // Opens beside the flow itself, which is where a clip that moved is most likely to be.
-                    onRelink = { addingAt = index; clipPicker.open(near = flow.file.ref) },
+                    onRelink = { addingAt = index; clipPicker.open(near = file?.ref) },
                 )
             }
 
             item {
                 Spacer(Modifier.height(4.dp))
-                OutlinedButton(
-                    onClick = { addingAt = flow.flow.clips.size; clipPicker.open(near = flow.file.ref) }
-                ) {
+                OutlinedButton(onClick = { addingAt = nodes.size; clipPicker.open(near = file?.ref) }) {
                     Text(stringResource(R.string.flow_editor_add))
                 }
                 Spacer(Modifier.height(24.dp))
@@ -237,8 +360,31 @@ fun FlowEditorScreen(flowRef: String, onBack: () -> Unit, onEditClip: () -> Unit
         }
     }
 
+    // Three answers, and the third is the reason this is not an ordinary two-button dialog: leaving without
+    // saving and cancelling are different intentions, and a dialog that offers only "OK" for one of them
+    // makes the other unreachable except by guessing that the outside is safe to tap.
+    asking?.let { action ->
+        AlertDialog(
+            onDismissRequest = { asking = null },
+            title = { Text(stringResource(R.string.flow_leave_title)) },
+            confirmButton = {
+                Row {
+                    TextButton(onClick = { asking = null; action() }) {
+                        Text(stringResource(R.string.flow_leave_discard))
+                    }
+                    TextButton(onClick = { asking = null; save(action) }) {
+                        Text(stringResource(R.string.flow_leave_save))
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { asking = null }) { Text(stringResource(R.string.dialog_cancel)) }
+            },
+        )
+    }
+
     editing?.let { index ->
-        val node = flow.flow.clips.getOrNull(index)
+        val node = nodes.getOrNull(index)
         if (node == null) {
             editing = null
         } else {
@@ -247,7 +393,7 @@ fun FlowEditorScreen(flowRef: String, onBack: () -> Unit, onEditClip: () -> Unit
                 node = node,
                 onDismiss = { editing = null },
             ) { updated ->
-                update(flow.flow.clips.replacedAt(index, updated))
+                update(nodes.replacedAt(index, updated))
                 editing = null
             }
         }

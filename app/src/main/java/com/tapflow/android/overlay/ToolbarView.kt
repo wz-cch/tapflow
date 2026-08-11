@@ -123,11 +123,14 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         fun onDeleteFlow()
 
         /**
-         * Opens the flow's arrangement screen.
+         * Opens the flow's arrangement screen, or a blank one when no flow is loaded.
          *
          * Flow mode had no way to change what a flow contains; you had to go back to the app for it. It
          * shares the pencil with clip mode's edit on purpose — both mean "edit the thing this mode is
          * about", which for a clip is its steps and for a flow is its list of clips.
+         *
+         * Never greyed, and that is what replaced a separate `⊕`: a flow is *made* by arranging clips, so
+         * "arrange" with nothing loaded can only mean one thing. One button, one place flows come from.
          */
         fun onEditFlow()
         fun onCycleDensity()
@@ -462,7 +465,6 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         // starts from — so this can no longer be hardcoded true.
         setActionEnabled(primary, if (flowMode) hasFlow else hasSteps)
         setActionEnabled(playFrom, hasSteps)
-        setActionEnabled(editFlow, hasFlow)
         setActionEnabled(deleteFlow, hasFlow)
 
         secondary.setImageResource(if (recording) R.drawable.ic_stop else R.drawable.ic_record)

@@ -215,12 +215,6 @@ object Repo {
      */
     fun fileAt(ref: String): DocFile = DocFile(ref, fileLabel(ref))
 
-    /** Writes a brand-new empty flow to the ref the browser just named. */
-    fun createFlow(ref: String): OpenFlow? {
-        val opened = OpenFlow(fileAt(ref), Flow(clips = emptyList()), emptyMap())
-        return if (saveFlow(opened)) opened else null
-    }
-
     // --- Maintenance ---------------------------------------------------------
 
     /**

@@ -2031,10 +2031,12 @@ class TapFlowService : AccessibilityService() {
          * picker, and it is the same screen the app's flow rows open — one editor, two ways in.
          */
         override fun onEditFlow() {
-            val open = Repo.currentFlow.value ?: return
+            // A null ref opens the editor on a flow that does not exist yet, which is how one is made now.
+            val ref = Repo.currentFlow.value?.file?.ref
             startActivity(
                 Intent(this@TapFlowService, MainActivity::class.java)
-                    .putExtra(MainActivity.EXTRA_OPEN_FLOW, open.file.ref)
+                    .putExtra(MainActivity.EXTRA_OPEN_FLOW, ref)
+                    .putExtra(MainActivity.EXTRA_NEW_FLOW, ref == null)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             )
         }
