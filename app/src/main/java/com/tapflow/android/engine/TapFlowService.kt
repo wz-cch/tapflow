@@ -1713,11 +1713,23 @@ class TapFlowService : AccessibilityService() {
             )
         }
 
+        /**
+         * Starts the next recorded gap from now.
+         *
+         * Only while recording, and only after an insert that kept the recording running. A manual pause
+         * needs none: it stops the recording, and resuming resets the baseline anyway.
+         */
+        private fun resetRecordedGap() {
+            if (EngineState.isRecording) recorder.restartTiming()
+        }
+
         override fun onInsertPausePoint() {
             if (EngineState.isReplaying) return
             // Nothing is ever selected while recording, so this appends then, and lands after the
             // selected marker when editing — one call covers both.
-            val step = PauseStep()
+            //
+            // The default gap rather than nothing, and rather than a measured one — see [onInsertWait].
+            val step = PauseStep(delayBefore = settings.defaultGapMs)
             Workspace.insertAfter(EngineState.selectedStepId.value, step, currentScreen())
             selectIfEditing(step.id)
             toast(getString(R.string.toast_pause_inserted))
@@ -1733,6 +1745,16 @@ class TapFlowService : AccessibilityService() {
          * carry out the step by hand; a timed wait needs nothing from them, so stopping would only be
          * in the way. The pad is an overlay rather than an Activity for the same reason — an Activity
          * would background the app being recorded.
+         *
+         * **And not stopping is what made this wrong.** A recorded gap is measured from the end of the last
+         * gesture, so the seconds spent opening the pad, typing a number and confirming it were charged to
+         * the *next* step's lead delay. Insert a 30-second wait, take a moment over it, and the replay waits
+         * 30 seconds and then another 20 — reported from a device as "a 30s wait becomes 60s". A manual pause
+         * never showed it because stopping the recording resets the baseline on the way back in.
+         *
+         * So both ends are taken out of the script's hands: the inserted step's own lead is the configured
+         * default, and [resetRecordedGap] makes the next captured gesture start from now. Time spent
+         * operating the toolbar is not something the user performed.
          */
         override fun onInsertWait() {
             if (EngineState.isReplaying) return
@@ -1743,10 +1765,11 @@ class TapFlowService : AccessibilityService() {
                     initialValue = 0,
                     max = MAX_WAIT_SECONDS,
                 ) { seconds ->
-                    val step = PauseStep(ms = seconds * 1000L)
+                    val step = PauseStep(ms = seconds * 1000L, delayBefore = settings.defaultGapMs)
                     Workspace.insertAfter(EngineState.selectedStepId.value, step, currentScreen())
                     selectIfEditing(step.id)
                     toast(getString(R.string.toast_wait_inserted, seconds))
+                    resetRecordedGap()
                 }
             )
         }
@@ -1785,6 +1808,7 @@ class TapFlowService : AccessibilityService() {
                     if (EngineState.isRecording && settings.replayEachGesture) {
                         performGlobalAction(kind.toGlobalActionId())
                     }
+                    resetRecordedGap()
                 }
             )
         }
