@@ -103,14 +103,27 @@ fun StorageDialog(
     // Off the main thread. Listing a folder on a slow card is not instant, and this is often the first thing
     // on screen after a tap.
     LaunchedEffect(dir, revision) {
-        val found = withContext(Dispatchers.IO) {
+        val outcome = withContext(Dispatchers.IO) {
             val entries = DocStore.list(dir, kind)
-            // Only when there is nothing to show. A folder with files in it is reachable by definition, and
-            // this check is a query of its own.
-            entries to (entries.isNotEmpty() || DocStore.rootReadable())
+            when {
+                // A folder with things in it is reachable by definition, and each of the checks below is a
+                // provider query of its own — so they are only asked when there is nothing to show.
+                entries.isNotEmpty() -> Listing(entries, reachable = true, walkTo = dir)
+                // Remembered from last time, or navigated into, and gone since. Fall back to the root rather
+                // than stand in a path that lists nothing and cannot say why.
+                dir.isNotEmpty() && !DocStore.folderExists(dir) -> Listing(walkTo = "")
+                else -> Listing(entries, reachable = DocStore.rootReadable(), walkTo = dir)
+            }
         }
-        listing = found.first
-        reachable = found.second
+        if (outcome.walkTo != dir) {
+            dir = outcome.walkTo
+            return@LaunchedEffect
+        }
+        listing = outcome.entries
+        reachable = outcome.reachable
+        // Remembered on arrival rather than on the way out, so backing out of the panel still leaves it
+        // where you were looking — which is the whole of what "remember the last place" means.
+        DocStore.rememberFolder(kind, dir)
     }
 
     fun save() {
@@ -262,6 +275,13 @@ fun StorageDialog(
         )
     }
 }
+
+/** One listing, and what it implies about where the panel should be standing. */
+private class Listing(
+    val entries: List<DocStore.Entry> = emptyList(),
+    val reachable: Boolean = true,
+    val walkTo: String,
+)
 
 /** What a row already knows about itself, in the wording of the kind it is. */
 private fun summaryOf(context: android.content.Context, doc: RecentDoc): String =

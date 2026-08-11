@@ -121,7 +121,9 @@ fun rememberFilePicker(kind: DocKind, onResult: (Picked) -> Unit): FilePicker {
     return FilePicker { suggestedName, opening, near ->
         suggested = suggestedName
         canOpen = opening
-        startIn = near?.let(DocStore::parentOf).orEmpty()
+        // A named neighbour wins over the remembered folder: it is the caller saying where to look, and
+        // repointing a flow's broken row means "beside the flow" however much you were last somewhere else.
+        startIn = near?.let(DocStore::parentOf) ?: DocStore.lastFolder(kind)
         if (DocStore.hasRoot) browsing = true else chooseRoot()
     }
 }

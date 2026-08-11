@@ -62,6 +62,29 @@ object DocStore {
         rootRef = prefs.getString(KEY_ROOT, "").orEmpty()
     }
 
+    // --- Where the panel opens ------------------------------------------------
+
+    /**
+     * The folder the panel was last left in, for [kind], or "" for the root.
+     *
+     * **One memory per kind, shared between opening and saving.** Clips and flows do not live in the same
+     * place — `clips/monster` and `flows` — so a single memory would send you walking every other time. But
+     * opening and saving *are* the same folder: they are one panel now, and remembering them separately
+     * would mean the list moved under you depending on which half you used last.
+     *
+     * Not checked here, deliberately: reading a preference is free and confirming a folder is a provider
+     * query, and this is read on the main thread as the panel opens. The panel walks back to the root when
+     * the folder turns out not to be there — which it has to do anyway, since the folder can go missing
+     * while the panel is standing in it.
+     */
+    fun lastFolder(kind: DocKind): String = prefs.getString(keyLastFolder(kind), "").orEmpty()
+
+    fun rememberFolder(kind: DocKind, dir: String) {
+        prefs.edit().putString(keyLastFolder(kind), dir).apply()
+    }
+
+    private fun keyLastFolder(kind: DocKind) = "last_folder_${kind.name.lowercase()}"
+
     // --- The root ------------------------------------------------------------
 
     /** Whether a folder has been chosen. Cheap — it does not go near the disk. */
@@ -115,7 +138,12 @@ object DocStore {
             }.onFailure { Log.w(TAG, "Could not persist access to $value; this session only", it) }
         }
         rootRef = value
-        prefs.edit().putString(KEY_ROOT, value).apply()
+        // The remembered folders go with it: they are paths inside the folder that was there before.
+        prefs.edit()
+            .putString(KEY_ROOT, value)
+            .remove(keyLastFolder(DocKind.CLIP))
+            .remove(keyLastFolder(DocKind.FLOW))
+            .apply()
         folders.clear()
     }
 
@@ -234,6 +262,9 @@ object DocStore {
 
     /** Whether the file is still there. Does IO. */
     fun exists(ref: String): Boolean = runCatching { docAt(ref) != null }.getOrDefault(false)
+
+    /** Whether a folder is still there. Does IO. Only worth asking when a listing came back empty. */
+    fun folderExists(dir: String): Boolean = runCatching { folder(dir) != null }.getOrDefault(false)
 
     // --- Paths ---------------------------------------------------------------
 
