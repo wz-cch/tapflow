@@ -187,6 +187,7 @@
     <string name="param_wait_length">等待</string>
     <string name="param_change">變更</string>
     <string name="param_repeat">重複</string>
+    <string name="param_repeat_for">重複時間</string>
     <string name="param_repeat_interval">重複間隔</string>
     <string name="param_times">×%1$d</string>
     <string name="global_pad_title">插入哪一個系統按鍵?</string>
@@ -195,10 +196,14 @@
     <string name="repeat_pad_unit">次</string>
     <string name="duration_pad_title">這個手勢做多久</string>
     <string name="delay_pad_title">這一步之前等多久</string>
+    <string name="repeat_for_pad_title">要重複多久</string>
+    <string name="repeat_for_pad_unit">秒</string>
     <string name="repeat_interval_pad_title">每次之間隔多久</string>
     <string name="repeat_interval_pad_unit">ms</string>
     <string name="step_repeat_suffix">%1$s ×%2$d</string>
+    <string name="step_repeat_for_suffix">%1$s ‧ 重複 %2$s</string>
     <string name="transport_repeat">(%1$d/%2$d)</string>
+    <string name="transport_repeat_for">(%1$d ‧ 剩 %2$s)</string>
     <string name="param_seconds">%1$s 秒</string>
     <string name="param_duration">時長</string>
     <string name="param_delay">前置延遲</string>
@@ -310,6 +315,7 @@
     <string name="value_px">%1$d px</string>
     <string name="value_percent">%1$d%%</string>
     <string name="value_times">%1$d 次</string>
+    <string name="param_unset">—</string>
     <string name="value_multiplier">%1$s 倍</string>
 
 

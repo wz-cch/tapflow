@@ -42,7 +42,10 @@ data class Progress(
     val step: Int,
     val totalSteps: Int,
     val repeatPass: Int = 1,
+    /** How many passes in total, or 0 when this step repeats on a clock and the count is not known yet. */
     val repeatTotal: Int = 1,
+    /** Time left on a step repeating on a clock, or 0 when it is not. */
+    val repeatRemainingMs: Long = 0,
     val clip: Int = 0,
     val totalClips: Int = 0,
 )

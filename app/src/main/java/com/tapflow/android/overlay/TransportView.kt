@@ -148,7 +148,20 @@ class TransportView(context: Context, private val actions: Actions) : LinearLayo
                 }
                 // Only when there is actually a repeat. A step running ten times with a gap between each
                 // otherwise holds the same number for ten seconds and reads as frozen.
-                if (progress.repeatTotal > 1) {
+                //
+                // A step on a clock has no denominator — how many passes fit depends on how long each one
+                // takes — so it shows the pass it is on and how much longer it will go. Which is the more
+                // useful half anyway: "4 of 600" tells you far less about a ten-minute repeat than "9:41".
+                if (progress.repeatRemainingMs > 0) {
+                    append(" ")
+                    append(
+                        context.getString(
+                            R.string.transport_repeat_for,
+                            progress.repeatPass,
+                            formatMinutes(progress.repeatRemainingMs),
+                        )
+                    )
+                } else if (progress.repeatTotal > 1) {
                     append(" ")
                     append(
                         context.getString(
@@ -203,6 +216,12 @@ class TransportView(context: Context, private val actions: Actions) : LinearLayo
         } else {
             context.getString(R.string.transport_loop, progress.loop, progress.totalLoops)
         }
+
+    /** Minutes and seconds, rounded up, so a countdown never shows 0:00 while it is still going. */
+    private fun formatMinutes(ms: Long): String {
+        val total = (ms + 999) / 1000
+        return "%d:%02d".format(total / 60, total % 60)
+    }
 
     private fun formatElapsed(ms: Long): String {
         val totalSeconds = ms / 1000

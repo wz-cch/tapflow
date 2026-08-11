@@ -85,6 +85,14 @@ class StepPanelView(context: Context, private val actions: Actions) : LinearLayo
          */
         fun onEditRepeat()
 
+        /**
+         * Opens the number pad for how long to keep repeating, instead of how many times.
+         *
+         * "Tap for ten minutes" is a real thing to want, and a count says it badly: you divide by the
+         * interval to get the number, and then changing the interval silently changes how long it runs.
+         */
+        fun onEditRepeatForTime()
+
         /** Opens the number pad for the gap between repetitions. Only offered when there are any. */
         fun onEditRepeatInterval()
 
@@ -163,6 +171,7 @@ class StepPanelView(context: Context, private val actions: Actions) : LinearLayo
     private val durationValue = valueLabel()
     private val delayValue = valueLabel()
     private val repeatValue = valueLabel()
+    private val repeatForValue = valueLabel()
     private val intervalValue = valueLabel()
 
     private val reRecord = textButton(R.string.param_rerecord) { actions.onReRecord() }
@@ -218,6 +227,17 @@ class StepPanelView(context: Context, private val actions: Actions) : LinearLayo
      * *same* one. Reusing one field for both would give it two meanings depending on the repeat count.
      */
     private val repeatRow = pickerRow(R.string.param_repeat, repeatValue) { actions.onEditRepeat() }
+
+    /**
+     * The other way to say how much: for this long, rather than this many times.
+     *
+     * Its own row rather than a mode switch on the row above, because the two are one choice and a switch
+     * would have to hide the number it is not showing. Two rows show both, with `—` on whichever is not in
+     * force — so which one is running this step is readable without touching anything. Setting either
+     * clears the other, so `—` never lies.
+     */
+    private val repeatForRow =
+        pickerRow(R.string.param_repeat_for, repeatForValue) { actions.onEditRepeatForTime() }
     private val intervalRow =
         pickerRow(R.string.param_repeat_interval, intervalValue) { actions.onEditRepeatInterval() }
 
@@ -293,6 +313,7 @@ class StepPanelView(context: Context, private val actions: Actions) : LinearLayo
         body.addView(durationRow, rowParams())
         body.addView(delayRow, rowParams())
         body.addView(repeatRow, rowParams())
+        body.addView(repeatForRow, rowParams())
         body.addView(intervalRow, rowParams())
         // The move buttons sit at the two ends, so each one is on the side it points to. That leaves the
         // middle for the other two, and the gap between them puts duplicate and delete as far apart as
@@ -374,9 +395,21 @@ class StepPanelView(context: Context, private val actions: Actions) : LinearLayo
         // interval row waits for a repeat to exist, because until then it controls nothing.
         val repeatable = step as? RepeatableStep
         repeatRow.visibility = if (repeatable != null) VISIBLE else GONE
-        intervalRow.visibility = if (repeatable != null && repeatable.repeat > 1) VISIBLE else GONE
+        repeatForRow.visibility = if (repeatable != null) VISIBLE else GONE
+        // The interval controls nothing until this step repeats at all — by either measure.
+        val repeats = repeatable != null && (repeatable.repeat > 1 || repeatable.repeatsForTime)
+        intervalRow.visibility = if (repeats) VISIBLE else GONE
         if (repeatable != null) {
-            repeatValue.text = context.getString(R.string.param_times, repeatable.repeat)
+            repeatValue.text = if (repeatable.repeatsForTime) {
+                context.getString(R.string.param_unset)
+            } else {
+                context.getString(R.string.param_times, repeatable.repeat)
+            }
+            repeatForValue.text = if (repeatable.repeatsForTime) {
+                context.getString(R.string.param_seconds, secondsText(repeatable.repeatForMs))
+            } else {
+                context.getString(R.string.param_unset)
+            }
             intervalValue.text = context.getString(R.string.param_ms, repeatable.repeatIntervalMs)
         }
     }

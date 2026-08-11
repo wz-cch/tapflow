@@ -75,13 +75,29 @@ sealed interface Step {
  * identically: at [repeat] 1 the interval is never read.
  */
 sealed interface RepeatableStep : Step {
-    /** How many times to run in place. 1 is once. */
+    /** How many times to run in place. 1 is once. Ignored while [repeatForMs] is set. */
     val repeat: Int
 
-    /** Gap between repetitions. Only read when [repeat] is above 1. */
+    /**
+     * Run for this long instead of for a count. Zero means "use [repeat]".
+     *
+     * **"Tap for ten minutes" is a real thing to want, and a count expresses it badly**: you have to divide
+     * by the interval to get the number, and then changing the interval silently changes how long it runs.
+     * One field rather than a mode enum plus two numbers — zero is already "not this", the same way
+     * [repeat] 1 is already "not repeating".
+     *
+     * The last pass is allowed to finish. A run is checked between passes, not mid-gesture, so a ten-minute
+     * repeat overruns by up to one action rather than dispatching half a swipe.
+     */
+    val repeatForMs: Long
+
+    /** Gap between repetitions. Only read when this step repeats at all. */
     val repeatIntervalMs: Long
 
-    /** Repetitions beyond the first, which is what the interval is paid for. */
+    /** Whether this step runs on a clock rather than on a count. */
+    val repeatsForTime: Boolean get() = repeatForMs > 0
+
+    /** Repetitions beyond the first, which is what the interval is paid for. Counted mode only. */
     val extraPasses: Int get() = (repeat - 1).coerceAtLeast(0)
 }
 
@@ -95,6 +111,7 @@ data class GestureStep(
     val strokes: List<Stroke>,
     override val delayBefore: Long = 0,
     override val repeat: Int = 1,
+    override val repeatForMs: Long = 0,
     override val repeatIntervalMs: Long = 0,
 ) : Step, RepeatableStep {
 
@@ -218,8 +235,21 @@ fun GestureStep.withEndAt(x: Float, y: Float): GestureStep {
  * until it was handled here.
  */
 fun RepeatableStep.withRepeat(repeat: Int, intervalMs: Long): Step = when (this) {
-    is GestureStep -> copy(repeat = repeat, repeatIntervalMs = intervalMs)
-    is GlobalStep -> copy(repeat = repeat, repeatIntervalMs = intervalMs)
+    // Setting a count clears the clock. The two are one choice, and a step holding both would need a third
+    // field to say which wins — which is exactly the shape this avoided by making zero mean "not this".
+    is GestureStep -> copy(repeat = repeat, repeatForMs = 0, repeatIntervalMs = intervalMs)
+    is GlobalStep -> copy(repeat = repeat, repeatForMs = 0, repeatIntervalMs = intervalMs)
+}
+
+/**
+ * Sets how long to keep repeating, and the gap between those repetitions.
+ *
+ * The count is left at 1 rather than kept, so a step that comes back from the clock is not silently still
+ * carrying a number from before. Zero [forMs] is the way back to counting.
+ */
+fun RepeatableStep.withRepeatForTime(forMs: Long, intervalMs: Long): Step = when (this) {
+    is GestureStep -> copy(repeat = 1, repeatForMs = forMs, repeatIntervalMs = intervalMs)
+    is GlobalStep -> copy(repeat = 1, repeatForMs = forMs, repeatIntervalMs = intervalMs)
 }
 
 /**
@@ -303,6 +333,7 @@ data class GlobalStep(
     val kind: GlobalKind,
     override val delayBefore: Long = 0,
     override val repeat: Int = 1,
+    override val repeatForMs: Long = 0,
     override val repeatIntervalMs: Long = 0,
 ) : Step, RepeatableStep
 
@@ -389,10 +420,18 @@ data class Clip(
             }
             // A repeated step pays for its action every pass and for the interval between them, but for
             // its lead delay only once — which is exactly the split that keeps the two fields distinct.
+            //
+            // A step repeating on a clock is simpler and more accurate than either: the number *is* the
+            // answer. It overruns by up to one action, which is below the precision of the word "about".
             val repeatable = step as? RepeatableStep
-            val passes = repeatable?.repeat?.coerceAtLeast(1) ?: 1
-            val gaps = (repeatable?.extraPasses ?: 0) * (repeatable?.repeatIntervalMs ?: 0)
-            step.delayBefore + once * passes + gaps
+            val inPlace = if (repeatable != null && repeatable.repeatsForTime) {
+                repeatable.repeatForMs
+            } else {
+                val passes = repeatable?.repeat?.coerceAtLeast(1) ?: 1
+                val gaps = (repeatable?.extraPasses ?: 0) * (repeatable?.repeatIntervalMs ?: 0)
+                once * passes + gaps
+            }
+            step.delayBefore + inPlace
         }
 
 }
