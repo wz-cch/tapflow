@@ -50,11 +50,16 @@ object FlowPlan {
         val from: Int,
         val stepCount: Int,
         val repeat: Int,
+        /** Run this slice over and over for this long instead of [repeat] times. 0 means use the count. */
+        val repeatForMs: Long,
         /** Before the first step of the first pass. Replaces that step's own lead when above zero. */
         val delayBefore: Long,
         /** Before the first step of every later pass, the same way. */
         val repeatIntervalMs: Long,
-    )
+    ) {
+        /** Whether this clip runs on a clock. How many passes fit is then not known until it has run. */
+        val repeatsForTime: Boolean get() = repeatForMs > 0
+    }
 
     /**
      * @param steps every referenced clip's steps **once each**, in flow order, already scaled to the current
@@ -72,8 +77,16 @@ object FlowPlan {
         val clipCount: Int,
         val missing: List<String>,
     ) {
-        /** How many steps one pass over the flow actually performs, repeats included. */
-        val totalSteps: Int = segments.sumOf { it.stepCount * it.repeat }
+        /**
+         * How many steps one pass over the flow performs, repeats included.
+         *
+         * **A floor, not a total, once any clip runs on a clock**: how many passes fit in ten minutes
+         * depends on how long each one takes, which is the other app's business. Those clips are counted
+         * once. Nothing decides anything on this number — it labels the diagnostics log and fills the
+         * denominator of a progress line that is hidden between passes — so a floor is honest enough.
+         */
+        val totalSteps: Int =
+            segments.sumOf { it.stepCount * if (it.repeatsForTime) 1 else it.repeat }
     }
 
     /**
@@ -106,6 +119,7 @@ object FlowPlan {
                 from = from,
                 stepCount = steps.size - from,
                 repeat = node.repeat.coerceAtLeast(1),
+                repeatForMs = node.repeatForMs,
                 delayBefore = node.delayBefore,
                 repeatIntervalMs = node.repeatIntervalMs,
             )

@@ -157,8 +157,15 @@ fun flowSummary(res: Resources, clipCount: Int, durationMs: Long): String =
 fun flowSummary(res: Resources, flow: Flow, clips: Map<String, Clip>): String {
     val total = flow.clips.sumOf { node ->
         val clip = clips[node.ref] ?: return@sumOf 0L
-        val passes = node.repeat.coerceAtLeast(1)
-        node.delayBefore + clip.estimatedDurationMs * passes + node.extraPasses * node.repeatIntervalMs
+        // A clip on a clock is simpler and more accurate than either half of the counted arithmetic: the
+        // number is the answer. It overruns by up to one pass, which is below the precision of "about".
+        val inPlace = if (node.repeatsForTime) {
+            node.repeatForMs
+        } else {
+            val passes = node.repeat.coerceAtLeast(1)
+            clip.estimatedDurationMs * passes + node.extraPasses * node.repeatIntervalMs
+        }
+        node.delayBefore + inPlace
     }
     return flowSummary(res, flow.clips.size, total)
 }
