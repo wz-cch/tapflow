@@ -29,7 +29,7 @@ class TransportView(context: Context, private val actions: Actions) : LinearLayo
     interface Actions {
         fun onStop()
         fun onPauseOrResume()
-        fun onSkipWait()
+        fun onSkipAhead()
         fun onDrag(dx: Int, dy: Int)
         fun onDragEnd()
     }
@@ -41,7 +41,11 @@ class TransportView(context: Context, private val actions: Actions) : LinearLayo
     private val pause = icon(R.drawable.ic_pause)
 
     /**
-     * Ends the timed wait in progress. Only shown while one is running.
+     * Ends whichever clock is running: a timed wait, or a step repeating for a length of time.
+     *
+     * One button for both, because it means the same thing in both — stop waiting for this, go on — and a
+     * second one that looked like it would cost panel width every time either was on screen. What the panel
+     * covers cannot receive a replayed touch, so width is the currency here.
      *
      * **Last in the row, and that is the reason it is here rather than beside pause.** It appears and
      * disappears during a run, so anything after it would move under the user's finger; at the end, the
@@ -93,7 +97,7 @@ class TransportView(context: Context, private val actions: Actions) : LinearLayo
 
         stop.setOnClickListener { actions.onStop() }
         pause.setOnClickListener { actions.onPauseOrResume() }
-        skip.setOnClickListener { actions.onSkipWait() }
+        skip.setOnClickListener { actions.onSkipAhead() }
 
         // The text column is the drag handle: it has no tap action of its own, so there is nothing
         // to disambiguate against.
@@ -101,7 +105,7 @@ class TransportView(context: Context, private val actions: Actions) : LinearLayo
 
         stop.contentDescription = context.getString(R.string.action_stop)
         pause.contentDescription = context.getString(R.string.action_pause)
-        skip.contentDescription = context.getString(R.string.action_skip_wait)
+        skip.contentDescription = context.getString(R.string.action_skip_ahead)
     }
 
     /** @param waitRemaining seconds left on a timed wait step, 0 when none is running. */
@@ -187,7 +191,12 @@ class TransportView(context: Context, private val actions: Actions) : LinearLayo
 
         // Gone while paused. The number stays on screen, frozen, which is the honest reading of pausing
         // during a wait — and a skip pressed then would sit there doing nothing visible until resume.
-        skip.visibility = if (waiting && mode != Mode.PAUSED) VISIBLE else GONE
+        //
+        // A step repeating on a clock gets the same button. Its countdown is on the status line rather than
+        // the timer line, because "clip 2, step 10, on pass 4 with 9:41 to go" is one situation and the step
+        // position is half of it; a timed wait has no such half to keep.
+        val onClock = (progress?.repeatRemainingMs ?: 0) > 0
+        skip.visibility = if ((waiting || onClock) && mode != Mode.PAUSED) VISIBLE else GONE
     }
 
     private var appliedScale = Float.NaN

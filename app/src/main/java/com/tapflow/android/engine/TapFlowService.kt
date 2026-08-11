@@ -2216,7 +2216,7 @@ class TapFlowService : AccessibilityService() {
             if (EngineState.mode.value == Mode.PAUSED) player.resume() else player.pause()
         }
 
-        override fun onSkipWait() = player.skipWait()
+        override fun onSkipAhead() = player.skipAhead()
 
         override fun onDrag(dx: Int, dy: Int) = moveTransport(dx, dy)
 
