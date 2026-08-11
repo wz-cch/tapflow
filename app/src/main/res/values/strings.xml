@@ -335,6 +335,7 @@
     <string name="action_mode_clip">Clip mode — tap to switch to flows</string>
     <string name="action_mode_flow">Flow mode — tap to switch to clips</string>
     <string name="action_edit_flow">Arrange this flow</string>
+    <string name="action_new_flow">Start a new flow</string>
     <string name="toast_mode_clip">Clip mode</string>
     <string name="toast_mode_flow">Flow mode</string>
     <string name="discard_warning">There are unsaved changes. They will be lost.</string>

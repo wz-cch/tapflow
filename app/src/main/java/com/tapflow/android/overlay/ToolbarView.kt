@@ -117,20 +117,16 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
          * Flow mode's own. Same icons as the clip versions where they overlap, and deliberately so: the noun
          * follows the mode, and doubling the icons would make the column longer without making it clearer.
          * What tells you which noun is in force is the mode button at the top of the column.
-         *
-         * Creating a flow is not here: it is the name field in the storage panel, the same as saving a clip.
          */
+        fun onNewFlow()
         fun onDeleteFlow()
 
         /**
-         * Opens the flow's arrangement screen, or a blank one when no flow is loaded.
+         * Opens the loaded flow's arrangement screen.
          *
          * Flow mode had no way to change what a flow contains; you had to go back to the app for it. It
          * shares the pencil with clip mode's edit on purpose — both mean "edit the thing this mode is
          * about", which for a clip is its steps and for a flow is its list of clips.
-         *
-         * Never greyed, and that is what replaced a separate `⊕`: a flow is *made* by arranging clips, so
-         * "arrange" with nothing loaded can only mean one thing. One button, one place flows come from.
          */
         fun onEditFlow()
         fun onCycleDensity()
@@ -203,6 +199,16 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
     private val load = icon(R.drawable.ic_folder_open)
     private val deleteFlow = icon(R.drawable.ic_remove)
     private val editFlow = icon(R.drawable.ic_edit)
+
+    /**
+     * Begins an arrangement with nothing in it, dropping whatever flow is loaded.
+     *
+     * Its own button rather than a meaning folded into `✎`, and the difference only shows once a flow *is*
+     * loaded: the pencil then has an obvious job — arrange that one — and there would be no way left to
+     * start another without going back to the app. Which is the same reason clip mode's `⊕` exists beside
+     * `✎` rather than instead of it.
+     */
+    private val newFlow = icon(R.drawable.ic_new_clip)
     private val modeToggle = icon(R.drawable.ic_mode_clip)
 
     /**
@@ -247,7 +253,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
     private val scrollingButtons = listOf(
         modeToggle, finishClip, primary, playFrom, secondary, edit, editFlow, insertStep, duplicateStep,
         insertGlobal, insertPause, insertWait, deleteStep, undo, stepPanelToggle, stepListToggle, newClip,
-        save, load, deleteFlow, eye, quickSettings, dismiss,
+        save, load, newFlow, deleteFlow, eye, quickSettings, dismiss,
     )
 
     private val allButtons = listOf(grip) + scrollingButtons + collapse
@@ -298,6 +304,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         newClip.setOnClickListener { actions.onNewClip() }
         deleteFlow.setOnClickListener { actions.onDeleteFlow() }
         editFlow.setOnClickListener { actions.onEditFlow() }
+        newFlow.setOnClickListener { actions.onNewFlow() }
         modeToggle.setOnClickListener { actions.onToggleMode() }
         finishClip.setOnClickListener { actions.onFinishClip() }
 
@@ -454,6 +461,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         load.visibility = visibleWhen(soloIdle || flowMode)
         deleteFlow.visibility = visibleWhen(flowMode)
         editFlow.visibility = visibleWhen(flowMode)
+        newFlow.visibility = visibleWhen(flowMode)
         quickSettings.visibility = visibleWhen(soloIdle || flowMode)
         dismiss.visibility = visibleWhen(idle || flowMode)
 
@@ -465,6 +473,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         // starts from — so this can no longer be hardcoded true.
         setActionEnabled(primary, if (flowMode) hasFlow else hasSteps)
         setActionEnabled(playFrom, hasSteps)
+        setActionEnabled(editFlow, hasFlow)
         setActionEnabled(deleteFlow, hasFlow)
 
         secondary.setImageResource(if (recording) R.drawable.ic_stop else R.drawable.ic_record)
@@ -674,6 +683,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         newClip.contentDescription = context.getString(R.string.action_new_clip)
         deleteFlow.contentDescription = context.getString(R.string.action_delete_flow)
         editFlow.contentDescription = context.getString(R.string.action_edit_flow)
+        newFlow.contentDescription = context.getString(R.string.action_new_flow)
         modeToggle.contentDescription = context.getString(R.string.action_mode_clip)
         finishClip.contentDescription = context.getString(R.string.action_finish_clip)
         eye.contentDescription = context.getString(R.string.action_density)

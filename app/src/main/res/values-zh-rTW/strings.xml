@@ -332,6 +332,7 @@
     <string name="action_mode_clip">片段模式 —— 按一下切到流程</string>
     <string name="action_mode_flow">流程模式 —— 按一下切到片段</string>
     <string name="action_edit_flow">編排這條流程</string>
+    <string name="action_new_flow">開一條新的流程</string>
     <string name="toast_mode_clip">片段模式</string>
     <string name="toast_mode_flow">流程模式</string>
     <string name="discard_warning">有修改沒儲存,會丟失。</string>

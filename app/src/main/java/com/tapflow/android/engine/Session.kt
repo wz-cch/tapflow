@@ -118,6 +118,19 @@ object Session {
     }
 
     /**
+     * The same act in flow mode: drop what is loaded and begin an empty arrangement.
+     *
+     * **Dropping it happens now, not when the new one is saved.** Asking for a new one is the act of being
+     * done with the old one — the same reading clip mode's `⊕` has always had — so backing out of the
+     * arrangement that follows leaves flow mode with nothing loaded rather than quietly restoring what was
+     * there. Nothing is lost either way: the flow that was dropped is a file, and it was already saved.
+     */
+    fun startNewFlow() {
+        empty()
+        Repo.setMode(AppMode.FLOW)
+    }
+
+    /**
      * Deliberate exit — the toolbar being turned off.
      *
      * Emptying here is what gives the recovery question its meaning. Every intentional way out passes

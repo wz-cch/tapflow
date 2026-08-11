@@ -2030,13 +2030,27 @@ class TapFlowService : AccessibilityService() {
          * An activity, like every other list-and-text screen: the flow editor has sliders and a clip
          * picker, and it is the same screen the app's flow rows open — one editor, two ways in.
          */
+        /**
+         * Drops the loaded flow and opens an empty arrangement.
+         *
+         * No discard question, and that is not an omission: outside the arrangement screen a flow is always
+         * saved (SPEC 5.3), so there is never anything here to lose. The clip half of `⊕` does ask, because
+         * a workspace can be dirty.
+         */
+        override fun onNewFlow() {
+            Session.startNewFlow()
+            startActivity(
+                Intent(this@TapFlowService, MainActivity::class.java)
+                    .putExtra(MainActivity.EXTRA_NEW_FLOW, true)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        }
+
         override fun onEditFlow() {
-            // A null ref opens the editor on a flow that does not exist yet, which is how one is made now.
-            val ref = Repo.currentFlow.value?.file?.ref
+            val ref = Repo.currentFlow.value?.file?.ref ?: return
             startActivity(
                 Intent(this@TapFlowService, MainActivity::class.java)
                     .putExtra(MainActivity.EXTRA_OPEN_FLOW, ref)
-                    .putExtra(MainActivity.EXTRA_NEW_FLOW, ref == null)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             )
         }
