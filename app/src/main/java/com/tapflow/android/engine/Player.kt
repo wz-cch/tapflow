@@ -1,6 +1,7 @@
 package com.tapflow.android.engine
 
 import android.content.res.Resources
+import android.os.SystemClock
 import com.tapflow.android.R
 import com.tapflow.android.data.FailurePolicy
 import com.tapflow.android.data.PauseStep
@@ -97,12 +98,20 @@ class Player(
                     for ((position, visit) in visits(steps, plan).withIndex()) {
                         if (position < from) continue
                         val step = steps[visit.index]
-                        val passes = (step as? RepeatableStep)?.repeat?.coerceAtLeast(1) ?: 1
-                        report(loop, loops, visit, plan, 1, passes)
+                        val repeatable = step as? RepeatableStep
+                        val onClock = repeatable?.repeatsForTime == true
+                        // Unknown ahead of time on a clock: how many passes fit depends on how long each
+                        // dispatch takes. Reported as it goes instead — see [report].
+                        val passes = if (onClock) 0 else repeatable?.repeat?.coerceAtLeast(1) ?: 1
+                        report(loop, loops, visit, plan, 1, passes, repeatable?.repeatForMs ?: 0)
                         Diag.log(
                             "player: loop $loop step ${position + 1}/$runLength " +
                                 step::class.java.simpleName +
-                                if (passes > 1) " x$passes" else ""
+                                when {
+                                    onClock -> " for ${repeatable?.repeatForMs}ms"
+                                    passes > 1 -> " x$passes"
+                                    else -> ""
+                                }
                         )
 
                         // Only the manual form asks for a pause. A timed one is just a delay, so it
@@ -133,19 +142,32 @@ class Player(
                         }
 
                         val scale = ScaleSpec.of(recordedScreen, currentScreen())
-                        val interval = (step as? RepeatableStep)?.repeatIntervalMs ?: 0
-                        for (pass in 1..passes) {
+                        val interval = repeatable?.repeatIntervalMs ?: 0
+                        // Wall clock, deliberately: "keep tapping for ten minutes" is a statement about
+                        // the world, not about the script's rhythm, so the speed multiplier does not
+                        // shorten it. It makes the taps closer together inside the same ten minutes.
+                        val until = if (onClock) SystemClock.elapsedRealtime() + repeatable.repeatForMs else 0
+                        var pass = 0
+                        while (true) {
+                            pass++
                             // Between passes only, and after the lead delay has already been paid. The
                             // interval is what stops ten taps arriving close enough together for the app
                             // below to read them as one multi-tap — or to drop them.
                             if (pass > 1) {
-                                report(loop, loops, visit, plan, pass, passes)
+                                report(
+                                    loop, loops, visit, plan, pass, passes,
+                                    if (onClock) (until - SystemClock.elapsedRealtime()).coerceAtLeast(0) else 0,
+                                )
                                 delay(Timing.replayDelay(interval, current))
                                 // Checked every pass, so pause and stop work in the middle of a repeat
                                 // rather than only between steps.
                                 gate()
                             }
                             if (!attempt(step, scale, current, position + 1)) return@launch
+                            // Checked after the action, never during one: a ten-minute repeat overruns by
+                            // up to one gesture rather than dispatching half a swipe and calling it time.
+                            val more = if (onClock) SystemClock.elapsedRealtime() < until else pass < passes
+                            if (!more) break
                         }
                     }
                 }
@@ -236,6 +258,7 @@ class Player(
         plan: FlowPlan.Expanded?,
         repeatPass: Int,
         repeatTotal: Int,
+        repeatRemainingMs: Long,
     ) {
         EngineState.progress.value = Progress(
             loop = loop,
@@ -244,6 +267,7 @@ class Player(
             totalSteps = visit.stepsInClip,
             repeatPass = repeatPass,
             repeatTotal = repeatTotal,
+            repeatRemainingMs = repeatRemainingMs,
             clip = visit.clipPosition,
             totalClips = plan?.clipCount ?: 0,
         )

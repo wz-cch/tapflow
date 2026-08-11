@@ -30,6 +30,7 @@ import com.tapflow.android.data.movedTo
 import com.tapflow.android.data.newId
 import com.tapflow.android.data.withDuration
 import com.tapflow.android.data.withRepeat
+import com.tapflow.android.data.withRepeatForTime
 import com.tapflow.android.data.withStartAt
 import com.tapflow.android.data.withEndAt
 import com.tapflow.android.overlay.BallIntent
@@ -1607,6 +1608,41 @@ class TapFlowService : AccessibilityService() {
             )
         }
 
+        /**
+         * Sets how long to keep repeating, instead of how many times.
+         *
+         * **The interval is not optional here, and that is the difference from a count.** A count with a
+         * zero gap fires ten times back to back — noisy, but it ends. A *duration* with a zero gap is a
+         * ten-minute loop with nothing between the passes, which is not a script, it is a way to make the
+         * app underneath stop responding. So switching to time stamps a usable gap whenever there is none,
+         * the same as raising a count above one does, except that here it is a floor rather than a courtesy.
+         *
+         * Typing 0 is the way back to counting: zero means "not on a clock", so the step returns to running
+         * once, and the count row stops showing a dash.
+         */
+        override fun onEditRepeatForTime() {
+            val step = Workspace.stepById(EngineState.selectedStepId.value) as? RepeatableStep ?: return
+            openNumberPad(
+                PadRequest(
+                    title = getString(R.string.repeat_for_pad_title),
+                    unit = getString(R.string.repeat_for_pad_unit),
+                    initialValue = (step.repeatForMs / 1000L).toInt(),
+                    max = MAX_WAIT_SECONDS,
+                ) { seconds ->
+                    if (seconds <= 0) {
+                        Workspace.updateStep(step.withRepeat(1, step.repeatIntervalMs))
+                        return@PadRequest
+                    }
+                    val interval = if (step.repeatIntervalMs <= 0) {
+                        settings.defaultGapMs.coerceAtLeast(1L)
+                    } else {
+                        step.repeatIntervalMs
+                    }
+                    Workspace.updateStep(step.withRepeatForTime(seconds * 1000L, interval))
+                }
+            )
+        }
+
         override fun onEditRepeatInterval() {
             val step = Workspace.stepById(EngineState.selectedStepId.value) as? RepeatableStep ?: return
             openNumberPad(
@@ -1616,7 +1652,20 @@ class TapFlowService : AccessibilityService() {
                     initialValue = step.repeatIntervalMs.toInt(),
                     max = Timing.MAX_RECORDED_GAP_MS.toInt(),
                 ) { ms ->
-                    Workspace.updateStep(step.withRepeat(step.repeat, ms.toLong()))
+                    // Floored while on a clock, for the reason [onEditRepeatForTime] gives: a duration with
+                    // no gap between passes is a loop, not a repeat.
+                    val next = if (step.repeatsForTime) {
+                        ms.toLong().coerceAtLeast(settings.defaultGapMs.coerceAtLeast(1L))
+                    } else {
+                        ms.toLong()
+                    }
+                    Workspace.updateStep(
+                        if (step.repeatsForTime) {
+                            step.withRepeatForTime(step.repeatForMs, next)
+                        } else {
+                            step.withRepeat(step.repeat, next)
+                        }
+                    )
                 }
             )
         }

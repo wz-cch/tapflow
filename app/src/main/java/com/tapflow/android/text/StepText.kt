@@ -34,8 +34,24 @@ fun Step.label(res: Resources): String {
     }
     // Suffixed rather than woven into each label, so one repeated step reads as one row. Ten identical
     // rows is what this replaces, and a shorter list is the only thing that helps a hundred-step script.
-    val repeat = (this as? RepeatableStep)?.repeat ?: 1
-    return if (repeat > 1) res.getString(R.string.step_repeat_suffix, base, repeat) else base
+    val repeatable = this as? RepeatableStep
+    return when {
+        // A step on a clock says how long rather than how many, because how many is not known until it has
+        // run — and "for 10:00" is what was asked for anyway.
+        repeatable?.repeatsForTime == true ->
+            res.getString(R.string.step_repeat_for_suffix, base, minutesText(repeatable.repeatForMs))
+
+        (repeatable?.repeat ?: 1) > 1 ->
+            res.getString(R.string.step_repeat_suffix, base, repeatable?.repeat ?: 1)
+
+        else -> base
+    }
+}
+
+/** Minutes and seconds, for a length that is usually minutes. Shared by the list and the marker text. */
+private fun minutesText(ms: Long): String {
+    val total = (ms + 999) / 1000
+    return "%d:%02d".format(total / 60, total % 60)
 }
 
 private fun PauseStep.pauseLabel(res: Resources): String = when {
