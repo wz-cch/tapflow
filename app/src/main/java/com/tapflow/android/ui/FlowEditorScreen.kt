@@ -336,7 +336,18 @@ private fun ClipNodeRow(
     onRelink: () -> Unit,
 ) {
     val resources = LocalContext.current.resources
-    Card(Modifier.fillMaxWidth()) {
+    // The whole card opens the clip — or repoints it, when there is no clip behind the row to open.
+    //
+    // It used to be the name and nothing else, which on a real device is a line of text a few characters
+    // wide and the only way in. The four buttons on the right keep their own hit areas and win over this
+    // one, so nothing became harder to reach; what changed is that the *common* action stopped being the
+    // smallest target on the row. Same gesture as the storage panel and the home screen: tap the row, get
+    // the thing the row is about.
+    Card(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = if (clip == null) onRelink else onEditClip)
+    ) {
         Row(
             Modifier.padding(start = 12.dp, top = 8.dp, end = 4.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -347,9 +358,8 @@ private fun ClipNodeRow(
                 modifier = Modifier.padding(end = 12.dp),
             )
             Column(Modifier.weight(1f)) {
-                // The name opens the clip; ⚙ opens the node. Two different things on one row, so the one
-                // that leaves this screen is the one that has to look like a link — and it is the name,
-                // because that is the clip rather than its place in this flow.
+                // Still coloured like a link, though the whole card now carries the tap: the colour is what
+                // says this row leads somewhere, and the `⚙` beside it leads somewhere else.
                 Text(
                     if (clip == null) {
                         stringResource(R.string.node_clip_missing, name.ifEmpty { "?" })
@@ -364,9 +374,7 @@ private fun ClipNodeRow(
                     },
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .clickable(onClick = if (clip == null) onRelink else onEditClip)
-                        .padding(vertical = 2.dp),
+                    modifier = Modifier.padding(vertical = 2.dp),
                 )
                 Text(
                     nodeDetail(node),
@@ -381,12 +389,12 @@ private fun ClipNodeRow(
                     )
                 } else {
                     // Under the name, where the summary would have been, because it is the answer to the
-                    // question the `!` raises rather than a separate feature.
+                    // question the `!` raises rather than a separate feature. No tap of its own now — the
+                    // card carries it — so this is a label saying what tapping does.
                     Text(
                         stringResource(R.string.node_relink),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.clickable(onClick = onRelink),
                     )
                 }
             }
