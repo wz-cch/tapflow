@@ -132,8 +132,8 @@
     <string name="rename_breaks_flows">This renames the file. Flows that use this clip will show ! until you point them at the new name.</string>
     <string name="busy_reading">Reading…</string>
     <string name="home_show_toolbar">Show floating toolbar</string>
-    <string name="home_no_clips">Nothing opened yet. Turn on the toolbar, press record and do something, or open a clip file.</string>
-    <string name="home_no_flows">Nothing opened yet. A flow chains saved clips so they run in one go.</string>
+    <string name="home_no_clips">Clips you have opened show up here. None yet — open a clip file below, or record one.</string>
+    <string name="home_no_flows">Flows you have opened show up here. None yet — a flow chains saved clips so they run in one go.</string>
     <string name="clip_summary">%1$d actions · about %2$s</string>
     <string name="clip_summary_with_pauses">%1$d actions · %2$d pause points · about %3$s</string>
 
@@ -231,6 +231,8 @@
     <string name="storage_delete_body">The file goes. Flows that use it will show ! until you point them somewhere else.</string>
     <string name="browse_up">Up one folder</string>
     <string name="browse_empty">Nothing here.</string>
+    <string name="storage_empty_clip">No clips in %1$s. Other folders may have some.</string>
+    <string name="storage_empty_flow">No flows in %1$s. Other folders may have some.</string>
     <string name="storage_root_gone">That folder cannot be reached. It may have been moved or deleted, or its card is not mounted.</string>
     <string name="browse_name_label">Name</string>
     <string name="browse_overwrite_title">Replace “%1$s”?</string>
