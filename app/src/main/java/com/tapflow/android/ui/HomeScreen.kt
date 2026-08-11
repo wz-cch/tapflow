@@ -358,6 +358,9 @@ fun HomeScreen(
                 )
             }
 
+            // Empty means "nothing has been opened", and it is left at that. Filling it by listing the
+            // folder would make this a library again — the thing §12.0 removed — and it would be a slow one:
+            // every row costs a provider query, for a list whose whole job is to be the way in.
             if (clips.isEmpty()) {
                 item {
                     Text(

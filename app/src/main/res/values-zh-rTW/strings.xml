@@ -129,8 +129,8 @@
     <string name="rename_breaks_flows">這會把檔案改名。用到這個片段的流程會顯示 !,重新指定一次就好。</string>
     <string name="busy_reading">讀取中…</string>
     <string name="home_show_toolbar">顯示懸浮工具列</string>
-    <string name="home_no_clips">還沒開過任何片段。打開工具列按錄製操作一次,或直接開啟片段檔。</string>
-    <string name="home_no_flows">還沒開過任何流程。流程把存好的片段串起來,一次跑完。</string>
+    <string name="home_no_clips">開過的片段會列在這裡,現在還沒有 —— 用下面的「開啟片段檔…」挑一個,或錄一段新的。</string>
+    <string name="home_no_flows">開過的流程會列在這裡,現在還沒有。流程把存好的片段串起來,一次跑完。</string>
     <string name="clip_summary">%1$d 個動作 · 約 %2$s</string>
     <string name="clip_summary_with_pauses">%1$d 個動作 · %2$d 個暫停點 · 約 %3$s</string>
 
@@ -228,6 +228,8 @@
     <string name="storage_delete_body">檔案會消失。用到它的流程會變成 ! ,直到你把那一列指到別的地方。</string>
     <string name="browse_up">上一層</string>
     <string name="browse_empty">這裡沒有東西。</string>
+    <string name="storage_empty_clip">%1$s 裡沒有片段。別的資料夾可能有。</string>
+    <string name="storage_empty_flow">%1$s 裡沒有流程。別的資料夾可能有。</string>
     <string name="storage_root_gone">找不到那個資料夾。可能被搬走或刪掉了,也可能是那張卡沒掛上。</string>
     <string name="browse_name_label">名稱</string>
     <string name="browse_overwrite_title">覆蓋「%1$s」?</string>

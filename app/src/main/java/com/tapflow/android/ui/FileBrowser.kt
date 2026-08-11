@@ -222,8 +222,20 @@ fun StorageDialog(
                                     Text(stringResource(R.string.root_change))
                                 }
                             } else {
+                                // Names the folder rather than saying "nothing here", because those are
+                                // two different facts and only one of them is true: this list is a folder,
+                                // and a folder with no clips in it says nothing about whether there are
+                                // clips. Read as "you have none", it sends someone off to record a second
+                                // copy of something they already own.
                                 Text(
-                                    stringResource(R.string.browse_empty),
+                                    stringResource(
+                                        if (kind == DocKind.CLIP) {
+                                            R.string.storage_empty_clip
+                                        } else {
+                                            R.string.storage_empty_flow
+                                        },
+                                        DocStore.join(DocStore.rootLabel, dir),
+                                    ),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(vertical = 12.dp),
