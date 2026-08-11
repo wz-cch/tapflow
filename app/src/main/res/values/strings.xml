@@ -50,6 +50,12 @@
     <!-- Clips -->
     <string name="flow_editor_empty">No clips in this flow yet. Add one below — they can come from any folder.</string>
     <string name="flow_editor_add">Add a clip</string>
+    <string name="flow_untitled">Untitled flow</string>
+    <string name="flow_action_save">Save</string>
+    <string name="flow_leave_title">This flow has changes that have not been saved.</string>
+    <string name="flow_leave_save">Save and go</string>
+    <string name="flow_leave_discard">Go without saving</string>
+    <string name="flow_new">New flow</string>
     <string name="flow_loop_body">How many times the whole flow runs. 0 runs until you stop it.</string>
     <string name="flow_node_plain">runs once, no lead-in</string>
     <string name="flow_node_delay">wait %1$d ms first</string>
@@ -60,7 +66,6 @@
     <string name="home_loaded">LOADED</string>
     <string name="flow_summary">%1$d clips · about %2$s</string>
     <string name="flow_delete_title">Delete “%1$s”? A flow cannot be undone.</string>
-    <string name="toast_flow_created">Created and loaded “%1$s”</string>
     <string name="toast_flow_loaded">Loaded “%1$s”</string>
     <string name="toast_flow_deleted">Deleted “%1$s”</string>
     <string name="toast_flow_empty">This flow has no clips in it yet</string>

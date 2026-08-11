@@ -47,6 +47,12 @@
     <!-- 片段 -->
     <string name="flow_editor_empty">這條流程還沒有片段。在下面加一個 —— 片段可以放在任何資料夾。</string>
     <string name="flow_editor_add">加入片段</string>
+    <string name="flow_untitled">未命名流程</string>
+    <string name="flow_action_save">儲存</string>
+    <string name="flow_leave_title">這條流程有還沒儲存的修改。</string>
+    <string name="flow_leave_save">存檔並離開</string>
+    <string name="flow_leave_discard">不存,離開</string>
+    <string name="flow_new">新建流程</string>
     <string name="flow_loop_body">整條流程跑幾次。0 是一直跑到你停它。</string>
     <string name="flow_node_plain">跑一次,沒有前置延遲</string>
     <string name="flow_node_delay">先等 %1$d ms</string>
@@ -57,7 +63,6 @@
     <string name="home_loaded">已讀取</string>
     <string name="flow_summary">%1$d 個片段 · 約 %2$s</string>
     <string name="flow_delete_title">要刪除「%1$s」嗎?流程刪掉無法復原。</string>
-    <string name="toast_flow_created">已建立並讀取「%1$s」</string>
     <string name="toast_flow_loaded">已讀取「%1$s」</string>
     <string name="toast_flow_deleted">已刪除「%1$s」</string>
     <string name="toast_flow_empty">這條流程還沒有任何片段</string>

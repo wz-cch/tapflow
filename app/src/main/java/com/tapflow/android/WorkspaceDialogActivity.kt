@@ -111,8 +111,7 @@ class WorkspaceDialogActivity : ComponentActivity() {
 @Composable
 private fun PickThen(
     kind: DocKind,
-    suggestedName: String,
-    guardSave: Boolean,
+    suggestedName: String?,
     onFinish: () -> Unit,
     onOpen: suspend (String) -> Unit,
     onSave: suspend (String) -> Unit,
@@ -143,13 +142,16 @@ private fun PickThen(
         when (picked) {
             Picked.Cancelled -> onFinish()
             is Picked.Open -> take(true) { onOpen(picked.ref) }
-            is Picked.Save -> take(guardSave) { onSave(picked.ref) }
+            // Saving a clip is the opposite of throwing work away, so it never asks.
+            is Picked.Save -> take(false) { onSave(picked.ref) }
         }
     }
 
     // Straight into the panel: this activity has nothing of its own to show. It exists because an overlay
     // cannot host one — every window the service puts up is FLAG_NOT_FOCUSABLE.
-    LaunchedEffect(Unit) { picker.browse(suggestedName) }
+    LaunchedEffect(Unit) {
+        if (suggestedName == null) picker.open() else picker.browse(suggestedName)
+    }
 
     pending?.let { act ->
         DiscardConfirmDialog(onDismiss = onFinish) {
@@ -180,17 +182,15 @@ private fun Storage(onFinish: () -> Unit) {
     // The name only, with no extension: the field is for the part the user owns. An already-saved clip
     // suggests its own name, so save-as starts from "this thing, somewhere else".
     val suggested = remember {
-        if (flowMode) {
-            defaultFlowName(context.resources, System.currentTimeMillis())
-        } else {
-            Workspace.source.value?.name ?: defaultClipName(context.resources, System.currentTimeMillis())
-        }
+        Workspace.source.value?.name ?: defaultClipName(context.resources, System.currentTimeMillis())
     }
 
     PickThen(
         kind = if (flowMode) DocKind.FLOW else DocKind.CLIP,
-        suggestedName = suggested,
-        guardSave = flowMode,
+        // Flows are not written from here any more. One is arranged on the editor screen and named when it
+        // is saved, so a name field in front of the list would be asking what to call something that does
+        // not exist yet — which is exactly the order this stopped doing.
+        suggestedName = suggested.takeUnless { flowMode },
         onFinish = onFinish,
         onOpen = { ref ->
             if (flowMode) {
@@ -212,26 +212,16 @@ private fun Storage(onFinish: () -> Unit) {
             }
         },
         onSave = { ref ->
-            if (flowMode) {
-                val opened = withContext(Dispatchers.IO) { Repo.createFlow(ref) }
-                if (opened == null) {
-                    context.toast(context.getString(R.string.toast_save_failed))
-                } else {
-                    Session.openFlow(opened)
-                    context.toast(context.getString(R.string.toast_flow_created, opened.file.name))
+            // The file written to becomes the one `💾` overwrites from then on — the same as every editor's
+            // save-as. Only reachable in clip mode; see suggestedName above.
+            val result = withContext(Dispatchers.IO) { Workspace.commit(Repo.fileAt(ref)) }
+            context.toast(
+                when (result) {
+                    is Workspace.Saved.Ok -> context.getString(R.string.toast_saved, result.file.name)
+                    Workspace.Saved.Nothing -> context.getString(R.string.toast_nothing_to_save)
+                    Workspace.Saved.Failed -> context.getString(R.string.toast_save_failed)
                 }
-            } else {
-                // The file written to becomes the one `💾` overwrites from then on — the same as every
-                // editor's save-as.
-                val result = withContext(Dispatchers.IO) { Workspace.commit(Repo.fileAt(ref)) }
-                context.toast(
-                    when (result) {
-                        is Workspace.Saved.Ok -> context.getString(R.string.toast_saved, result.file.name)
-                        Workspace.Saved.Nothing -> context.getString(R.string.toast_nothing_to_save)
-                        Workspace.Saved.Failed -> context.getString(R.string.toast_save_failed)
-                    }
-                )
-            }
+            )
         },
     )
 }

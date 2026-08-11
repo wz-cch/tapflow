@@ -94,7 +94,8 @@ import kotlinx.coroutines.withContext
 fun HomeScreen(
     onOpenSettings: () -> Unit,
     onOpenDiagnostics: () -> Unit,
-    onOpenFlow: (String, Boolean) -> Unit,
+    /** Null opens the editor on a flow that does not exist yet. */
+    onOpenFlow: (String?, Boolean) -> Unit,
     onClose: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -206,21 +207,6 @@ fun HomeScreen(
         }
     }
 
-    fun createFlow(ref: String) {
-        busy = true
-        scope.launch {
-            val created = withContext(Dispatchers.IO) { Repo.createFlow(ref) }
-            busy = false
-            if (created == null) {
-                context.toast(context.getString(R.string.toast_save_failed))
-                return@launch
-            }
-            Session.openFlow(created)
-            // Straight into the editor, because a flow with no clips in it does nothing.
-            onOpenFlow(created.file.ref, true)
-        }
-    }
-
     // The root is a preference, not a StateFlow — one string read once at startup — so the row that shows it
     // needs a nudge to redraw. A counter rather than mirroring the value: what changed is "there is a
     // different folder now", and everything derived from it re-reads at that point.
@@ -235,18 +221,14 @@ fun HomeScreen(
         rootRevision++
     }
 
-    // Open-only for clips: a clip is made by recording on top of another app, so there is nothing this
-    // screen could write. Flows are the other way round — arranging is what makes one — so that panel does
-    // both, and the two buttons this screen used to have for it are one.
+    // Both open-only. Neither kind is *made* here: a clip is recorded on top of another app, and a flow is
+    // arranged on the editor screen and named when it is saved — so the panel's name field would be asking
+    // for something before there is anything to call it.
     val clipOpener = rememberFilePicker(DocKind.CLIP) { picked ->
         (picked as? Picked.Open)?.let { guarded { openClip(it.ref) } }
     }
-    val flowStorage = rememberFilePicker(DocKind.FLOW) { picked ->
-        when (picked) {
-            is Picked.Open -> guarded { openFlowFile(picked.ref, arrange = false) }
-            is Picked.Save -> guarded { createFlow(picked.ref) }
-            Picked.Cancelled -> Unit
-        }
+    val flowOpener = rememberFilePicker(DocKind.FLOW) { picked ->
+        (picked as? Picked.Open)?.let { guarded { openFlowFile(it.ref, arrange = false) } }
     }
 
     Scaffold(
@@ -417,14 +399,17 @@ fun HomeScreen(
             }
 
             item {
-                // One button, because opening a flow and starting one are the same panel: the list opens
-                // them and the name field starts them. The name carries no extension — that is added when
-                // the file is written.
-                OutlinedButton(
-                    onClick = {
-                        flowStorage.browse(defaultFlowName(context.resources, System.currentTimeMillis()))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { flowOpener.open() }) {
+                        Text(stringResource(R.string.home_flow_files))
                     }
-                ) { Text(stringResource(R.string.home_flow_files)) }
+                    // Two buttons again, and this time they are two different acts rather than two doors to
+                    // one panel: one opens a file that exists, the other starts an arrangement that has no
+                    // file until it is saved.
+                    OutlinedButton(onClick = { guarded { onOpenFlow(null, true) } }) {
+                        Text(stringResource(R.string.flow_new))
+                    }
+                }
             }
 
             item {
