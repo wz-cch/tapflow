@@ -69,7 +69,7 @@
     <string name="action_pause">暫停</string>
     <string name="action_resume">繼續</string>
     <string name="action_stop">停止</string>
-    <string name="action_skip_wait">跳過等待</string>
+    <string name="action_skip_ahead">不等了,直接往下</string>
     <string name="action_record">錄製</string>
     <string name="action_record_resume">繼續錄製</string>
     <string name="action_record_stop">停止錄製</string>

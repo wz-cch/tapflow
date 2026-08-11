@@ -147,27 +147,53 @@ class Player(
                         // the world, not about the script's rhythm, so the speed multiplier does not
                         // shorten it. It makes the taps closer together inside the same ten minutes.
                         val until = if (onClock) SystemClock.elapsedRealtime() + repeatable.repeatForMs else 0
+                        // Cleared on the way in, the same as a timed wait does, because the two share one
+                        // flag: a press landing as a wait ends must not carry into the next step's repeat.
+                        if (onClock) skipRequested.value = false
                         var pass = 0
-                        while (true) {
-                            pass++
-                            // Between passes only, and after the lead delay has already been paid. The
-                            // interval is what stops ten taps arriving close enough together for the app
-                            // below to read them as one multi-tap — or to drop them.
-                            if (pass > 1) {
-                                report(
-                                    loop, loops, visit, plan, pass, passes,
-                                    if (onClock) (until - SystemClock.elapsedRealtime()).coerceAtLeast(0) else 0,
-                                )
-                                delay(Timing.replayDelay(interval, current))
-                                // Checked every pass, so pause and stop work in the middle of a repeat
-                                // rather than only between steps.
-                                gate()
+                        try {
+                            while (true) {
+                                pass++
+                                // Between passes only, and after the lead delay has already been paid. The
+                                // interval is what stops ten taps arriving close enough together for the app
+                                // below to read them as one multi-tap — or to drop them.
+                                if (pass > 1) {
+                                    // Rounded up to a whole second before publishing, for the reason [tick]
+                                    // gives: the raw figure changes every tick, and every change is a redraw
+                                    // of a panel that only ever shows seconds.
+                                    val left = {
+                                        val raw = (until - SystemClock.elapsedRealtime()).coerceAtLeast(0)
+                                        (raw + 999) / 1000 * 1000
+                                    }
+                                    report(loop, loops, visit, plan, pass, passes, if (onClock) left() else 0)
+                                    // Ticked rather than one delay(), so a pause lands inside the gap
+                                    // instead of at the end of it — a three-second interval used to mean
+                                    // three seconds of an unresponsive pause button — and so a skip does
+                                    // too. Not skippable on a count: the number is a specification, not a
+                                    // guess about the world.
+                                    val ran = tick(Timing.replayDelay(interval, current), skippable = onClock) {
+                                        if (onClock) {
+                                            report(loop, loops, visit, plan, pass, passes, left())
+                                        }
+                                    }
+                                    if (!ran) break
+                                }
+                                if (!attempt(step, scale, current, position + 1)) return@launch
+                                // Checked after the action, never during one: a ten-minute repeat overruns
+                                // by up to one gesture rather than dispatching half a swipe and calling it
+                                // time. A skip is read the same way, so pressing it finishes the tap in
+                                // flight rather than cutting it.
+                                if (onClock && skipRequested.value) {
+                                    Diag.log("player: timed repeat skipped with ${until - SystemClock.elapsedRealtime()}ms left")
+                                    break
+                                }
+                                val more =
+                                    if (onClock) SystemClock.elapsedRealtime() < until else pass < passes
+                                if (!more) break
                             }
-                            if (!attempt(step, scale, current, position + 1)) return@launch
-                            // Checked after the action, never during one: a ten-minute repeat overruns by
-                            // up to one gesture rather than dispatching half a swipe and calling it time.
-                            val more = if (onClock) SystemClock.elapsedRealtime() < until else pass < passes
-                            if (!more) break
+                        } finally {
+                            // Also on cancellation, which is what stopping a run mid-repeat is.
+                            if (onClock) skipRequested.value = false
                         }
                     }
                 }
@@ -382,12 +408,16 @@ class Player(
     }
 
     /**
-     * Ends the timed wait in progress early and carries straight on with the next step.
+     * Ends whichever clock is running early and carries straight on.
      *
-     * Safe to call at any moment, including when nothing is waiting: [timedWait] clears the flag on entry,
-     * so a press that arrives between two waits cannot leak into the next one.
+     * Two things can be on a clock — a timed wait, and a step repeating for a length of time — and both are
+     * the same kind of guess: a length decided in advance, and always decided generously. So one button ends
+     * either, and it means the same thing in both: stop waiting for this, go on.
+     *
+     * Safe to call at any moment, including when nothing is on a clock: both consumers clear the flag on
+     * entry, so a press that arrives between two of them cannot leak into the second.
      */
-    fun skipWait() {
+    fun skipAhead() {
         if (isActive) skipRequested.value = true
     }
 
@@ -436,24 +466,43 @@ class Player(
     private suspend fun timedWait(totalMs: Long) {
         if (totalMs <= 0) return
         skipRequested.value = false
-        var remaining = totalMs
         try {
-            while (remaining > 0) {
-                gate()
-                if (skipRequested.value) {
-                    Diag.log("player: wait skipped with ${remaining}ms left")
-                    return
-                }
-                EngineState.waitRemaining.value = ((remaining + 999) / 1000).toInt()
-                val slice = minOf(remaining, WAIT_TICK_MS)
-                delay(slice)
-                remaining -= slice
+            tick(totalMs, skippable = true) { left ->
+                EngineState.waitRemaining.value = ((left + 999) / 1000).toInt()
             }
         } finally {
             // Also on cancellation, which is what stopping a run in the middle of a wait is.
             EngineState.waitRemaining.value = 0
             skipRequested.value = false
         }
+    }
+
+    /**
+     * Waits [totalMs] in slices, checking the pause gate and the skip flag on every one.
+     *
+     * The reason nothing here uses a plain `delay()` for a length the user chose: a checkpoint reached only
+     * *after* the wait means the pause button does nothing for as long as the wait lasts, which reads as
+     * broken rather than as pending. At a tick this fine both pause and skip land inside a tenth of a second.
+     *
+     * @param publish called with the milliseconds left, every tick. Publish whole seconds from it — a
+     *   `StateFlow` does not emit an equal value, so a per-second figure redraws the panel once a second
+     *   rather than ten times.
+     * @return false when a skip ended it early, true when it ran out.
+     */
+    private suspend fun tick(totalMs: Long, skippable: Boolean, publish: (Long) -> Unit): Boolean {
+        var remaining = totalMs
+        while (remaining > 0) {
+            gate()
+            if (skippable && skipRequested.value) {
+                Diag.log("player: skipped with ${remaining}ms left")
+                return false
+            }
+            publish(remaining)
+            val slice = minOf(remaining, WAIT_TICK_MS)
+            delay(slice)
+            remaining -= slice
+        }
+        return true
     }
 
     private suspend fun countDown(delayMs: Long) {

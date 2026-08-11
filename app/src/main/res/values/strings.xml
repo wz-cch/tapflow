@@ -72,7 +72,7 @@
     <string name="action_pause">Pause</string>
     <string name="action_resume">Resume</string>
     <string name="action_stop">Stop</string>
-    <string name="action_skip_wait">Skip the wait</string>
+    <string name="action_skip_ahead">Stop waiting for this, go on</string>
     <string name="action_record">Record</string>
     <string name="action_record_resume">Resume recording</string>
     <string name="action_record_stop">Stop recording</string>
