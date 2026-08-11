@@ -405,10 +405,12 @@ fun HomeScreen(
                     }
                     // Two buttons again, and this time they are two different acts rather than two doors to
                     // one panel: one opens a file that exists, the other starts an arrangement that has no
-                    // file until it is saved.
-                    OutlinedButton(onClick = { guarded { onOpenFlow(null, true) } }) {
-                        Text(stringResource(R.string.flow_new))
-                    }
+                    // file until it is saved. Starting one drops whatever flow is loaded, now rather than on
+                    // save — asking for a new one is being done with the old one, and the old one is a file
+                    // that was already written.
+                    OutlinedButton(
+                        onClick = { guarded { Session.startNewFlow(); onOpenFlow(null, true) } }
+                    ) { Text(stringResource(R.string.flow_new)) }
                 }
             }
 
