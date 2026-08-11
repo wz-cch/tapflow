@@ -419,7 +419,14 @@ private fun nodeDetail(node: ClipNode): String = buildString {
     if (node.delayBefore > 0) {
         append(stringResource(R.string.flow_node_delay, node.delayBefore))
     }
-    if (node.repeat > 1) {
+    if (node.repeatsForTime) {
+        if (isNotEmpty()) append(" · ")
+        append(stringResource(R.string.flow_node_repeat_for, node.repeatForMs / 1000L))
+        if (node.repeatIntervalMs > 0) {
+            append(" ")
+            append(stringResource(R.string.flow_node_interval, node.repeatIntervalMs))
+        }
+    } else if (node.repeat > 1) {
         if (isNotEmpty()) append(" · ")
         append(stringResource(R.string.flow_node_repeat, node.repeat))
         if (node.repeatIntervalMs > 0) {
@@ -432,6 +439,16 @@ private fun nodeDetail(node: ClipNode): String = buildString {
 
 /** As far as the repeat slider goes. The number itself goes to [Settings.MAX_REPEAT] — see the row. */
 private const val SLIDER_MAX_REPEAT = 50f
+
+/** Five minutes of dragging range; the number goes to [MAX_REPEAT_FOR_SECONDS]. */
+private const val SLIDER_MAX_REPEAT_SECONDS = 300f
+
+/** An hour. Long enough for any real use, short enough that a mistyped digit is obvious. */
+private const val MAX_REPEAT_FOR_SECONDS = 3600
+
+/** What a clip on a clock gets when it has no gap of its own. Long enough to be a gap, short enough to
+ *  not be a decision anyone has to notice. */
+private const val FORCED_INTERVAL_MS = 500L
 
 /**
  * The three knobs for one row, behind a settings button rather than shown inline.
@@ -447,8 +464,17 @@ private fun ClipNodeSettingsDialog(
 ) {
     var delay by remember { mutableStateOf(node.delayBefore) }
     var repeat by remember { mutableStateOf(node.repeat) }
+    var forSeconds by remember { mutableStateOf((node.repeatForMs / 1000L).toInt()) }
     var interval by remember { mutableStateOf(node.repeatIntervalMs) }
     var typingRepeat by remember { mutableStateOf(false) }
+    var typingFor by remember { mutableStateOf(false) }
+
+    val onClock = forSeconds > 0
+    // The interval is compulsory once this clip is on a clock, and the same rule the step level follows for
+    // the same reason: a count with no gap fires its passes back to back, which is noisy but ends, while a
+    // *duration* with no gap is half an hour of one clip with nothing between the passes. A clip of a single
+    // tap makes the two identical, which is why the rule is not softened here.
+    val effectiveInterval = if (onClock) interval.coerceAtLeast(FORCED_INTERVAL_MS) else interval
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -468,19 +494,39 @@ private fun ClipNodeSettingsDialog(
                 // step level uses, so "repeat 200 times" means one thing wherever it is asked for.
                 SliderBlock(
                     label = stringResource(R.string.param_repeat),
-                    value = stringResource(R.string.value_times, repeat),
+                    value = if (onClock) {
+                        stringResource(R.string.param_unset)
+                    } else {
+                        stringResource(R.string.value_times, repeat)
+                    },
                     position = repeat.toFloat(),
                     range = 1f..SLIDER_MAX_REPEAT,
                     onTypeIn = { typingRepeat = true },
-                ) { repeat = it.roundToInt() }
+                ) { repeat = it.roundToInt(); forSeconds = 0 }
+
+                // The other way to say how much: for this long, rather than this many times. Two rows with a
+                // dash on the one not in force, rather than a switch — a switch has to hide the number it is
+                // not showing, and which of the two is running this clip is the thing worth being able to
+                // read without touching anything.
+                SliderBlock(
+                    label = stringResource(R.string.param_repeat_for),
+                    value = if (onClock) {
+                        stringResource(R.string.value_seconds, forSeconds)
+                    } else {
+                        stringResource(R.string.param_unset)
+                    },
+                    position = forSeconds.toFloat(),
+                    range = 0f..SLIDER_MAX_REPEAT_SECONDS,
+                    onTypeIn = { typingFor = true },
+                ) { forSeconds = it.roundToInt(); if (forSeconds > 0) repeat = 1 }
 
                 // Only once there is something to separate. A single pass has no gap between passes, and
                 // showing the control anyway invites setting a number that does nothing.
-                if (repeat > 1) {
+                if (repeat > 1 || onClock) {
                     SliderBlock(
                         label = stringResource(R.string.param_repeat_interval),
-                        value = stringResource(R.string.value_ms, interval),
-                        position = interval.toFloat(),
+                        value = stringResource(R.string.value_ms, effectiveInterval),
+                        position = effectiveInterval.toFloat(),
                         range = 0f..60_000f,
                     ) { interval = (it / 500f).roundToInt() * 500L }
                 }
@@ -491,8 +537,15 @@ private fun ClipNodeSettingsDialog(
                 onConfirm(
                     node.copy(
                         delayBefore = delay,
-                        repeat = repeat,
-                        repeatIntervalMs = if (repeat > 1) interval else node.repeatIntervalMs,
+                        // One of the two, never both: a node holding a count *and* a clock would need a
+                        // third field to say which wins, which is exactly what "0 means not this" avoids.
+                        repeat = if (onClock) 1 else repeat,
+                        repeatForMs = forSeconds * 1000L,
+                        repeatIntervalMs = if (repeat > 1 || onClock) {
+                            effectiveInterval
+                        } else {
+                            node.repeatIntervalMs
+                        },
                     )
                 )
             }) { Text(stringResource(R.string.dialog_confirm)) }
@@ -507,8 +560,19 @@ private fun ClipNodeSettingsDialog(
     if (typingRepeat) {
         NumberEntryDialog(
             title = stringResource(R.string.param_repeat),
-            entry = TypedNumber(repeat, 1..Settings.MAX_REPEAT) { repeat = it },
+            entry = TypedNumber(repeat, 1..Settings.MAX_REPEAT) { repeat = it; forSeconds = 0 },
         ) { typingRepeat = false }
+    }
+
+    if (typingFor) {
+        NumberEntryDialog(
+            title = stringResource(R.string.repeat_for_pad_title),
+            // Zero is the way back to counting, so the range starts there rather than at one.
+            entry = TypedNumber(forSeconds, 0..MAX_REPEAT_FOR_SECONDS) { entered ->
+                forSeconds = entered
+                if (entered > 0) repeat = 1
+            },
+        ) { typingFor = false }
     }
 }
 

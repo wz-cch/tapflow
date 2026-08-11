@@ -495,7 +495,11 @@ private const val GLOBAL_ACTION_COST_MS = 300L
  * @param delayBefore how long to wait before this clip starts. 0 leaves the clip's own first-step delay
  *   alone; anything else replaces it, because that recorded value was never measured against a
  *   predecessor — the first step of a recording has none — so it carries nothing worth keeping.
- * @param repeat how many times to run this clip in place.
+ * @param repeat how many times to run this clip in place. Ignored while [repeatForMs] is set.
+ * @param repeatForMs run this clip over and over for this long instead, 0 meaning "use [repeat]". The same
+ *   bargain the step level makes, one layer up: "keep doing this until the tickets go on sale" is a length
+ *   of time, and expressing it as a count means dividing by how long a pass takes — a number nobody knows
+ *   and which changes the moment the app underneath is slower.
  * @param repeatIntervalMs gap between those runs. Its own field for the same reason it is at the step
  *   level: [delayBefore] is the gap *before* the clip, this is the gap *between* repetitions of it, and
  *   one field cannot mean both.
@@ -507,9 +511,13 @@ data class ClipNode(
     val name: String = "",
     val delayBefore: Long = 0,
     val repeat: Int = 1,
+    val repeatForMs: Long = 0,
     val repeatIntervalMs: Long = 0,
 ) {
-    /** Repetitions beyond the first, which is what the interval is paid for. */
+    /** Whether this clip runs on a clock rather than on a count. */
+    val repeatsForTime: Boolean get() = repeatForMs > 0
+
+    /** Repetitions beyond the first, which is what the interval is paid for. Counted mode only. */
     val extraPasses: Int get() = (repeat - 1).coerceAtLeast(0)
 }
 

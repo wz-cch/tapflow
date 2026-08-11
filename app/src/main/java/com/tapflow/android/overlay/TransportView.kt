@@ -150,22 +150,11 @@ class TransportView(context: Context, private val actions: Actions) : LinearLayo
                     append("   ")
                     append(context.getString(R.string.transport_step, progress.step, progress.totalSteps))
                 }
-                // Only when there is actually a repeat. A step running ten times with a gap between each
-                // otherwise holds the same number for ten seconds and reads as frozen.
-                //
-                // A step on a clock has no denominator — how many passes fit depends on how long each one
-                // takes — so it shows the pass it is on and how much longer it will go. Which is the more
-                // useful half anyway: "4 of 600" tells you far less about a ten-minute repeat than "9:41".
-                if (progress.repeatRemainingMs > 0) {
-                    append(" ")
-                    append(
-                        context.getString(
-                            R.string.transport_repeat_for,
-                            progress.repeatPass,
-                            formatMinutes(progress.repeatRemainingMs),
-                        )
-                    )
-                } else if (progress.repeatTotal > 1) {
+                // Only when there is actually a repeat, and only a counted one. A step running ten times
+                // with a gap between each otherwise holds the same number for ten seconds and reads as
+                // frozen — while anything on a clock is counted down on the timer line instead, beside the
+                // button that ends it.
+                if (progress.repeatTotal > 1) {
                     append(" ")
                     append(
                         context.getString(
@@ -179,24 +168,31 @@ class TransportView(context: Context, private val actions: Actions) : LinearLayo
             else -> ""
         }
 
-        // The countdown takes the timer's line rather than the status line, so the step position stays
-        // readable while a 30-second wait runs — "waiting, at step 12 of 40" is worth more than either half
-        // on its own. It also cannot widen the panel: that line is already there, and its digits are
-        // monospaced. The elapsed clock is the only casualty, and it comes straight back.
+        // **This line always shows the clock the skip button would end**, and that is the whole of how the
+        // button explains itself. Three things can be counting — a timed wait, a step repeating for a
+        // length of time, a clip in a flow doing the same — and only one can win. The innermost does, and
+        // the player has already resolved which that is; here it is only a matter of putting it where the
+        // button is looking.
+        //
+        // The timer's line rather than the status line, so the step position stays readable while a
+        // 30-second wait runs — "waiting, at step 12 of 40" is worth more than either half on its own. It
+        // also cannot widen the panel: that line is already there, and its digits are monospaced. The
+        // elapsed clock is the only casualty, and it comes straight back.
         val waiting = waitRemaining > 0
-        timer.visibility = if ((showTimer || waiting) && !recording) VISIBLE else GONE
-        timer.text =
-            if (waiting) context.getString(R.string.transport_wait, waitRemaining)
-            else formatElapsed(elapsedMs)
+        val clock = progress?.repeatRemainingMs ?: 0
+        val counting = waiting || clock > 0
+        timer.visibility = if ((showTimer || counting) && !recording) VISIBLE else GONE
+        timer.text = when {
+            waiting -> context.getString(R.string.transport_wait, waitRemaining)
+            clock > 0 -> context.getString(R.string.transport_repeat_left, formatMinutes(clock))
+            else -> formatElapsed(elapsedMs)
+        }
 
         // Gone while paused. The number stays on screen, frozen, which is the honest reading of pausing
         // during a wait — and a skip pressed then would sit there doing nothing visible until resume.
         //
-        // A step repeating on a clock gets the same button. Its countdown is on the status line rather than
-        // the timer line, because "clip 2, step 10, on pass 4 with 9:41 to go" is one situation and the step
-        // position is half of it; a timed wait has no such half to keep.
-        val onClock = (progress?.repeatRemainingMs ?: 0) > 0
-        skip.visibility = if ((waiting || onClock) && mode != Mode.PAUSED) VISIBLE else GONE
+        // Anything on a clock gets the same button, and the line above says which one it is about.
+        skip.visibility = if (counting && mode != Mode.PAUSED) VISIBLE else GONE
     }
 
     private var appliedScale = Float.NaN

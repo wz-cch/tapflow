@@ -54,6 +54,7 @@
     <string name="flow_node_plain">runs once, no lead-in</string>
     <string name="flow_node_delay">wait %1$d ms first</string>
     <string name="flow_node_repeat">×%1$d</string>
+    <string name="flow_node_repeat_for">for %1$d s</string>
     <string name="flow_node_interval">every %1$d ms</string>
     <string name="flow_node_settings_title">Clip %1$d</string>
     <string name="home_loaded">LOADED</string>
@@ -206,7 +207,7 @@
     <string name="step_repeat_suffix">%1$s ×%2$d</string>
     <string name="step_repeat_for_suffix">%1$s · for %2$s</string>
     <string name="transport_repeat">(%1$d/%2$d)</string>
-    <string name="transport_repeat_for">(%1$d · %2$s left)</string>
+    <string name="transport_repeat_left">⟲ %1$s left</string>
     <string name="param_seconds">%1$s s</string>
     <string name="param_duration">Duration</string>
     <string name="param_delay">Delay before</string>
@@ -319,6 +320,7 @@
     <string name="value_percent">%1$d%%</string>
     <string name="value_times">%1$d×</string>
     <string name="param_unset">—</string>
+    <string name="value_seconds">%1$d s</string>
     <string name="value_multiplier">%1$s×</string>
 
 

@@ -103,7 +103,13 @@ class Player(
                         // Unknown ahead of time on a clock: how many passes fit depends on how long each
                         // dispatch takes. Reported as it goes instead — see [report].
                         val passes = if (onClock) 0 else repeatable?.repeat?.coerceAtLeast(1) ?: 1
-                        report(loop, loops, visit, plan, 1, passes, repeatable?.repeatForMs ?: 0)
+                        // The step's own clock if it has one, otherwise the clip's. Innermost wins, the
+                        // same order the skip button follows — so the number on screen is always the one
+                        // that button would end.
+                        report(
+                            loop, loops, visit, plan, 1, passes,
+                            if (onClock) repeatable.repeatForMs else visit.clipClockLeftMs,
+                        )
                         Diag.log(
                             "player: loop $loop step ${position + 1}/$runLength " +
                                 step::class.java.simpleName +
@@ -165,7 +171,10 @@ class Player(
                                         val raw = (until - SystemClock.elapsedRealtime()).coerceAtLeast(0)
                                         (raw + 999) / 1000 * 1000
                                     }
-                                    report(loop, loops, visit, plan, pass, passes, if (onClock) left() else 0)
+                                    report(
+                                        loop, loops, visit, plan, pass, passes,
+                                        if (onClock) left() else visit.clipClockLeftMs,
+                                    )
                                     // Ticked rather than one delay(), so a pause lands inside the gap
                                     // instead of at the end of it — a three-second interval used to mean
                                     // three seconds of an unresponsive pause button — and so a skip does
@@ -224,6 +233,14 @@ class Player(
         val clipPosition: Int,
         val stepInClip: Int,
         val stepsInClip: Int,
+        /**
+         * Time left on the clip's own repeat clock, or 0 when this clip is not on one.
+         *
+         * Read at the moment the visit is produced, which is the moment before the step runs — so it is
+         * refreshed once per step rather than continuously. A clip repeating for half an hour is not a
+         * number anyone watches to the second.
+         */
+        val clipClockLeftMs: Long = 0,
     )
 
     /**
@@ -250,24 +267,83 @@ class Player(
         }
         return sequence {
             for (segment in plan.segments) {
-                for (pass in 1..segment.repeat) {
-                    // The lead-in belongs to arriving at this clip, the interval to going round again.
-                    val lead = if (pass == 1) segment.delayBefore else segment.repeatIntervalMs
-                    for (offset in 0 until segment.stepCount) {
-                        yield(
-                            Visit(
-                                index = segment.from + offset,
-                                leadMs = if (offset == 0) lead else 0,
-                                clipPosition = segment.clipPosition,
-                                stepInClip = offset + 1,
-                                stepsInClip = segment.stepCount,
-                            )
-                        )
-                    }
-                }
+                if (segment.repeatsForTime) clipOnClock(segment) else clipByCount(segment)
             }
         }
     }
+
+    private suspend fun SequenceScope<Visit>.clipByCount(segment: FlowPlan.Segment) {
+        for (pass in 1..segment.repeat) {
+            // The lead-in belongs to arriving at this clip, the interval to going round again.
+            val lead = if (pass == 1) segment.delayBefore else segment.repeatIntervalMs
+            for (offset in 0 until segment.stepCount) {
+                yield(visitOf(segment, pass, offset, lead, clockLeftMs = 0))
+            }
+        }
+    }
+
+    /**
+     * A clip that runs over and over for a length of time.
+     *
+     * **How many passes fit is not knowable in advance**, so this is generated as it goes — which only works
+     * because the sequence is pulled one step at a time by the run itself, so the clock read here is the real
+     * elapsed time. The flattened expansion this replaced could not have done it at all: a list has to know
+     * its own length.
+     *
+     * ### Where the skip lands
+     *
+     * There can be two clocks running at once — this one, and a timed wait or a repeating step inside the
+     * clip — and one button. **The innermost one wins**, which falls out of where each side looks rather than
+     * from a rule anyone has to enforce: the inner ones tick *during* a step and clear the flag as they take
+     * it, and this looks only *between* steps. So a press that landed on a wait is already gone by the time
+     * this asks, and a press that landed on nothing in particular is still here.
+     *
+     * Skipping abandons the rest of the pass rather than finishing it. The point of "keep tapping until the
+     * tickets appear" is that the moment they appear you want the next thing, and a clip that politely
+     * completes its remaining twelve steps first has missed it. Whatever state that leaves the app in is the
+     * user's to sort out — they are the one who saw the reason to press it.
+     */
+    private suspend fun SequenceScope<Visit>.clipOnClock(segment: FlowPlan.Segment) {
+        val until = SystemClock.elapsedRealtime() + segment.repeatForMs
+        // Cleared on the way in, like every other consumer of this flag, so a press that arrived as the
+        // previous clip ended cannot carry into this one.
+        skipRequested.value = false
+        var pass = 1
+        while (true) {
+            val lead = if (pass == 1) segment.delayBefore else segment.repeatIntervalMs
+            for (offset in 0 until segment.stepCount) {
+                if (skipRequested.value) {
+                    skipRequested.value = false
+                    Diag.log("player: clip ${segment.clipPosition} skipped, ${until - SystemClock.elapsedRealtime()}ms left")
+                    return
+                }
+                val left = (until - SystemClock.elapsedRealtime()).coerceAtLeast(0)
+                // Rounded up to a whole second before it is published, so the panel redraws once a second
+                // rather than on every step of a fast clip.
+                yield(visitOf(segment, pass, offset, lead, (left + 999) / 1000 * 1000))
+            }
+            // Between passes, never mid-clip: the clock decides whether to go round again, and a pass cut in
+            // half is not a pass. Skipping is the one thing that may cut it, and only because it is a person
+            // saying so.
+            if (SystemClock.elapsedRealtime() >= until) return
+            pass++
+        }
+    }
+
+    private fun visitOf(
+        segment: FlowPlan.Segment,
+        pass: Int,
+        offset: Int,
+        lead: Long,
+        clockLeftMs: Long,
+    ) = Visit(
+        index = segment.from + offset,
+        leadMs = if (offset == 0) lead else 0,
+        clipPosition = segment.clipPosition,
+        stepInClip = offset + 1,
+        stepsInClip = segment.stepCount,
+        clipClockLeftMs = clockLeftMs,
+    )
 
     /**
      * Publishes progress, expressed in whatever unit the run has.
