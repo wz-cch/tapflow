@@ -2,6 +2,7 @@ package com.tapflow.android.engine
 
 import android.content.res.Resources
 import android.os.SystemClock
+import android.view.Choreographer
 import com.tapflow.android.R
 import com.tapflow.android.data.FailurePolicy
 import com.tapflow.android.data.PauseStep
@@ -17,6 +18,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 
 /**
  * Runs a list of steps.
@@ -139,8 +142,14 @@ class Player(
                         // recorded one — it replaces it rather than adding to it, which is what the
                         // copy-per-pass expansion did by overwriting the field on its private copy.
                         val lead = if (visit.leadMs > 0) visit.leadMs else step.delayBefore
-                        if (!startedHere) delay(Timing.replayDelay(lead, current))
+                        val waited = if (startedHere) 0 else Timing.replayDelay(lead, current)
+                        if (!startedHere) delay(waited)
                         gate()
+                        // The progress line was published a moment ago and may have changed the panel's
+                        // width. A lead delay long enough to have covered that is left alone; a short or
+                        // absent one is topped up, because otherwise the resize lands inside this step's
+                        // gesture and cancels it.
+                        settle(waited)
 
                         if (step is PauseStep) {
                             timedWait(Timing.replayDelay(step.ms, current))
@@ -180,12 +189,15 @@ class Player(
                                     // three seconds of an unresponsive pause button — and so a skip does
                                     // too. Not skippable on a count: the number is a specification, not a
                                     // guess about the world.
-                                    val ran = tick(Timing.replayDelay(interval, current), skippable = onClock) {
+                                    val gap = Timing.replayDelay(interval, current)
+                                    val ran = tick(gap, skippable = onClock) {
                                         if (onClock) {
                                             report(loop, loops, visit, plan, pass, passes, left())
                                         }
                                     }
                                     if (!ran) break
+                                    // Same reason as the lead delay above: the pass counter just changed.
+                                    settle(gap)
                                 }
                                 if (!attempt(step, scale, current, position + 1)) return@launch
                                 // Checked after the action, never during one: a ten-minute repeat overruns
@@ -519,6 +531,35 @@ class Player(
 
         EngineState.pausePrompt.value = null
         EngineState.mode.value = Mode.PLAYING
+        // Resuming swaps the pause prompt back for the step counter, which is a different width — and the
+        // transport is a wrap-content window, so that is a resize. The next step is dispatched immediately
+        // after this returns, and a window change landing inside an injected gesture cancels it. Waited out
+        // here rather than trusted to the step's own lead delay, which may be nothing at all.
+        settle()
+    }
+
+    /**
+     * Waits for a window change to have actually landed.
+     *
+     * The same wait the recorder does before replaying a captured gesture, and for the same reason: a
+     * geometry change goes through an IPC to system_server, so one frame is not a guarantee, and anything
+     * still in flight when a gesture is dispatched takes that gesture down with it.
+     *
+     * Playing needs it because the transport panel is sized to its contents and its contents change as the
+     * run moves — the step counter gaining a digit, a repeat counter appearing — and [report] runs in the
+     * moment before a dispatch.
+     */
+    private suspend fun settle(alreadyWaitedMs: Long = 0) {
+        if (alreadyWaitedMs >= WINDOW_SETTLE_MS * 2) return
+        awaitFrame()
+        awaitFrame()
+        delay(WINDOW_SETTLE_MS)
+    }
+
+    private suspend fun awaitFrame() = suspendCancellableCoroutine<Unit> { continuation ->
+        Choreographer.getInstance().postFrameCallback {
+            if (continuation.isActive) continuation.resume(Unit)
+        }
     }
 
     /**
@@ -614,6 +655,14 @@ class Player(
 
         /** How soon skip and pause take effect inside a timed wait. Not the display rate; see [timedWait]. */
         const val WAIT_TICK_MS = 100L
+
+        /**
+         * How long a window geometry change needs to have landed, on top of two frames.
+         *
+         * The recorder's number, and deliberately the same one: it is a property of how long an IPC to
+         * system_server takes, not of what either side is doing.
+         */
+        const val WINDOW_SETTLE_MS = 24L
 
         /**
          * Before retrying a step the system refused.
