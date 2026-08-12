@@ -411,6 +411,10 @@ class Player(
         for (tryIndex in 0..retries) {
             if (tryIndex > 0) {
                 Diag.log("player: step $stepNumber retry $tryIndex of $retries")
+                // Waited out first. The commonest meaning of a refusal is "something is still in the
+                // gesture stream", and a back-to-back retry is then guaranteed to be refused as well —
+                // while costing another injected DOWN in an app that is already holding one.
+                delay(RETRY_BACKOFF_MS)
                 // Checked between attempts so stop and pause work during a long run of failing retries,
                 // which on a missing injector is a second each.
                 gate()
@@ -610,5 +614,14 @@ class Player(
 
         /** How soon skip and pause take effect inside a timed wait. Not the display rate; see [timedWait]. */
         const val WAIT_TICK_MS = 100L
+
+        /**
+         * Before retrying a step the system refused.
+         *
+         * Long enough for whatever was still in the gesture stream to have left it, and for a finger that
+         * caused the refusal to plausibly be off the glass. Short enough that a genuine "the service was
+         * not ready yet" recovers without the run visibly stalling.
+         */
+        const val RETRY_BACKOFF_MS = 300L
     }
 }
