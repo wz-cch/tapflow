@@ -415,6 +415,9 @@ class TapFlowService : AccessibilityService() {
         // A window dragged to the edge on a larger screen, or before a rotation, can land offscreen.
         clampWindows()
         syncOverlay()
+        // The overlay was off when the clip was handed over, so the collector below could not act on it.
+        // Checked here as well rather than moved here: the switch is usually already on.
+        consumeEditOnArrival()
     }
 
     private fun detachOverlay() {
@@ -443,6 +446,9 @@ class TapFlowService : AccessibilityService() {
             }
         }
         scope.launch { Workspace.steps.collect { syncOverlay() } }
+        // A clip opened from a flow arrives already editing. The signal comes from the app process, which
+        // has no way to reach in here — see [EngineState.editOnArrival].
+        scope.launch { EngineState.editOnArrival.collect { if (it) consumeEditOnArrival() } }
         // Both, not just the mode: flow mode with nothing open is a real state, and which one it is
         // decides whether play and the flow buttons are live.
         scope.launch { Repo.currentFlow.collect { syncOverlay() } }
@@ -1299,6 +1305,19 @@ class TapFlowService : AccessibilityService() {
     }
 
     // --- Editing -------------------------------------------------------------
+
+    /**
+     * Lands in editing if something asked for it and the toolbar is up to receive it.
+     *
+     * Nothing happens when the overlay is not attached yet — [attachOverlay] asks again once it is, which
+     * is the case where the app was opened from the home screen with the toolbar switched off.
+     */
+    private fun consumeEditOnArrival() {
+        if (!EngineState.editOnArrival.value) return
+        if (!host.isAttached(toolbar)) return
+        EngineState.editOnArrival.value = false
+        enterEditing()
+    }
 
     private fun enterEditing() {
         if (EngineState.isRecording || EngineState.isReplaying) return

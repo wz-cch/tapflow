@@ -255,6 +255,7 @@
     <string name="toast_flow_gone">那條流程已經不存在了</string>
     <string name="toast_workspace_cleared">工作區已清空</string>
     <string name="toast_open_clip_failed">這個檔案讀不成片段。可能被搬走了,或本來就不是片段檔。</string>
+    <string name="toast_clip_empty">那個片段裡沒有步驟,沒有東西可以編輯。</string>
     <string name="toast_open_flow_failed">這個檔案讀不成流程。可能被搬走了,或本來就不是流程檔。</string>
     <string name="toast_delete_failed">刪不掉這個檔案</string>
 

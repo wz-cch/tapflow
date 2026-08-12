@@ -422,7 +422,7 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         // chosen by hidden state is the exact shape of the bug that made mode explicit in the first place.
         // So while nested there is one exit and it says what it does.
         modeToggle.visibility = visibleWhen((idle || flowMode) && !insideFlow)
-        finishClip.visibility = visibleWhen(insideFlow && (idle || editing))
+        finishClip.visibility = visibleWhen(insideFlow)
         modeToggle.setImageResource(if (flowMode) R.drawable.ic_mode_flow else R.drawable.ic_mode_clip)
         // Shows the mode you are *in*, not the one you would go to. A toggle icon that shows its
         // destination is ambiguous the moment you look at it without remembering which way round it is.
@@ -440,8 +440,9 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         insertGlobal.visibility = visibleWhen(recording || editing)
         undo.visibility = visibleWhen(recording || editing)
         // Both the way in and the way out, so it has to survive editing — gating it on idle alone left
-        // edit mode with no exit on the toolbar at all.
-        edit.visibility = visibleWhen(idle || editing)
+        // edit mode with no exit on the toolbar at all. Absent inside a flow, where editing is the only
+        // shape there is and `⟲` is the way out.
+        edit.visibility = visibleWhen((idle || editing) && !insideFlow)
         stepListToggle.visibility = visibleWhen(editing)
         stepPanelToggle.visibility = visibleWhen(editing)
         insertStep.visibility = visibleWhen(editing)
@@ -453,7 +454,9 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         // decision covering both halves of it — writing the edit to a *different* file would leave the flow
         // pointing at the untouched original, and opening anything would silently end the excursion. Make
         // variants from the home screen, where no flow is waiting.
-        save.visibility = visibleWhen(idle)
+        // Follows the excursion into editing, because inside a flow that is where you are: the trip exists
+        // to fix this clip, and writing the fix back is the point of it.
+        save.visibility = visibleWhen(idle || (insideFlow && editing))
         // One button, and behind it the whole of storage for the current mode's kind: what is in the folder,
         // and a field to write a new one. It used to list both kinds, which under an explicit mode is a hole:
         // opening a flow from clip mode would empty the workspace without ever passing the mode button, so
@@ -463,7 +466,9 @@ class ToolbarView(context: Context, private val actions: Actions) : FrameLayout(
         editFlow.visibility = visibleWhen(flowMode)
         newFlow.visibility = visibleWhen(flowMode)
         quickSettings.visibility = visibleWhen(soloIdle || flowMode)
-        dismiss.visibility = visibleWhen(idle || flowMode)
+        // Never inside a flow: it turns the overlay off *and* drops the breadcrumb, so it does not leave
+        // the clip, it abandons the whole trip. `⟲` is the way out there.
+        dismiss.visibility = visibleWhen((idle || flowMode) && !insideFlow)
 
         primary.setImageResource(if (flowMode) R.drawable.ic_play_flow else R.drawable.ic_play)
         primary.contentDescription = context.getString(

@@ -336,6 +336,14 @@ fun FlowEditorScreen(flowRef: String?, onBack: () -> Unit, onEditClip: () -> Uni
                     // reference to a file. An arrangement that was thrown away has nowhere to return to.
                     onEditClip = {
                         val loaded = clipAt(index) ?: return@ClipNodeRow
+                        // Editing means landing in edit mode, and edit mode needs something to edit. A clip
+                        // with no steps can only have come from outside the app — saving an empty one is
+                        // refused — so this says so rather than handing over to a toolbar that would sit
+                        // there doing nothing.
+                        if (loaded.clip.steps.isEmpty()) {
+                            context.toastLong(context.getString(R.string.toast_clip_empty))
+                            return@ClipNodeRow
+                        }
                         val handOver = {
                             file?.ref?.let { ref ->
                                 Session.editClipFromFlow(ref, loaded)

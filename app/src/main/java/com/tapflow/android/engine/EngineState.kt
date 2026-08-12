@@ -194,6 +194,19 @@ object EngineState {
      */
     val waitRemaining = MutableStateFlow(0)
 
+    /**
+     * A clip has just been opened from a flow, and the toolbar should land in editing.
+     *
+     * A signal rather than a derived state: "am I inside a flow" is answered by the breadcrumb and is true
+     * for the whole excursion, while this is the single moment of arriving. Cleared by whoever acts on it,
+     * so a second arrival is a second signal.
+     *
+     * It exists because the hand-off happens in the app process and the service has nothing to notice: the
+     * activity fills the workspace and finishes, and without this the toolbar would come back looking
+     * exactly as it did before — which is precisely what "I could not tell anything had happened" was.
+     */
+    val editOnArrival = MutableStateFlow(false)
+
     val progress = MutableStateFlow<Progress?>(null)
 
     /** Message shown while paused. Null when running. */
