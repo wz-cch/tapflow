@@ -1164,11 +1164,18 @@ class TapFlowService : AccessibilityService() {
      * flow from the toolbar answered "nothing to save" and never opened the dialog at all. Listing what
      * the rule is *for* cannot go wrong the same way when a fifth mode is added.
      */
+    /**
+     * No emptiness check in front of the panel, and that is the whole of a bug worth remembering.
+     *
+     * There used to be one, back when this activity had a separate save-as mode: nothing recorded meant
+     * nothing to save, so it said so and stayed shut. Merging save-as and open into one panel kept the
+     * guard and only renamed the mode it tested — so it began refusing to *open* a clip whenever the
+     * workspace was empty, which is exactly the state you are in when you want to open one.
+     *
+     * Emptiness now means only that there is nothing to write, which is a question about the name field
+     * rather than about the screen. See `WorkspaceDialogActivity.Storage`.
+     */
     private fun openWorkspaceDialog(mode: WorkspaceDialogActivity.Mode, stepId: String? = null) {
-        if (mode == WorkspaceDialogActivity.Mode.STORAGE && Workspace.isEmpty && !flowMode) {
-            toast(getString(R.string.toast_nothing_to_save))
-            return
-        }
         EngineState.quickSettingsOpen.value = false
         EngineState.numberPadOpen.value = false
         startActivity(
@@ -1989,11 +1996,14 @@ class TapFlowService : AccessibilityService() {
          * what every editor does, and it means `💾` always does something.
          */
         override fun onSave() {
-            val target = Workspace.source.value ?: return onStorage()
+            // Emptiness first, so a workspace with nothing in it says so rather than falling through to a
+            // panel that cannot offer to write it either — pressing save and being handed an open dialog
+            // reads as the button having done something else.
             if (Workspace.isEmpty) {
                 toast(getString(R.string.toast_nothing_to_save))
                 return
             }
+            val target = Workspace.source.value ?: return onStorage()
             // Off the main thread: writing goes through a ContentProvider on API 29+, and a slow provider
             // showed up on a device as the whole UI locking up rather than as a save taking a moment.
             scope.launch {
