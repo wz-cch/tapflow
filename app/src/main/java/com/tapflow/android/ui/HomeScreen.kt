@@ -408,8 +408,11 @@ fun HomeScreen(
                     // file until it is saved. Starting one drops whatever flow is loaded, now rather than on
                     // save — asking for a new one is being done with the old one, and the old one is a file
                     // that was already written.
+                    // Comes back *here*, not out of the app. Leaving a screen you opened from this one
+                    // means returning to it; the toolbar's version exits, because there the thing behind
+                    // the editor is the app being scripted rather than this list.
                     OutlinedButton(
-                        onClick = { guarded { Session.startNewFlow(); onOpenFlow(null, true) } }
+                        onClick = { guarded { Session.startNewFlow(); onOpenFlow(null, false) } }
                     ) { Text(stringResource(R.string.flow_new)) }
                 }
             }

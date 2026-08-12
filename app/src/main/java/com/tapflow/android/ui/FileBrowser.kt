@@ -171,8 +171,13 @@ fun StorageDialog(
                             label = { Text(stringResource(R.string.browse_name_label)) },
                             modifier = Modifier.weight(1f),
                         )
-                        IconButton(onClick = ::save, enabled = name.isNotBlank()) {
-                            Text("💾", style = MaterialTheme.typography.titleLarge)
+                        // Only when the panel also opens things. Then the list is the other half and the
+                        // bottom button can only mean "leave", so writing needs its own control up here.
+                        // When naming is the *whole* errand it moves to the bottom instead — see below.
+                        if (canOpen) {
+                            IconButton(onClick = ::save, enabled = name.isNotBlank()) {
+                                Text("💾", style = MaterialTheme.typography.titleLarge)
+                            }
                         }
                     }
                     Spacer(Modifier.height(8.dp))
@@ -246,10 +251,28 @@ fun StorageDialog(
                 }
             }
         },
-        // Nothing to confirm: saving is the 💾 beside the name and opening is a tap on a row, so the only
-        // thing left for a bottom button is leaving.
+        // **Which button sits here depends on whether this panel has an action of its own.**
+        //
+        // When it opens as well as saves, both of those are done in the body — a tap on a row, the 💾 beside
+        // the name — so the only thing left down here is leaving, and it says so.
+        //
+        // When naming is the whole errand there is no tap that finishes it, and a bottom button reading
+        // "Done" is then a trap: it is the largest, most final-looking control on screen and it *discards*.
+        // Reported as "I pressed save and the flow was still untitled". So it becomes Save, with Cancel
+        // beside it.
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.dialog_done)) }
+            if (canOpen) {
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.dialog_done)) }
+            } else {
+                TextButton(onClick = ::save, enabled = name.isNotBlank()) {
+                    Text(stringResource(R.string.flow_action_save))
+                }
+            }
+        },
+        dismissButton = {
+            if (!canOpen) {
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.dialog_cancel)) }
+            }
         },
     )
 
