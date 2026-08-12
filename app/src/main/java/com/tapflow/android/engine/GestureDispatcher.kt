@@ -13,7 +13,6 @@ import com.tapflow.android.data.ScreenSpec
 import com.tapflow.android.data.Settings
 import com.tapflow.android.data.Step
 import com.tapflow.android.data.Stroke
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.math.cos
@@ -77,11 +76,6 @@ class GestureDispatcher(
     private val service: AccessibilityService,
     /** Called for every dispatched gesture so failures can be surfaced rather than swallowed. */
     private val report: (GestureOutcome) -> Unit = {},
-    /**
-     * Asked to re-register the service when the injector is missing, which nudges the framework into
-     * rebuilding the accessibility input filter. Returns true if it was worth waiting and retrying.
-     */
-    private val renewRegistration: () -> Boolean = { false },
 ) {
 
     suspend fun perform(step: Step, scale: ScaleSpec, settings: Settings): GestureOutcome {
@@ -113,18 +107,15 @@ class GestureDispatcher(
         Diag.log("  -> $first after ${elapsed}ms of ${expected}ms")
         if (first != GestureOutcome.CANCELLED) return first
 
-        // Timing tells the two failures apart. The framework's wait for a missing MotionEventInjector
-        // lands in a narrow band around one second whatever the gesture was, so a tap failing after
-        // the same interval as a long swipe is the giveaway.
-        if (elapsed in INJECTOR_TIMEOUT_LOW..INJECTOR_TIMEOUT_HIGH) {
+        // Timing tells the two failures apart, but **only together with how long the gesture itself was
+        // supposed to take**. The framework's wait for a missing MotionEventInjector lands near one second
+        // whatever the gesture was — so the giveaway is not "about a second", it is "far longer than this
+        // gesture could possibly have taken". A 60ms tap failing at 1000ms is a timeout; a 900ms swipe
+        // cancelled at 950ms is a swipe that was cancelled, and reading it as a timeout was a real bug: it
+        // is exactly what a finger landing near the end of a long stroke produces.
+        if (elapsed in INJECTOR_TIMEOUT_LOW..INJECTOR_TIMEOUT_HIGH && expected + INJECTOR_MARGIN_MS < elapsed) {
             Diag.log("  looks like the MotionEventInjector was missing (framework waits ~1000ms)")
-            if (!renewRegistration()) return GestureOutcome.INJECTOR_MISSING
-
-            Diag.log("  re-registered the service; retrying once")
-            delay(REREGISTER_DELAY_MS)
-            val healed = await(gesture)
-            Diag.log("  -> after re-register $healed")
-            return if (healed == GestureOutcome.COMPLETED) healed else GestureOutcome.INJECTOR_MISSING
+            return GestureOutcome.INJECTOR_MISSING
         }
 
         // **A cancellation is never re-sent.** There used to be one retry here for a cancellation that
@@ -269,7 +260,13 @@ class GestureDispatcher(
         /** Band around the framework's one-second wait for the injector. */
         const val INJECTOR_TIMEOUT_LOW = 850L
         const val INJECTOR_TIMEOUT_HIGH = 1250L
-        const val REREGISTER_DELAY_MS = 350L
+
+        /**
+         * How much longer than its own duration a gesture must have taken before the wait above means
+         * anything. Below this the two explanations are indistinguishable, and the safe reading is the
+         * ordinary one: it was cancelled.
+         */
+        const val INJECTOR_MARGIN_MS = 300L
     }
 }
 
