@@ -258,6 +258,7 @@
     <string name="toast_flow_gone">That flow no longer exists</string>
     <string name="toast_workspace_cleared">Workspace cleared</string>
     <string name="toast_open_clip_failed">Could not open that as a clip. The file may have moved, or it may not be a clip.</string>
+    <string name="toast_clip_empty">That clip has no steps in it, so there is nothing to edit.</string>
     <string name="toast_open_flow_failed">Could not open that as a flow. The file may have moved, or it may not be a flow.</string>
     <string name="toast_delete_failed">Could not delete that file</string>
 

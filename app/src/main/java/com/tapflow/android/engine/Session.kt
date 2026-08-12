@@ -87,12 +87,19 @@ object Session {
      * side really is empty while the excursion runs, and the breadcrumb is then the *only* thing that makes
      * this different from having opened the clip from the recent list.
      *
-     * Nothing about the flow is held open. It is already on disk — the flow editor writes on every change —
-     * so there is nothing here that could be lost, and coming back re-reads it.
+     * Nothing about the flow is held open. It is already on disk by the time this is reached — arranging
+     * asks about saving on the way out — so there is nothing here that could be lost, and coming back
+     * re-reads it.
+     *
+     * **The excursion lands in editing**, which is what [EngineState.editOnArrival] asks the service for.
+     * Tapping a clip in a list means wanting to change it, so idling on the toolbar first is a step with
+     * nothing in it — and it was worse than empty: the toolbar came back with a different, shorter button
+     * set and no other sign that anything had happened.
      */
     fun editClipFromFlow(flowRef: String, loaded: LoadedClip) {
         openClip(loaded)
         returnToFlowRef = flowRef
+        EngineState.editOnArrival.value = true
     }
 
     /**
