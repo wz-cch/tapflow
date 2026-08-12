@@ -127,19 +127,21 @@ class GestureDispatcher(
             return if (healed == GestureOutcome.COMPLETED) healed else GestureOutcome.INJECTOR_MISSING
         }
 
-        // A cancellation that arrives almost immediately means the gesture never really ran: a stray
-        // real touch, a window change, or another gesture took the stream. Those are transient, so one
-        // retry recovers instead of failing the whole step. A cancellation that arrives part way is
-        // left alone — retrying would replay half a swipe on top of itself.
-        if (elapsed > expected / 3 + EARLY_CANCEL_GRACE_MS) return first
-
-        Log.i(TAG, "Gesture cancelled after ${elapsed}ms of ${expected}ms; retrying once")
-        Diag.log("  retrying once (cancelled early)")
-        delay(RETRY_DELAY_MS)
-        val retryStarted = SystemClock.uptimeMillis()
-        val second = await(gesture)
-        Diag.log("  -> retry $second after ${SystemClock.uptimeMillis() - retryStarted}ms")
-        return second
+        // **A cancellation is never re-sent.** There used to be one retry here for a cancellation that
+        // arrived early, on the reasoning that early meant the gesture had not really run. That reasoning
+        // is wrong: however early it is cancelled, the DOWN and some MOVEs are already in the app. Sending
+        // the gesture again puts a second DOWN in with no UP between them — and the thing that cancelled it
+        // is almost always a finger, which is still on the glass 60ms later, so the retry is issued into
+        // live input and comes back REFUSED, which the player then retries again.
+        //
+        // Reported from a device as: touch the screen mid-run, get a dispatch failure, the run pauses, and
+        // the *target app* stops accepting input until it is restarted. That is an app left holding
+        // unbalanced pointer state, and nothing here can undo it afterwards — only not causing it works.
+        //
+        // [Player.attempt] already documents this rule for itself: a cancellation is never retried, because
+        // re-issuing a half-delivered swipe replays half of it on top of itself. This was doing exactly
+        // that behind its back. What to do about the touch is the user's policy to decide, one level up.
+        return first
     }
 
     /** Longest stroke in the gesture, which is how long a completed dispatch should have taken. */
@@ -263,10 +265,6 @@ class GestureDispatcher(
 
     private companion object {
         const val TAG = "GestureDispatcher"
-
-        /** Allowance on top of a third of the duration before a cancellation counts as "part way". */
-        const val EARLY_CANCEL_GRACE_MS = 40L
-        const val RETRY_DELAY_MS = 60L
 
         /** Band around the framework's one-second wait for the injector. */
         const val INJECTOR_TIMEOUT_LOW = 850L
