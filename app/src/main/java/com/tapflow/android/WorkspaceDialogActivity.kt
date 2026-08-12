@@ -187,10 +187,16 @@ private fun Storage(onFinish: () -> Unit) {
 
     PickThen(
         kind = if (flowMode) DocKind.FLOW else DocKind.CLIP,
-        // Flows are not written from here any more. One is arranged on the editor screen and named when it
+        // Null turns the name field off, leaving the panel open-only. Two reasons reach it:
+        //
+        // Flows are not written from here any more — one is arranged on the editor screen and named when it
         // is saved, so a name field in front of the list would be asking what to call something that does
-        // not exist yet — which is exactly the order this stopped doing.
-        suggestedName = suggested.takeUnless { flowMode },
+        // not exist yet.
+        //
+        // And an empty workspace has nothing to write. That used to be checked before the activity was even
+        // started, which turned "there is nothing to save" into "you may not open anything" — the state you
+        // are in when opening is precisely the one where nothing has been recorded.
+        suggestedName = suggested.takeUnless { flowMode || Workspace.isEmpty },
         onFinish = onFinish,
         onOpen = { ref ->
             if (flowMode) {
