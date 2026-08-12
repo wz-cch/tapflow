@@ -67,6 +67,7 @@
     <string name="flow_summary">%1$d clips · about %2$s</string>
     <string name="flow_delete_title">Delete “%1$s”? A flow cannot be undone.</string>
     <string name="toast_flow_loaded">Loaded “%1$s”</string>
+    <string name="toast_flow_saved">Flow saved as “%1$s”</string>
     <string name="toast_flow_deleted">Deleted “%1$s”</string>
     <string name="toast_flow_empty">This flow has no clips in it yet</string>
     <string name="toast_flow_missing_clip">%1$d of this flow’s clips could not be opened. Arrange the flow and point those rows at their files first.</string>

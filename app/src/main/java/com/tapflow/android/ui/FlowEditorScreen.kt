@@ -184,6 +184,9 @@ fun FlowEditorScreen(flowRef: String?, onBack: () -> Unit, onEditClip: () -> Uni
             }
             file = target
             dirty = false
+            // Said out loud. A write that lands silently is indistinguishable from one that did not
+            // happen, and the title changing from "Untitled flow" is easy to miss while looking at a list.
+            context.toastShort(context.getString(R.string.toast_flow_saved, target.name))
             // Makes it the loaded flow, so flow mode's play button runs what was just written rather than
             // whatever was open before.
             Session.openFlow(opened)
@@ -782,3 +785,5 @@ private fun List<ClipNode>.replacedAt(index: Int, node: ClipNode): List<ClipNode
     mapIndexed { position, existing -> if (position == index) node else existing }
 
 private fun Context.toastLong(text: String) = Toast.makeText(this, text, Toast.LENGTH_LONG).show()
+
+private fun Context.toastShort(text: String) = Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
