@@ -285,6 +285,8 @@
     <string name="settings_speed">速度</string>
     <string name="settings_loop_interval">每圈之間的間隔</string>
     <string name="settings_start_delay">開始前倒數</string>
+    <string name="settings_resume_guard">暫停前後的緩衝</string>
+    <string name="settings_resume_guard_body">按一次繼續有時會被算成兩次,結果馬上又暫停。而手動暫停點的下一步,在你手指離開按鈕後大約十分之一秒就開始,快到會撞上。這段時間內兩者都先擋住。設 0 關閉。</string>
     <string name="settings_section_failure">步驟沒送到的時候</string>
     <string name="settings_on_touch">你碰到螢幕時</string>
     <string name="settings_on_touch_body">真實觸控會取消注入的手勢 —— Android 不會把兩者合併,那一步只做了一半。這是你要接手,不是故障,所以永遠不重試。</string>

@@ -288,6 +288,8 @@
     <string name="settings_speed">Speed</string>
     <string name="settings_loop_interval">Gap between loops</string>
     <string name="settings_start_delay">Countdown before starting</string>
+    <string name="settings_resume_guard">Buffer around pausing</string>
+    <string name="settings_resume_guard_body">One press of resume is sometimes registered as two, which pauses the run again straight away. And the step after a manual pause point starts about a tenth of a second after your finger leaves the button — soon enough to run into it. This holds both off for a moment. 0 turns it off.</string>
     <string name="settings_section_failure">When a step does not land</string>
     <string name="settings_on_touch">If you touch the screen</string>
     <string name="settings_on_touch_body">A real touch cancels the injected gesture — Android never merges the two, and the step is left half done. This is you taking over, not a malfunction, so it is never retried.</string>

@@ -116,6 +116,24 @@ data class Settings(
      */
     val loopIntervalMs: Long = 500,
 
+    /**
+     * One guard window, opened by every pause and every resume. 0 switches it off.
+     *
+     * Two faults with one cause, so one number rather than two settings:
+     *
+     * - **The button registers twice.** Reported from a device: press resume, and it pauses again
+     *   immediately with no failure wording — and no failure wording means no step failed, because both
+     *   failure paths write one. A second toggle arriving from one press is what that looks like. Inside
+     *   the window a further pause or resume request is ignored, in either direction.
+     * - **A finger was on the glass a moment ago.** Resuming is the one point in a run where that is
+     *   certain, and the step after a manual pause point carries only [defaultGapMs] of lead — so the
+     *   gesture was dispatched about a tenth of a second after the finger left the button, into it.
+     *
+     * Paid at the moment a pause lifts and nowhere else: no step's own [Step.delayBefore] is touched, and
+     * a run that never pauses never waits for this at all.
+     */
+    val resumeGuardMs: Long = 300,
+
     // --- When a step does not land ---
     //
     // Two settings and not one, because the two triggers are different events that happen to arrive
