@@ -45,7 +45,6 @@ object Repo {
     private const val TAG = "Repo"
     private const val PREFS = "tapflow"
     private const val KEY_MODE = "app_mode"
-    private const val KEY_OVERLAY_ON = "overlay_on"
 
     private lateinit var appContext: Context
     private lateinit var prefs: SharedPreferences
@@ -75,7 +74,22 @@ object Repo {
      */
     val currentFlow = MutableStateFlow<OpenFlow?>(null)
 
-    /** Whether the user wants the floating toolbar shown. */
+    /**
+     * Whether the user wants the floating toolbar shown. **In memory only, and deliberately.**
+     *
+     * A reboot binds this service whether or not anybody asked for it: the system starts every *enabled*
+     * accessibility service at boot, and that is not something an app can decline — nor should it, since
+     * enabling it was a decision made in system Settings. What the app does control is what happens next,
+     * and persisting this flag meant the floating toolbar came back on screen by itself after every
+     * restart, on top of whatever the phone was showing. A tool that takes over the screen has to be asked
+     * for; arriving unbidden after a reboot is the opposite of that.
+     *
+     * So there is nothing on disk to restore, and the toolbar starts off every time the process does. Its
+     * one entry point is the switch on the home screen.
+     *
+     * A service *reconnect* that leaves the process alive still keeps it — [init] returns early, so this
+     * value survives — which is the case worth keeping: the user has not gone anywhere.
+     */
     val overlayEnabled = MutableStateFlow(false)
 
     @Synchronized
@@ -86,7 +100,7 @@ object Repo {
 
         mode.value = runCatching { AppMode.valueOf(prefs.getString(KEY_MODE, "").orEmpty()) }
             .getOrDefault(AppMode.CLIP)
-        overlayEnabled.value = prefs.getBoolean(KEY_OVERLAY_ON, false)
+        // No overlayEnabled here on purpose — see its own documentation. It starts off, every time.
 
         DocStore.init(appContext, prefs)
         // One small file in filesDir, unlike the folder walk this replaced — which is why it can be read
@@ -288,9 +302,9 @@ object Repo {
         prefs.edit().putString(KEY_MODE, next.name).apply()
     }
 
+    /** Not written anywhere. See [overlayEnabled] for why this one is the exception. */
     fun setOverlayEnabled(enabled: Boolean) {
         overlayEnabled.value = enabled
-        prefs.edit().putBoolean(KEY_OVERLAY_ON, enabled).apply()
     }
 
     /** Small scalar preferences, used for remembering where the floating windows were dragged to. */
