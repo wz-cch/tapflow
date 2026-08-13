@@ -120,6 +120,16 @@ fun SettingsScreen(onBack: () -> Unit) {
                     Repo.updateSettings { it.copy(loopIntervalMs = ms) }
                 }
             }
+            item {
+                MsSlider(
+                    R.string.settings_resume_guard,
+                    settings.resumeGuardMs,
+                    0f,
+                    2_000f,
+                    50f,
+                    bodyRes = R.string.settings_resume_guard_body,
+                ) { ms -> Repo.updateSettings { it.copy(resumeGuardMs = ms) } }
+            }
 
             item { Section(R.string.settings_section_failure) }
             item {
@@ -299,10 +309,12 @@ private fun MsSlider(
     min: Float,
     max: Float,
     granularityMs: Float,
+    bodyRes: Int? = null,
     onChange: (Long) -> Unit,
 ) {
     SliderRow(
         label = stringResource(labelRes),
+        body = bodyRes?.let { stringResource(it) },
         value = stringResource(R.string.value_ms, valueMs),
         position = valueMs.toFloat().coerceIn(min, max),
         range = min..max,

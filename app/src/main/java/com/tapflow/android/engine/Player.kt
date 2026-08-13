@@ -486,16 +486,46 @@ class Player(
 
     private var skipped = 0
 
+    /**
+     * When the current pause/resume guard window opened. See [Settings.resumeGuardMs].
+     *
+     * Held here rather than at the three places a person can ask for a pause — the transport's button, the
+     * toolbar's play button, and the volume key — because all three arrive as a call to [pause], [resume]
+     * or [togglePause]. Guarding the far end covers every one of them by construction, and covers any
+     * fourth one added later without anybody having to remember.
+     */
+    private var guardOpenedAt = 0L
+
+    /** Milliseconds left on the guard window: 0 when it is closed, or when the setting is 0. */
+    private fun guardLeftMs(): Long {
+        val window = settings().resumeGuardMs
+        if (window <= 0) return 0
+        return (window - (SystemClock.elapsedRealtime() - guardOpenedAt)).coerceIn(0, window)
+    }
+
+    /** False when this request fell inside the guard window and should be dropped. */
+    private fun openGuard(what: String): Boolean {
+        val left = guardLeftMs()
+        if (left > 0) {
+            Diag.log("player: $what ignored, ${left}ms left on the guard")
+            return false
+        }
+        guardOpenedAt = SystemClock.elapsedRealtime()
+        return true
+    }
+
     fun pause() {
-        if (isActive) pauseRequested.value = true
+        if (!isActive || !openGuard("pause")) return
+        pauseRequested.value = true
     }
 
     fun resume() {
+        if (!openGuard("resume")) return
         pauseRequested.value = false
     }
 
     fun togglePause() {
-        if (!isActive) return
+        if (!isActive || !openGuard("toggle")) return
         pauseRequested.value = !pauseRequested.value
     }
 
@@ -531,11 +561,23 @@ class Player(
 
         EngineState.pausePrompt.value = null
         EngineState.mode.value = Mode.PLAYING
+
+        // The other half of [Settings.resumeGuardMs]: the rest of the window the resume opened, waited out
+        // before anything is dispatched. The finger that pressed the button left the glass at the moment
+        // the window opened, and the step after a manual pause point has almost no lead of its own — so
+        // without this the gesture goes out about a tenth of a second behind a real touch, which cancels
+        // it. Nothing here changes any step's own delay; it is only ever paid on the way out of a pause.
+        val guard = guardLeftMs()
+        if (guard > 0) {
+            Diag.log("player: resumed, holding ${guard}ms before going on")
+            delay(guard)
+        }
         // Resuming swaps the pause prompt back for the step counter, which is a different width — and the
         // transport is a wrap-content window, so that is a resize. The next step is dispatched immediately
         // after this returns, and a window change landing inside an injected gesture cancels it. Waited out
-        // here rather than trusted to the step's own lead delay, which may be nothing at all.
-        settle()
+        // here rather than trusted to the step's own lead delay, which may be nothing at all — and skipped
+        // when the guard above already covered it.
+        settle(guard)
     }
 
     /**
